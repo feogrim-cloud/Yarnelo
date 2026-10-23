@@ -58,7 +58,8 @@ internal static class SetupMaintenance
                 if (owner != processId || !EqualPath(ProcessPath(processId), executable)) return true;
                 StringBuilder title = new StringBuilder(256);
                 GetWindowText(window, title, title.Capacity);
-                if (title.ToString() != "Yarnelo — панель ярлыков") return true;
+                string caption = title.ToString();
+                if (caption != "Yarnelo — панель ярлыков" && caption != "Yarnelo — shortcut dock") return true;
                 IntPtr ignored;
                 SendMessageTimeout(window, 0x0010, IntPtr.Zero, IntPtr.Zero, 0x0002, 2000, out ignored); // WM_CLOSE, ABORTIFHUNG
                 return false;

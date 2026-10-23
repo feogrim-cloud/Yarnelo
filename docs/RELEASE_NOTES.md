@@ -1,6 +1,8 @@
-# Yarnelo 1.5.0
+# Yarnelo 1.5.1
 
 ## English
+
+This patch also fixes graceful closing by Windows Setup and Uninstall after selecting the English interface.
 
 Yarnelo now has an **English and Russian interface** on Windows and Linux. Right-click the dock → **Language / Язык → English / Русский**. The choice is saved and applies without restarting; the first launch follows the system locale (Russian for a Russian locale, English otherwise).
 
@@ -22,6 +24,8 @@ Windows requires .NET Framework 4.8/4.8.1. Installers run per user and retain `D
 **[Installation and update](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/INSTALL.md)** · [Windows](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/WINDOWS.md) · [Linux](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/LINUX.md)
 
 ## Русский
+
+Исправлено корректное закрытие панели установщиком и удалением Windows после выбора английского интерфейса.
 
 Yarnelo получил **русский и английский интерфейс** в Windows и Linux. Правая кнопка по панели → **Язык / Language → Русский / English**. Выбор сохраняется и применяется без перезапуска; при первом запуске используется русский для русской локали системы, английский — для остальных.
 

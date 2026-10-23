@@ -1,5 +1,10 @@
 # Changelog / Изменения
 
+## 1.5.1
+
+- Windows Setup and Uninstall recognize both English and Russian dock windows when requesting a graceful exit.
+- Установщик и удаление Windows корректно закрывают панель с английским и русским интерфейсом.
+
 ## 1.5.0 — 2026-10-23
 
 ### English

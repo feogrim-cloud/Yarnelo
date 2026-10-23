@@ -15,7 +15,7 @@ from typing import Any
 
 from yarnelo_i18n import LANGUAGES, text
 
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 MAX_ITEMS = 30
 
 

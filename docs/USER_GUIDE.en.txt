@@ -1,4 +1,4 @@
-YARNELO 1.5.0 — shortcut dock for Windows 10/11 x64 and Windows 10 x86
+YARNELO 1.5.1 — shortcut dock for Windows 10/11 x64 and Windows 10 x86
 
 Language: right-click the dock → Language / Язык → English or Русский.
 The choice is saved and applied without restarting. On first launch,
