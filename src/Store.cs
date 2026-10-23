@@ -48,6 +48,8 @@ namespace Polka
         [DataMember(Order = 11)] public List<DockItem> Items { get; set; }
         [DataMember(Order = 12)] public int Rows { get; set; }
         [DataMember(Order = 13)] public string Language { get; set; }
+        [DataMember(Order = 14)] public double CornerRadius { get; set; }
+        [DataMember(Order = 15)] public string Placement { get; set; }
 
         public DockSettings() { SetDefaults(); }
 
@@ -68,6 +70,8 @@ namespace Polka
             LaunchAtLogin = false;
             Rows = 1;
             Language = L10n.Normalize(null);
+            CornerRadius = 23;
+            Placement = "free";
             Items = new List<DockItem>();
         }
     }
@@ -141,6 +145,9 @@ namespace Polka
             IsFirstRun = !File.Exists(settingsPath) && !File.Exists(backupPath);
             bool repair = Load();
             Settings.Language = L10n.Normalize(Settings.Language);
+            Settings.CornerRadius = Clamp(Settings.CornerRadius, 0, 100, 23);
+            string placement = (Settings.Placement ?? "free").ToLowerInvariant();
+            Settings.Placement = new[] { "free", "bottom", "top", "left", "right" }.Contains(placement) ? placement : "free";
             L10n.SetLanguage(Settings.Language);
             repair = RecoverInterruptedImports() || repair;
             SanitizeSettings();

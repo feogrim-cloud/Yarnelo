@@ -21,10 +21,14 @@ Windows interface demonstrations rendered by Yarnelo with example shortcuts on a
 | --- | --- |
 | ![Yarnelo in a multi-row layout](assets/screenshots/yarnelo-multi-row.png) | ![Yarnelo language selection menu](assets/screenshots/yarnelo-language-menu.png) |
 
+![Yarnelo 1.7 settings in two columns with background rounding and edge placement](assets/screenshots/yarnelo-settings-en.png)
+
 ## Features
 
-- Up to **30 shortcuts** in **1, 2, 3 or 4 rows**.
-- Adjustable background opacity, icon size, hover magnification and labels.
+- Up to **30 shortcuts**, with one to four preferred rows and automatic wrapping when the screen fills up.
+- Adjustable background opacity and corner rounding, from square corners to a capsule; icon size, hover magnification and labels.
+- Center the dock at the top, bottom, left or right. Side docks run vertically with upright icons; dragging the handle enables free positioning.
+- Wider, two-column settings with every control on one page and no vertical scrolling.
 - Smooth hover, click and rearrangement animations; neighboring icons move aside during a drag.
 - Add apps, files, folders, Computer and the Recycle Bin / Trash.
 - **English and Russian interface:** right-click the dock → **Language / Язык** → **English / Русский**. The choice is saved and applies without restarting. The first launch follows your system language: Russian for a Russian locale, English otherwise.
@@ -57,8 +61,8 @@ Windows x64/x86 requires **.NET Framework 4.8 or 4.8.1**; native Windows ARM64 r
 
 1. Install the appropriate Windows `Setup.exe`, or extract the complete portable ZIP to a permanent writable folder and run `Yarnelo.exe`. On Linux, install a DEB/RPM or make the AppImage executable; see [installation](docs/INSTALL.md).
 2. Drop shortcuts on the dock or use **+** to add them. Drag an icon within the dock to change its position.
-3. Right-click the dock for **Settings**, **Language** and **Exit**. Drag its left handle to reposition it.
-4. Set rows, background opacity, icon size and magnification in **Settings**.
+3. Right-click the dock for **Settings**, **Language** and **Exit**. Drag its handle to reposition it freely.
+4. In **Settings**, choose an edge, preferred rows, background opacity and corner rounding, icon size and magnification. The dock adds rows (columns at the sides) when needed to keep shortcuts on screen.
 
 ### Windows shortcut storage
 

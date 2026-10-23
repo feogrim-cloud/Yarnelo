@@ -1,4 +1,4 @@
-YARNELO 1.6.0 — shortcut dock for Windows 10/11 x64,
+YARNELO 1.7.0 — shortcut dock for Windows 10/11 x64,
 Windows 10 x86 and Windows 11 ARM64
 
 Choose the package matching Settings → System → About → System type:
@@ -12,19 +12,25 @@ a Russian system locale selects Russian; other locales select English.
 Your own shortcut names are not changed.
 Русское руководство: Прочитай меня.txt / docs/USER_GUIDE.ru.txt.
 
-Drop shortcuts on the dock. It holds up to 30 icons and automatically
-reduces their size if they would not fit the screen.
-Settings → Rows: 1, 2, 3 or 4. Icons are balanced across rows, ordered
-left to right, top to bottom. Unneeded empty rows take no space.
+Drop shortcuts on the dock. It holds up to 30 icons. If space runs out,
+it first adds rows or side columns to keep the requested icon size;
+icons are reduced only if no layout fits the available screen.
+Settings → Rows: 1, 2, 3 or 4 preferred rows (columns at the side).
+Automatic wrapping does not replace your saved preference.
+Icons are balanced across rows; empty rows take no space.
 Click once to launch. Drag within the dock to rearrange shortcuts:
 the icon follows the pointer while neighbors smoothly move aside.
 You can move icons between rows; the row setting is saved.
 Esc or releasing outside the dock cancels the move.
-Drag the handle on the left to move the entire dock.
+Drag the handle to move the entire dock freely.
+Settings → Position centers it at the top, bottom, left or right edge
+of its current monitor. Side docks are vertical; icons remain upright.
 
 The + button or right-clicking empty space opens the menu for adding
 files, folders, This PC, Recycle Bin, choosing a language and settings.
-Settings control background opacity, icon size, hover magnification,
+Settings use two columns without vertical scrolling and fit the screen.
+Corner rounding runs from 0 (square corners) to 100 (capsule).
+Settings also control background opacity, icon size, hover magnification,
 labels, showing above ordinary windows, and startup at sign-in.
 Changing background opacity keeps icons readable.
 Hover animations do not restart with every pointer movement.

@@ -1,8 +1,19 @@
-# Yarnelo 1.6.0
+# Yarnelo 1.7.0
 
 ## English
 
-This release adds **native Windows ARM64 and Linux ARM64 packages** alongside the existing Intel/AMD downloads. The English and Russian interface, screenshots and local shortcut profiles remain available.
+This release adds **background corner rounding, four edge positions and automatic wrapping** on Windows and Linux. Existing shortcut profiles are preserved; all 14 Intel/AMD and native ARM64 packages remain available.
+
+### New dock settings
+
+- Set **Corner rounding** from **0** (square corners) to **100** (capsule), with intermediate values for softer corners.
+- Settings now use **two columns without vertical scrolling** and fit the available screen space.
+- Choose **Top, Bottom, Left or Right** centered placement. Side docks are vertical with upright icons. Drag the handle for free positioning.
+- Choose one to four preferred rows. If the dock would exceed the screen, it automatically adds rows, or columns at a side edge, before reducing icon size. It returns to the preferred layout when there is room.
+
+Right-click the dock → **Settings** to use these controls. Changes are saved immediately and are available in English and Russian.
+
+![Yarnelo 1.7 settings](https://raw.githubusercontent.com/feogrim-cloud/Yarnelo/v1.7.0/assets/screenshots/yarnelo-settings-en.png)
 
 ### Downloads
 
@@ -44,7 +55,16 @@ Windows installers run per user and retain `Data` on update/removal. Update a po
 
 ## Русский
 
-Добавлены **нативные сборки Windows ARM64 и Linux ARM64**, сохранены прежние варианты для Intel/AMD. Русский и английский интерфейс, скриншоты и локальные профили ярлыков остаются доступны.
+Добавлены **скругление фона, четыре положения у края экрана и автоматический перенос ярлыков** в Windows и Linux. Прежние профили сохранены; доступны все 14 пакетов Intel/AMD и нативных ARM64.
+
+### Новые настройки панели
+
+- **Скругление углов** от **0** (прямые углы) до **100** (капсула), с промежуточными значениями.
+- Настройки размещены **в два столбца без вертикальной прокрутки**; окно подстраивается под доступное место на экране.
+- Выберите расположение по центру **сверху, снизу, слева или справа**. Боковые панели вертикальные, значки остаются обычной ориентации. Перетаскивайте ручку для свободного размещения.
+- Выберите от одного до четырёх предпочтительных рядов. При выходе за пределы экрана панель сначала добавит ряды, либо столбцы у бокового края, и только затем уменьшит значки. Когда место появится, вернётся выбранная раскладка.
+
+Откройте правой кнопкой меню панели → **Настройки**. Изменения сохраняются сразу; все новые пункты доступны на русском и английском.
 
 ### Что скачать
 

@@ -45,9 +45,17 @@ $fixtures = Join-Path $run 'fixtures'
 & $binary $fixtures
 if($LASTEXITCODE -ne 0) { throw "Storage tests failed. Fixtures are preserved at $fixtures" }
 
+# Geometry checks use only synthetic monitor bounds and never show a window.
+$layoutBinary = Join-Path $run 'DockLayoutTests.exe'
+$layoutArgs = @('/nologo','/target:exe','/platform:x64','/optimize+','/codepage:65001',('/out:'+$layoutBinary),'/reference:System.dll','/reference:System.Core.dll',('/reference:'+(Join-Path $framework 'WPF\WindowsBase.dll')))
+& $compiler @layoutArgs (Join-Path $sources 'DockLayout.cs') (Join-Path $sources 'DockLayoutTests.cs')
+if($LASTEXITCODE -ne 0) { throw 'Dock geometry test compilation failed.' }
+& $layoutBinary
+if($LASTEXITCODE -ne 0) { throw 'Dock geometry tests failed.' }
+
 # Localization renders only its own unshown WPF visual trees. No native dock,
 # desktop integration, tray, installed profile or startup registry is used.
-$localizationSources = @('Program.cs','DockWindow.cs','SettingsWindow.cs','Native.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','Localization.cs','LocalizationUiTests.cs') |
+$localizationSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','Localization.cs','LocalizationUiTests.cs') |
     ForEach-Object { Join-Path $sources $_ }
 $localizationBinary = Join-Path $run 'LocalizationUiTests.exe'
 $localizationArgs = @(
@@ -64,9 +72,20 @@ if($LASTEXITCODE -ne 0) { throw 'Localization UI test compilation failed.' }
 & $localizationBinary (Join-Path $run 'localization-ui')
 if($LASTEXITCODE -ne 0) { throw 'Localization UI tests failed.' }
 
+# Exercise actual dock controls against synthetic monitor bounds, still without
+# creating a native window or connecting to the user's desktop/profile.
+$dockVisualBinary=Join-Path $run 'DockVisualTests.exe'
+$dockVisualSources=$localizationSources | Where-Object { [IO.Path]::GetFileName($_) -ne 'LocalizationUiTests.cs' }
+$dockVisualSources+=Join-Path $sources 'DockVisualTests.cs'
+$dockVisualArgs=$localizationArgs | ForEach-Object { $_.Replace('/main:Polka.LocalizationUiTests','/main:Polka.DockVisualTests').Replace('/out:'+$localizationBinary,'/out:'+$dockVisualBinary) }
+& $compiler @dockVisualArgs @dockVisualSources
+if($LASTEXITCODE -ne 0) { throw 'Dock visual test compilation failed.' }
+& $dockVisualBinary (Join-Path $run 'dock-visual')
+if($LASTEXITCODE -ne 0) { throw 'Dock visual tests failed.' }
+
 if($CompileUiTests) {
     # Compile only: UI tests show and activate native WPF windows when executed.
-    $uiSources = @('Program.cs','DockWindow.cs','SettingsWindow.cs','Native.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','Localization.cs','UiTests.cs') |
+    $uiSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','Localization.cs','UiTests.cs') |
         ForEach-Object { Join-Path $sources $_ }
     $uiArgs = @(
         '/nologo', '/target:exe', '/platform:x64', '/optimize+', '/codepage:65001',

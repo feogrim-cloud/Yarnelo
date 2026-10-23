@@ -12,8 +12,8 @@ import sys
 from yarnelo_i18n import LANGUAGES, error_text, resolve_language, text
 
 from yarnelo_model import (
-    VERSION, Item, ModelError, Settings, config_path, desktop_metadata,
-    load_settings, move_item, preserve_invalid_settings, save_settings, slot_indices,
+    VERSION, PLACEMENTS, Item, ModelError, Settings, config_path, desktop_metadata, dock_layout,
+    load_settings, move_item, preserve_invalid_settings, save_settings,
 )
 
 
@@ -70,8 +70,8 @@ def main() -> int:
     )
     from PySide6.QtNetwork import QLocalServer, QLocalSocket
     from PySide6.QtWidgets import (
-        QApplication, QCheckBox, QDialog, QDialogButtonBox, QFileDialog,
-        QFileIconProvider, QFormLayout, QLabel, QMenu, QMessageBox,
+        QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
+        QFileIconProvider, QHBoxLayout, QLabel, QMenu, QMessageBox,
         QSlider, QSpinBox, QDoubleSpinBox, QSystemTrayIcon, QVBoxLayout, QWidget,
     )
 
@@ -96,7 +96,8 @@ def main() -> int:
         QMenu::item { padding: 7px 22px; border-radius: 5px; }
         QMenu::item:selected { background: #46547b; }
         QMenu::separator { height: 1px; background: #455068; margin: 5px 9px; }
-        QSpinBox, QDoubleSpinBox { color: #f2f3fc; background: #303b52; padding: 4px; }
+        QSpinBox, QDoubleSpinBox, QComboBox { color: #f2f3fc; background: #303b52; padding: 4px; }
+        QComboBox QAbstractItemView { color: #f2f3fc; background: #303b52; selection-background-color: #46547b; }
         QLabel, QCheckBox { color: #f2f3fc; }
         QPushButton { padding: 6px 14px; }
         QToolTip { background: #222b40; color: white; border: 1px solid #6b7891; padding: 5px; }
@@ -299,35 +300,87 @@ def main() -> int:
         def __init__(self, dock):
             super().__init__(dock)
             self.dock = dock
-            self.setMinimumWidth(390)
+            self.base_font = QFont(self.font())
             layout = QVBoxLayout(self)
-            form = QFormLayout()
+            layout.setContentsMargins(24, 22, 24, 20)
+            layout.setSpacing(16)
+            columns = QHBoxLayout()
+            columns.setSpacing(28)
+            self.headings, self.field_labels, self.fields = {}, {}, []
+            self.columns = []
+            for key in ("appearance", "layout"):
+                column = QVBoxLayout()
+                column.setSpacing(12)
+                heading = QLabel()
+                heading.setStyleSheet("font-size: 16px; font-weight: 600;")
+                self.headings[key] = heading
+                column.addWidget(heading)
+                self.columns.append(column)
+                columns.addLayout(column, 1)
+            layout.addLayout(columns)
             self.rows = QSpinBox()
             self.rows.setRange(1, 4)
             self.rows.setValue(dock.settings.rows)
             self.opacity = QSlider(Qt.Orientation.Horizontal)
             self.opacity.setRange(12, 100)
             self.opacity.setValue(round(dock.settings.opacity * 100))
-            self.size = QSpinBox()
-            self.size.setRange(24, 96)
-            self.size.setSuffix(" px")
-            self.size.setValue(dock.settings.icon_size)
+            self.icon_size = QSpinBox()
+            self.icon_size.setRange(24, 96)
+            self.icon_size.setSuffix(" px")
+            self.icon_size.setValue(dock.settings.icon_size)
             self.zoom = QDoubleSpinBox()
             self.zoom.setRange(1, 1.8)
             self.zoom.setSingleStep(0.05)
             self.zoom.setDecimals(2)
             self.zoom.setValue(dock.settings.zoom)
+            self.corners = QSlider(Qt.Orientation.Horizontal)
+            self.corners.setRange(0, 100)
+            self.corners.setValue(round(dock.settings.corner_radius))
+            self.placement = QComboBox()
+            for value in PLACEMENTS:
+                self.placement.addItem("", value)
+            self.placement.setCurrentIndex(PLACEMENTS.index(dock.settings.placement))
             self.labels = QCheckBox()
             self.labels.setChecked(dock.settings.labels)
-            self.field_labels = {}
-            for key, widget in (("row_count", self.rows), ("background_opacity", self.opacity), ("icon_size", self.size), ("hover_zoom", self.zoom)):
+
+            def add_field(column, key, widget, value_format=None):
+                group = QVBoxLayout()
+                group.setSpacing(6)
+                self.fields.append(group)
+                heading = QHBoxLayout()
                 label = QLabel()
+                label.setWordWrap(True)
                 self.field_labels[key] = label
-                form.addRow(label, widget)
-            form.addRow(self.labels)
-            layout.addLayout(form)
+                heading.addWidget(label, 1)
+                if value_format:
+                    value = QLabel(value_format(widget.value()))
+                    value.setStyleSheet("color: #b8c6e2;")
+                    widget.valueChanged.connect(lambda number: value.setText(value_format(number)))
+                    heading.addWidget(value)
+                group.addLayout(heading)
+                group.addWidget(widget)
+                self.columns[column].addLayout(group)
+
+            add_field(0, "background_opacity", self.opacity, lambda value: f"{value}%")
+            add_field(0, "corner_radius", self.corners, str)
+            self.corner_note = QLabel()
+            self.corner_note.setWordWrap(True)
+            self.corner_note.setStyleSheet("color: #b8c6e2;")
+            self.columns[0].addWidget(self.corner_note)
+            add_field(0, "icon_size", self.icon_size)
+            add_field(0, "hover_zoom", self.zoom)
+            add_field(1, "position", self.placement)
+            add_field(1, "row_count", self.rows)
+            self.rows_note = QLabel()
+            self.rows_note.setWordWrap(True)
+            self.rows_note.setStyleSheet("color: #b8c6e2;")
+            self.columns[1].addWidget(self.rows_note)
+            self.columns[1].addWidget(self.labels)
+            for column in self.columns:
+                column.addStretch(1)
             self.note = QLabel()
             self.note.setWordWrap(True)
+            self.note.setStyleSheet("color: #b8c6e2;")
             layout.addWidget(self.note)
             self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
             self.buttons.accepted.connect(self.accept)
@@ -335,16 +388,53 @@ def main() -> int:
             layout.addWidget(self.buttons)
             self.retranslate()
 
+        def fit_available_screen(self):
+            screen = self.dock.current_screen()
+            if not screen:
+                return
+            bounds = screen.availableGeometry().adjusted(14, 20, -14, -20)
+            # Qt already reports logical coordinates at the current DPI. Keep
+            # both columns visible, reducing spacing/font only on small areas.
+            small = bounds.width() < 720 or bounds.height() < 500
+            compact = bounds.height() < 380
+            font = QFont(self.base_font)
+            if small:
+                font.setPointSizeF(7.0 if compact else max(7.0, min(9.0, font.pointSizeF())))
+            self.setFont(font)
+            self.layout().setContentsMargins(14 if small else 24, 8 if compact else 12 if small else 22,
+                                            14 if small else 24, 8 if compact else 12 if small else 20)
+            self.layout().setSpacing(5 if compact else 8 if small else 16)
+            for column in self.columns:
+                column.setSpacing(4 if compact else 7 if small else 12)
+            for group in self.fields:
+                group.setSpacing(3 if compact else 6)
+            for heading in self.headings.values():
+                heading.setStyleSheet("font-size: 14px; font-weight: 600;" if compact else "font-size: 16px; font-weight: 600;")
+            self.ensurePolished()
+            self.layout().activate()
+            hint = self.sizeHint()
+            width = min(bounds.width(), max(min(760, bounds.width()), hint.width()))
+            height = min(bounds.height(), hint.height())
+            self.resize(width, height)
+            self.move(bounds.center() - self.rect().center())
+
         def retranslate(self):
             self.setWindowTitle(self.dock.t("settings_title"))
             self.setLocale(QLocale(resolve_language(self.dock.settings.language)))
             self.zoom.setLocale(self.locale())
             self.labels.setText(self.dock.t("show_labels"))
+            for key, label in self.headings.items():
+                label.setText(self.dock.t(key))
             for key, label in self.field_labels.items():
                 label.setText(self.dock.t(key))
+            for index, value in enumerate(PLACEMENTS):
+                self.placement.setItemText(index, self.dock.t(f"position_{value}"))
+            self.corner_note.setText(self.dock.t("corner_help"))
+            self.rows_note.setText(self.dock.t("rows_help"))
             self.note.setText(self.dock.t("platform_note"))
             self.buttons.button(QDialogButtonBox.StandardButton.Ok).setText(self.dock.t("ok"))
             self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(self.dock.t("cancel"))
+            self.fit_available_screen()
 
     class Dock(QWidget):
         def __init__(self, settings: Settings, store: Path | None, invalid: bool = False):
@@ -359,6 +449,8 @@ def main() -> int:
             self.effective_icon_size = float(settings.icon_size)
             self.drag_order: list[Item] | None = None
             self.panel_drag_offset: QPoint | None = None
+            self.panel_drag_moved = False
+            self.layout_key = None
             self.layout_pending = False
             self.screen_hooked = None
             self.setWindowTitle(self.t("dock_title"))
@@ -424,6 +516,9 @@ def main() -> int:
                 language = action.property("language_value")
                 if language:
                     action.setChecked(self.settings.language == language)
+                placement = action.property("placement_value")
+                if placement:
+                    action.setChecked(self.settings.placement == placement)
                 if action.menu():
                     self.retranslate_menu(action.menu())
 
@@ -470,6 +565,7 @@ def main() -> int:
             self.relayout()
 
         def relayout(self, animate=False):
+            animate = animate is True
             screen = self.current_screen()
             if not screen:
                 return
@@ -482,25 +578,36 @@ def main() -> int:
                 screen.availableGeometryChanged.connect(self.relayout)
                 self.screen_hooked = screen
             bounds = screen.availableGeometry()
-            slots = slot_indices(len(self.settings.items), self.settings.rows)
-            columns = max(column for _, column in slots) + 1
-            rows = max(row for row, _ in slots) + 1
-            cell_width = min(round(self.settings.icon_size * self.settings.zoom + 14), max(16, (bounds.width() - 58) // columns))
-            self.effective_icon_size = min(self.settings.icon_size, max(8, (cell_width - 10) / self.settings.zoom))
-            cell_height = round(self.effective_icon_size * self.settings.zoom + 14) + (18 if self.settings.labels else 0)
-            width, height = 38 + columns * cell_width, 20 + rows * cell_height
+            key = (len(self.settings.items), self.settings.rows, self.settings.icon_size, self.settings.zoom, self.settings.labels,
+                   self.settings.placement in ("left", "right"), bounds.width(), bounds.height())
+            if key != self.layout_key:
+                self.layout_geometry = dock_layout(self.settings, bounds.width(), bounds.height())
+                self.layout_key = key
+            geometry = self.layout_geometry
+            self.effective_icon_size = geometry.icon_size
+            width, height = geometry.width, geometry.height
             self.setFixedSize(width, height)
-            target_x = self.settings.x if self.settings.x is not None else bounds.center().x() - width // 2
-            target_y = self.settings.y if self.settings.y is not None else bounds.bottom() - height - 20
+            center_x, center_y = bounds.x() + (bounds.width() - width) // 2, bounds.y() + (bounds.height() - height) // 2
+            placement = self.settings.placement
+            if placement == "top":
+                target_x, target_y = center_x, bounds.top() + 10
+            elif placement == "left":
+                target_x, target_y = bounds.left() + 10, center_y
+            elif placement == "right":
+                target_x, target_y = bounds.right() - width - 9, center_y
+            elif placement == "bottom":
+                target_x, target_y = center_x, bounds.bottom() - height - 9
+            else:
+                target_x = self.settings.x if self.settings.x is not None else center_x
+                target_y = self.settings.y if self.settings.y is not None else bounds.bottom() - height - 20
             self.move(min(max(target_x, bounds.left()), max(bounds.left(), bounds.right() - width + 1)), min(max(target_y, bounds.top()), max(bounds.top(), bounds.bottom() - height + 1)))
-            row_counts = {row: sum(1 for r, _ in slots if r == row) for row in range(rows)}
             ordered = [self.tiles[item.id] for item in self.settings.items] + [self.add_tile]
-            for tile, (row, column) in zip(ordered, slots):
-                row_offset = (columns - row_counts[row]) * cell_width // 2
-                point = QPoint(26 + row_offset + column * cell_width, 10 + row * cell_height)
+            self.positions.clear()
+            for tile, coordinates in zip(ordered, geometry.positions):
+                point = QPoint(*coordinates)
                 key = tile.item.id if tile.item else "+"
                 self.positions[key] = point
-                tile.setFixedSize(cell_width, cell_height)
+                tile.setFixedSize(geometry.cell_width, geometry.cell_height)
                 if tile.dragging:
                     continue
                 tile.position_animation.stop()
@@ -523,12 +630,18 @@ def main() -> int:
             background.setColorAt(1, QColor(17, 25, 43, alpha))
             painter.setBrush(background)
             painter.setPen(QPen(QColor(222, 232, 255, max(35, alpha // 2)), 1))
-            painter.drawRoundedRect(rect, 23, 23)
+            radius = min(rect.width(), rect.height()) / 2 if self.settings.corner_radius >= 100 else min(self.settings.corner_radius, min(rect.width(), rect.height()) / 2)
+            painter.drawRoundedRect(rect, radius, radius)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(221, 229, 255, 95))
-            for y in (-7, 0, 7):
-                for x in (11, 17):
-                    painter.drawEllipse(QPointF(x, self.height() / 2 + y), 1.2, 1.2)
+            if self.layout_geometry.vertical:
+                for x in (-7, 0, 7):
+                    for y in (11, 17):
+                        painter.drawEllipse(QPointF(self.width() / 2 + x, y), 1.2, 1.2)
+            else:
+                for y in (-7, 0, 7):
+                    for x in (11, 17):
+                        painter.drawEllipse(QPointF(x, self.height() / 2 + y), 1.2, 1.2)
             if self.drag_order is not None:
                 dragged = next((tile for tile in self.tiles.values() if tile.dragging), None)
                 if dragged:
@@ -682,7 +795,16 @@ def main() -> int:
             self.add_action(add, "trash", lambda: self.add_special("trash"))
             self.add_action(menu, "settings", self.open_settings)
             self.add_language_menu(menu)
-            self.add_action(menu, "bottom_center", self.reset_position)
+            positions = menu.addMenu(self.t("position"))
+            positions.menuAction().setProperty("translation_key", "position")
+            group = QActionGroup(positions)
+            group.setExclusive(True)
+            for placement in PLACEMENTS:
+                action = self.add_action(positions, f"position_{placement}", lambda checked=False, value=placement: self.set_placement(value))
+                action.setProperty("placement_value", placement)
+                action.setCheckable(True)
+                action.setChecked(self.settings.placement == placement)
+                group.addAction(action)
             screens_menu = menu.addMenu(self.t("monitor"))
             screens_menu.menuAction().setProperty("translation_key", "monitor")
             for index, screen in enumerate(app.screens(), 1):
@@ -715,22 +837,34 @@ def main() -> int:
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 self.settings.rows = dialog.rows.value()
                 self.settings.opacity = dialog.opacity.value() / 100
-                self.settings.icon_size = dialog.size.value()
+                self.settings.icon_size = dialog.icon_size.value()
                 self.settings.zoom = dialog.zoom.value()
                 self.settings.labels = dialog.labels.isChecked()
+                self.settings.corner_radius = dialog.corners.value()
+                self.settings.placement = dialog.placement.currentData()
                 self.relayout(True)
                 self.persist()
             self.settings_dialog = None
             dialog.deleteLater()
 
         def reset_position(self):
+            self.settings.placement = "bottom"
             self.settings.x = self.settings.y = None
+            self.relayout()
+            self.persist()
+
+        def set_placement(self, placement):
+            self.settings.placement = placement
+            if placement == "free":
+                self.settings.x, self.settings.y = self.x(), self.y()
             self.relayout()
             self.persist()
 
         def change_screen(self, name):
             self.settings.screen = name
-            self.reset_position()
+            self.settings.x = self.settings.y = None
+            self.relayout()
+            self.persist()
 
         def show_passive(self):
             self.show()
@@ -740,6 +874,7 @@ def main() -> int:
         def mousePressEvent(self, event):
             if event.button() == Qt.MouseButton.LeftButton:
                 self.panel_drag_offset = event.globalPosition().toPoint() - self.pos()
+                self.panel_drag_moved = False
                 self.setCursor(Qt.CursorShape.ClosedHandCursor)
                 event.accept()
             else:
@@ -747,20 +882,26 @@ def main() -> int:
 
         def mouseMoveEvent(self, event):
             if self.panel_drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
-                self.move(event.globalPosition().toPoint() - self.panel_drag_offset)
+                target = event.globalPosition().toPoint() - self.panel_drag_offset
+                if self.panel_drag_moved or (target - self.pos()).manhattanLength() >= QApplication.startDragDistance():
+                    self.panel_drag_moved = True
+                    self.move(target)
                 event.accept()
             else:
-                self.setCursor(Qt.CursorShape.SizeAllCursor if event.position().x() < 26 else Qt.CursorShape.ArrowCursor)
+                handle = event.position().y() < 26 if self.layout_geometry.vertical else event.position().x() < 26
+                self.setCursor(Qt.CursorShape.SizeAllCursor if handle else Qt.CursorShape.ArrowCursor)
                 super().mouseMoveEvent(event)
 
         def mouseReleaseEvent(self, event):
             if self.panel_drag_offset is not None:
                 self.panel_drag_offset = None
-                screen = app.screenAt(self.frameGeometry().center()) or self.current_screen()
-                self.settings.screen = screen.name()
-                self.settings.x, self.settings.y = self.x(), self.y()
-                self.relayout()
-                self.persist()
+                if self.panel_drag_moved:
+                    screen = app.screenAt(self.frameGeometry().center()) or self.current_screen()
+                    self.settings.screen = screen.name()
+                    self.settings.x, self.settings.y = self.x(), self.y()
+                    self.settings.placement = "free"
+                    self.relayout()
+                    self.persist()
                 self.setCursor(Qt.CursorShape.ArrowCursor)
                 event.accept()
             else:
@@ -867,6 +1008,95 @@ def main() -> int:
             raise RuntimeError("Drag did not reorder the launcher tiles")
         for tile in dock.tiles.values():
             tile.position_animation.setCurrentTime(tile.position_animation.duration())
+        app.processEvents()
+
+        # Exercise real Qt layout on offset monitors and high-DPI-sized work
+        # areas. The test profile and its files live only in the temporary dir.
+        original_screen = dock.current_screen
+        original_items, original_rows = list(settings.items), settings.rows
+        original_placement, original_corners = settings.placement, settings.corner_radius
+
+        class ScreenFixture:
+            def __init__(self):
+                self.bounds = QRect(-1280, 50, 1280, 720)
+                self.availableGeometryChanged = original_screen().availableGeometryChanged
+
+            def availableGeometry(self):
+                return self.bounds
+
+        fixture = ScreenFixture()
+        dock.current_screen = lambda: fixture
+        settings.items = [Item(f"layout-{index}", "computer") for index in range(30)]
+        settings.rows, settings.labels = 1, True
+        dock.rebuild()
+        for placement in ("top", "bottom", "left", "right"):
+            settings.placement = placement
+            dock.relayout()
+            app.processEvents()
+            if not fixture.bounds.contains(dock.geometry()) or dock.effective_icon_size != settings.icon_size:
+                raise RuntimeError("Overflow did not wrap into the available work area at the requested icon size")
+            if dock.layout_geometry.rows <= 1 or len(dock.positions) != 31:
+                raise RuntimeError("Overflow lost tiles or did not add rows/columns")
+            for tile in [*dock.tiles.values(), dock.add_tile]:
+                if not dock.rect().contains(tile.geometry()):
+                    raise RuntimeError("A dock tile was clipped at a screen edge")
+            if placement in ("top", "bottom") and abs(dock.geometry().center().x() - fixture.bounds.center().x()) > 1:
+                raise RuntimeError("Horizontal placement was not centered")
+            if placement in ("left", "right") and abs(dock.geometry().center().y() - fixture.bounds.center().y()) > 1:
+                raise RuntimeError("Vertical placement was not centered")
+            ordered_ids = [item.id for item in settings.items]
+            tile = dock.tiles[settings.items[0].id]
+            destination = dock.positions[settings.items[1].id] + tile.rect().center()
+            tile.dragging = True
+            dock.begin_drag(tile)
+            dock.update_drag(tile, dock.mapToGlobal(destination))
+            tile.dragging = False
+            dock.end_drag(tile, dock.mapToGlobal(destination))
+            if [item.id for item in settings.items] == ordered_ids:
+                raise RuntimeError("Drag did not reorder an overflow/side dock")
+            for tile in dock.tiles.values():
+                tile.position_animation.setCurrentTime(tile.position_animation.duration())
+            app.processEvents()
+        for radius in (0, 23, 100):
+            settings.corner_radius = radius
+            dock.update()
+            app.processEvents()
+            preview = QImage(dock.size(), QImage.Format.Format_ARGB32)
+            preview.fill(Qt.GlobalColor.transparent)
+            dock.render(preview)
+            if preview.isNull():
+                raise RuntimeError("A background rounding option could not render")
+        for width, height in ((1280, 720), (640, 480), (640, 360)):
+            fixture.bounds = QRect(-width, 20, width, height)
+            for language in ("en", "ru"):
+                dock.change_language(language)
+                dialog = SettingsDialog(dock)
+                dialog.show()
+                app.processEvents()
+                dialog.fit_available_screen()
+                app.processEvents()
+                if not fixture.bounds.contains(dialog.frameGeometry()):
+                    raise RuntimeError(f"Settings did not fit the {width}x{height} work area ({language})")
+                widgets = [dialog.rows, dialog.opacity, dialog.corners, dialog.icon_size, dialog.zoom, dialog.placement, dialog.labels, dialog.buttons, dialog.note, dialog.rows_note, dialog.corner_note, *dialog.field_labels.values(), *dialog.headings.values()]
+                for widget in widgets:
+                    rect = QRect(widget.mapTo(dialog, QPoint()), widget.size())
+                    if not dialog.rect().contains(rect):
+                        raise RuntimeError(f"A settings control was clipped ({width}x{height}, {language})")
+                    if isinstance(widget, QLabel) and widget.wordWrap() and widget.heightForWidth(widget.width()) > widget.height():
+                        raise RuntimeError(f"Settings text was clipped ({width}x{height}, {language}: {widget.text()})")
+                if args.smoke_output and width == 1280:
+                    preview = QImage(dialog.size(), QImage.Format.Format_ARGB32)
+                    preview.fill(Qt.GlobalColor.transparent)
+                    dialog.render(preview)
+                    args.smoke_output.parent.mkdir(parents=True, exist_ok=True)
+                    preview.save(str(args.smoke_output.with_name(f"{args.smoke_output.stem}-settings-{language}.png")), "PNG")
+                dialog.close()
+                dialog.deleteLater()
+        dock.current_screen = original_screen
+        settings.items, settings.rows = original_items, original_rows
+        settings.placement, settings.corner_radius = original_placement, original_corners
+        dock.change_language(args.language or "auto")
+        dock.rebuild()
         app.processEvents()
         image = QImage(dock.size(), QImage.Format.Format_ARGB32)
         image.fill(Qt.GlobalColor.transparent)

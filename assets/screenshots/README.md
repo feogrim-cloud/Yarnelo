@@ -1,8 +1,8 @@
 # Screenshot details / О скриншотах
 
-These are captures of the **actual Yarnelo 1.5 Windows WPF controls**, rendered on a neutral presentation background. They show a one-row dock with hover magnification, a four-row dock with labels, and the English/Russian language menu. The background, headings and footer are presentation artwork, not controls in the app. The Linux interface uses Qt and looks different.
+These are captures of **actual Windows WPF controls**: the dock and language menu from Yarnelo 1.5, and the two-column settings from Yarnelo 1.7, rendered on a neutral presentation background. They show a one-row dock with hover magnification, a four-row dock with labels, the English/Russian language menu and settings in both languages. The background, headings and footer are presentation artwork, not controls in the app. The Linux interface uses Qt and looks different.
 
-Это изображения **настоящих WPF-элементов Yarnelo 1.5 для Windows** на нейтральном фоне: один ряд с увеличением при наведении, четыре ряда с подписями и меню выбора языка. Фон, заголовки и нижняя подпись добавлены для оформления, они не являются интерфейсом приложения. Linux-версия использует Qt и выглядит иначе.
+Это изображения **настоящих WPF-элементов Windows**: панель и меню языка Yarnelo 1.5, двухколоночные настройки Yarnelo 1.7 на нейтральном фоне. Показаны один ряд с увеличением при наведении, четыре ряда с подписями, меню языка и настройки на обоих языках. Фон, заголовки и нижняя подпись добавлены для оформления, они не являются интерфейсом приложения. Linux-версия использует Qt и выглядит иначе.
 
 The demo includes Windows system icons, Yarnelo, Steam, Microsoft Edge, Spotify, Control, Warframe, Starfield, Lies of P, Enshrouded, Resident Evil 7, The Ascent, Hail to the Rainbow, Dragon's Dogma 2 and Crimson Desert. Third-party app/game names and icons belong to their respective owners and appear only to illustrate user-added shortcuts. The programs and shortcut collection are not bundled with Yarnelo; no endorsement or affiliation is implied. Yarnelo's all-rights-reserved notice does not extend to third-party icons.
 

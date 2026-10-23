@@ -32,6 +32,8 @@ namespace Polka {
         SettingsWindow settingsWindow;
         double effectiveSize, slot, rowPitch;
         int layoutRows, layoutColumns;
+        DockLayout layout;
+        bool verticalDock;
         bool ready, moving, exiting, helperRunning;
         Point pressPoint;
         IconView pressed;
@@ -105,6 +107,7 @@ namespace Polka {
             public ScaleTransform Scale;
             public TranslateTransform Translate;
             public TranslateTransform Shift;
+            public TranslateTransform LabelTranslate;
             public MotionValue SizeMotion=new MotionValue(1), LiftMotion=new MotionValue(0), ShiftMotion=new MotionValue(0), ShiftYMotion=new MotionValue(0), AlphaMotion=new MotionValue(1);
             public double HoverScale=1, HoverLift, ClickStarted=-1;
             public double ScaleResponse=25;
@@ -158,9 +161,11 @@ namespace Polka {
             noticeTimer.Tick += delegate { notice.Visibility=Visibility.Collapsed; noticeTimer.Stop(); };
             Loaded += delegate {
                 double savedLeft=Store.Settings.Left, savedTop=Store.Settings.Top;
+                if(!double.IsNaN(savedLeft) && !double.IsNaN(savedTop)) { Left=savedLeft; Top=savedTop; }
                 ApplySettings();
-                if(double.IsNaN(savedLeft) || double.IsNaN(savedTop)) CenterBottom();
-                else { Left=savedLeft; Top=savedTop; ClampPosition(); }
+                if(Store.Settings.Placement!="free") AnchorPosition(Native.WorkingArea(this));
+                else if(double.IsNaN(savedLeft) || double.IsNaN(savedTop)) CenterBottom();
+                else ClampPosition();
                 ready=true;
                 host=new DesktopHost(this,delegate { return Store.Settings.AlwaysOnTop; },!Program.TestMode,
                     delegate { return openMenus.Any(menu=>menu.IsOpen); }); host.Start();
@@ -204,31 +209,40 @@ namespace Polka {
         }
 
         internal void ApplySettings() {
-            var area=Native.WorkingArea(this);
-            double max=Math.Max(160,area.Width-36);
-            int n=Store.Settings.Items.Count;
-            layoutRows=Math.Min(Math.Max(1,Store.Settings.Rows),Math.Max(1,n));
-            layoutColumns=Math.Max(1,(n+layoutRows-1)/layoutRows);
-            double labelHeight=Store.Settings.ShowLabels?21:0;
-            // Include space for the handle, divider and add button even at full capacity.
-            double widthLimit=(max-86)/layoutColumns-10;
-            double heightLimit=(area.Height-66-labelHeight-(layoutRows-1)*(labelHeight+14))/(layoutRows*Store.Settings.Zoom);
-            effectiveSize=Math.Min(Store.Settings.IconSize,Math.Max(16,Math.Min(widthLimit,heightLimit)));
-            slot=effectiveSize+10;
-            rowPitch=effectiveSize*Store.Settings.Zoom+labelHeight+14;
-            double newWidth=Math.Min(max+36,Math.Max(210,layoutColumns*slot+86+36));
+            ApplySettings(Native.WorkingArea(this));
+        }
+        internal void ApplySettings(Rect area) {
+            bool wasVertical=verticalDock;
+            verticalDock=Store.Settings.Placement=="left" || Store.Settings.Placement=="right";
+            layout=DockLayout.Create(Store.Settings.Items.Count,Store.Settings.Rows,Store.Settings.IconSize,Store.Settings.Zoom,
+                Store.Settings.ShowLabels,verticalDock,Math.Max(1,area.Width-20),Math.Max(1,area.Height-20));
+            effectiveSize=layout.IconSize; slot=layout.CellWidth; rowPitch=layout.CellHeight;
+            layoutRows=layout.Rows; layoutColumns=layout.Columns;
             double center=double.IsNaN(Left) ? area.Left+area.Width/2 : Left+Width/2;
+            double centerY=double.IsNaN(Top) ? area.Top+area.Height/2 : Top+Height/2;
             double bottom=Top+Height;
             if(!ready || double.IsNaN(center) || double.IsInfinity(center)) center=area.Left+area.Width/2;
-            Width=newWidth;
-            Height=effectiveSize*Store.Settings.Zoom+66+labelHeight+(layoutRows-1)*rowPitch;
-            if(ready) { Left=center-Width/2; if(!double.IsNaN(bottom) && !double.IsInfinity(bottom)) Top=bottom-Height; }
+            Width=layout.Width; Height=layout.Height;
+            root.Margin=verticalDock?new Thickness(12,18,12,18):new Thickness(18,8,18,16);
+            strip.Orientation=verticalDock?Orientation.Vertical:Orientation.Horizontal;
+            strip.Margin=verticalDock?new Thickness(12,9,12,9):new Thickness(9,12,9,12);
+            strip.VerticalAlignment=verticalDock?VerticalAlignment.Stretch:VerticalAlignment.Bottom;
+            strip.HorizontalAlignment=verticalDock?HorizontalAlignment.Left:HorizontalAlignment.Stretch;
+            glass.VerticalAlignment=verticalDock?VerticalAlignment.Stretch:Store.Settings.Placement=="top"?VerticalAlignment.Top:VerticalAlignment.Bottom;
+            glass.HorizontalAlignment=verticalDock?(Store.Settings.Placement=="right"?HorizontalAlignment.Right:HorizontalAlignment.Left):HorizontalAlignment.Stretch;
+            glass.CornerRadius=new CornerRadius(Store.Settings.CornerRadius>=100?Math.Min(Width,Height)/2:Store.Settings.CornerRadius);
+            if(ready && Store.Settings.Placement=="free") {
+                Left=center-Width/2;
+                if(wasVertical && !double.IsNaN(centerY) && !double.IsInfinity(centerY)) Top=centerY-Height/2;
+                else if(!double.IsNaN(bottom) && !double.IsInfinity(bottom)) Top=bottom-Height;
+            }
             glass.Background=new LinearGradientBrush(Color.FromArgb((byte)(Store.Settings.Opacity*255),43,47,60),
-                Color.FromArgb((byte)(Store.Settings.Opacity*255),21,24,34),90);
+                Color.FromArgb((byte)(Store.Settings.Opacity*255),21,24,34),verticalDock?0:90);
             Topmost=Store.Settings.AlwaysOnTop;
             RenderIcons();
             ContextMenu=BuildDockMenu();
-            if(ready) ClampPosition();
+            if(Store.Settings.Placement!="free") AnchorPosition(area);
+            else if(ready) ClampPosition(area);
             if(host!=null) host.Refresh();
         }
 
@@ -238,33 +252,51 @@ namespace Polka {
             var previousIds=new HashSet<string>(views.Select(x=>x.Item.Id));
             strip.Children.Clear(); views.Clear(); pressed=null;
             var handle=PlainButton(new TextBlock { Text="⠿", FontSize=21, Foreground=new SolidColorBrush(Color.FromRgb(151,159,179)) },L10n.T("MoveDock"));
-            handle.Width=19; handle.Height=effectiveSize+8; handle.VerticalAlignment=VerticalAlignment.Center;
+            handle.Width=verticalDock?effectiveSize+8:19; handle.Height=verticalDock?19:effectiveSize+8;
+            handle.VerticalAlignment=VerticalAlignment.Center; handle.HorizontalAlignment=HorizontalAlignment.Center;
             handle.PreviewMouseLeftButtonDown += delegate(object s,MouseButtonEventArgs e) { MoveDock(e); };
             handle.Click += delegate { };
             strip.Children.Add(handle);
-            double iconAreaWidth=0;
+            double iconAreaLength=0;
             if(Store.Settings.Items.Count==0) {
-                var empty=PlainButton(new TextBlock { Text=L10n.T("DropShortcuts"), FontSize=12, Foreground=new SolidColorBrush(Color.FromRgb(192,200,217)), Margin=new Thickness(6,0,12,0) },L10n.T("AddShortcuts"));
-                empty.Click+=delegate { PickFiles(); }; strip.Children.Add(empty); Width=310;
-                empty.Measure(new Size(double.PositiveInfinity,double.PositiveInfinity)); iconAreaWidth=empty.DesiredSize.Width;
+                var emptyText=new TextBlock { Text=L10n.T("DropShortcuts"), FontSize=12, TextAlignment=TextAlignment.Center,
+                    TextWrapping=TextWrapping.Wrap, TextTrimming=TextTrimming.CharacterEllipsis,
+                    Foreground=new SolidColorBrush(Color.FromRgb(192,200,217)) };
+                var empty=PlainButton(emptyText,L10n.T("AddShortcuts"));
+                empty.Width=verticalDock?effectiveSize+10:Math.Max(24,Width-122);
+                empty.Height=effectiveSize+8;
+                emptyText.MaxWidth=empty.Width; emptyText.MaxHeight=empty.Height;
+                empty.Click+=delegate { PickFiles(); }; strip.Children.Add(empty);
+                iconAreaLength=verticalDock?empty.Height:empty.Width;
             }
-            iconGrid=new Grid { Width=layoutColumns*slot, VerticalAlignment=VerticalAlignment.Bottom };
-            for(int c=0;c<layoutColumns;c++) iconGrid.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(slot) });
-            for(int r=0;r<layoutRows;r++) iconGrid.RowDefinitions.Add(new RowDefinition { Height=new GridLength(r==0?effectiveSize+8+(Store.Settings.ShowLabels?21:0):rowPitch) });
-            if(Store.Settings.Items.Count>0) { strip.Children.Add(iconGrid); iconAreaWidth=iconGrid.Width; }
+            iconGrid=new Grid { Width=layout.GridWidth, Height=layout.GridHeight, VerticalAlignment=VerticalAlignment.Bottom };
+            for(int c=0;c<layoutColumns;c++) {
+                bool compactColumn=verticalDock && (Store.Settings.Placement=="right"?c==0:c==layoutColumns-1);
+                iconGrid.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(compactColumn?effectiveSize+10:slot) });
+            }
+            for(int r=0;r<layoutRows;r++) iconGrid.RowDefinitions.Add(new RowDefinition { Height=new GridLength(!verticalDock && r==0?effectiveSize+8+(Store.Settings.ShowLabels?21:0):rowPitch) });
+            if(Store.Settings.Items.Count>0) { strip.Children.Add(iconGrid); iconAreaLength=verticalDock?iconGrid.Height:iconGrid.Width; }
             foreach(var item in Store.Settings.Items) {
                 var v=new IconView { Item=item, Scale=new ScaleTransform(1,1), Translate=new TranslateTransform(0,0), Shift=new TranslateTransform(0,0) };
                 var transform=new TransformGroup(); transform.Children.Add(v.Scale); transform.Children.Add(v.Translate);
                 v.Image=new Image { Width=effectiveSize, Height=effectiveSize, Stretch=Stretch.Uniform,
-                    RenderTransform=transform, RenderTransformOrigin=new Point(.5,1), IsHitTestVisible=false };
+                    RenderTransform=transform, RenderTransformOrigin=ScaleOrigin(), IsHitTestVisible=false };
                 RenderOptions.SetBitmapScalingMode(v.Image,BitmapScalingMode.HighQuality);
                 var stack=new StackPanel { Orientation=Orientation.Vertical, HorizontalAlignment=HorizontalAlignment.Center };
                 stack.Children.Add(v.Image);
-                if(Store.Settings.ShowLabels) stack.Children.Add(new TextBlock { Text=L10n.DisplayName(item), FontSize=10, MaxWidth=slot-2,
-                    TextTrimming=TextTrimming.CharacterEllipsis, TextAlignment=TextAlignment.Center, Margin=new Thickness(0,6,0,0), IsHitTestVisible=false });
-                v.Button=PlainButton(stack,L10n.DisplayName(item)); v.Button.Width=slot; v.Button.Height=effectiveSize+8+(Store.Settings.ShowLabels?21:0);
+                if(Store.Settings.ShowLabels) {
+                    v.LabelTranslate=new TranslateTransform();
+                    stack.Children.Add(new TextBlock { Text=L10n.DisplayName(item), FontSize=10, MaxWidth=effectiveSize+8,
+                        TextTrimming=TextTrimming.CharacterEllipsis, TextAlignment=TextAlignment.Center, Margin=new Thickness(0,6,0,0),
+                        IsHitTestVisible=false, RenderTransform=v.LabelTranslate });
+                }
+                v.Button=PlainButton(stack,L10n.DisplayName(item)); v.Button.Width=effectiveSize+10; v.Button.Height=effectiveSize+8+(Store.Settings.ShowLabels?21:0);
                 v.Button.RenderTransform=v.Shift;
-                v.Button.VerticalAlignment=VerticalAlignment.Bottom;
+                v.Button.VerticalAlignment=verticalDock?VerticalAlignment.Center:VerticalAlignment.Bottom;
+                v.Button.HorizontalAlignment=verticalDock?(Store.Settings.Placement=="right"?HorizontalAlignment.Right:HorizontalAlignment.Left):HorizontalAlignment.Center;
+                if(Store.Settings.Placement=="left") ToolTipService.SetPlacement(v.Button,System.Windows.Controls.Primitives.PlacementMode.Right);
+                else if(Store.Settings.Placement=="right") ToolTipService.SetPlacement(v.Button,System.Windows.Controls.Primitives.PlacementMode.Left);
+                else if(Store.Settings.Placement=="top") ToolTipService.SetPlacement(v.Button,System.Windows.Controls.Primitives.PlacementMode.Bottom);
                 v.Button.ContextMenu=BuildItemMenu(item);
                 v.Button.PreviewMouseLeftButtonDown += delegate(object sender,MouseButtonEventArgs e) {
                     if(helperRunning) return;
@@ -281,7 +313,9 @@ namespace Polka {
                 }
                 SetCell(v.Button,views.Count); iconGrid.Children.Add(v.Button); views.Add(v); LoadIcon(v,false);
             }
-            var divider=new Border { Width=1, Height=effectiveSize*.62, Margin=new Thickness(6,0,10,0), Background=new SolidColorBrush(Color.FromArgb(45,255,255,255)), VerticalAlignment=VerticalAlignment.Center };
+            var divider=new Border { Width=verticalDock?effectiveSize*.62:1, Height=verticalDock?1:effectiveSize*.62,
+                Margin=verticalDock?new Thickness(0,6,0,10):new Thickness(6,0,10,0),
+                Background=new SolidColorBrush(Color.FromArgb(45,255,255,255)), VerticalAlignment=VerticalAlignment.Center, HorizontalAlignment=HorizontalAlignment.Center };
             strip.Children.Add(divider);
             double glyphSize=Math.Max(12,Math.Min(18,effectiveSize*.30));
             var plusGlyph=new System.Windows.Shapes.Path { Data=Geometry.Parse("M 0,6 L 12,6 M 6,0 L 6,12"),
@@ -289,23 +323,26 @@ namespace Polka {
                 StrokeStartLineCap=PenLineCap.Round, StrokeEndLineCap=PenLineCap.Round,
                 Stroke=new SolidColorBrush(Color.FromRgb(184,198,224)), IsHitTestVisible=false };
             var plus=PlainButton(plusGlyph,L10n.T("AddAndSettings"));
-            double available=Width-root.Margin.Left-root.Margin.Right-glass.BorderThickness.Left-glass.BorderThickness.Right-strip.Margin.Left-strip.Margin.Right;
-            plus.Width=Math.Max(26,available-handle.Width-iconAreaWidth-divider.Width-divider.Margin.Left-divider.Margin.Right);
-            plus.Height=effectiveSize+8; plus.VerticalAlignment=VerticalAlignment.Center;
+            double available=verticalDock?Height-root.Margin.Top-root.Margin.Bottom-glass.BorderThickness.Top-glass.BorderThickness.Bottom-strip.Margin.Top-strip.Margin.Bottom:
+                Width-root.Margin.Left-root.Margin.Right-glass.BorderThickness.Left-glass.BorderThickness.Right-strip.Margin.Left-strip.Margin.Right;
+            double plusLength=Math.Max(26,available-(verticalDock?handle.Height:handle.Width)-iconAreaLength-
+                (verticalDock?divider.Height+divider.Margin.Top+divider.Margin.Bottom:divider.Width+divider.Margin.Left+divider.Margin.Right));
+            plus.Width=verticalDock?effectiveSize+8:plusLength;
+            plus.Height=verticalDock?plusLength:effectiveSize+8; plus.VerticalAlignment=VerticalAlignment.Center; plus.HorizontalAlignment=HorizontalAlignment.Center;
             KeyboardNavigation.SetTabIndex(plus,views.Count+1);
-            plus.Click += delegate { var menu=BuildDockMenu(); menu.PlacementTarget=plus; menu.Placement=System.Windows.Controls.Primitives.PlacementMode.Top; menu.IsOpen=true; };
+            plus.Click += delegate { var menu=BuildDockMenu(); menu.PlacementTarget=plus;
+                menu.Placement=Store.Settings.Placement=="left"?System.Windows.Controls.Primitives.PlacementMode.Right:
+                    Store.Settings.Placement=="right"?System.Windows.Controls.Primitives.PlacementMode.Left:
+                    Store.Settings.Placement=="top"?System.Windows.Controls.Primitives.PlacementMode.Bottom:System.Windows.Controls.Primitives.PlacementMode.Top;
+                menu.IsOpen=true; };
             strip.Children.Add(plus);
         }
 
-        // Balance row lengths while keeping reading order from left to right, top to bottom.
+        // Reading order follows the dock: across horizontal rows or down vertical columns.
         void SetCell(UIElement element,int index) {
             KeyboardNavigation.SetTabIndex(element,index+1);
-            int count=Store.Settings.Items.Count, start=0;
-            for(int row=0;row<layoutRows;row++) {
-                int length=count/layoutRows+(row<count%layoutRows?1:0);
-                if(index<start+length) { Grid.SetRow(element,row); Grid.SetColumn(element,index-start); return; }
-                start+=length;
-            }
+            int row,column; layout.Cell(Store.Settings.Items.Count,index,out row,out column);
+            Grid.SetRow(element,row); Grid.SetColumn(element,column);
         }
 
         Point SlotCenter(int index) {
@@ -387,7 +424,15 @@ namespace Polka {
                 bool still=!v.SizeMotion.IsSettled(.001) || !v.LiftMotion.IsSettled(.01) || !v.ShiftMotion.IsSettled(.01) || !v.ShiftYMotion.IsSettled(.01) || !v.AlphaMotion.IsSettled(.001);
                 if(!still) { v.SizeMotion.SnapToTarget(); v.LiftMotion.SnapToTarget(); v.ShiftMotion.SnapToTarget(); v.ShiftYMotion.SnapToTarget(); v.AlphaMotion.SnapToTarget(); }
                 active|=still;
-                v.Scale.ScaleX=v.Scale.ScaleY=v.SizeMotion.Value; v.Translate.Y=v.LiftMotion.Value; v.Shift.X=v.ShiftMotion.Value; v.Shift.Y=v.ShiftYMotion.Value; v.Button.Opacity=v.AlphaMotion.Value;
+                v.Scale.ScaleX=v.Scale.ScaleY=v.SizeMotion.Value;
+                v.Translate.X=verticalDock?(Store.Settings.Placement=="left"?-v.LiftMotion.Value:v.LiftMotion.Value):0;
+                v.Translate.Y=verticalDock?0:Store.Settings.Placement=="top"?-v.LiftMotion.Value:v.LiftMotion.Value;
+                if(v.LabelTranslate!=null) {
+                    v.LabelTranslate.X=v.Translate.X;
+                    v.LabelTranslate.Y=Store.Settings.Placement=="top"?Math.Max(0,effectiveSize*(v.SizeMotion.Value-1))+v.Translate.Y:
+                        verticalDock?Math.Max(0,effectiveSize*(v.SizeMotion.Value-1)/2):0;
+                }
+                v.Shift.X=v.ShiftMotion.Value; v.Shift.Y=v.ShiftYMotion.Value; v.Button.Opacity=v.AlphaMotion.Value;
             }
             if(dragView!=null && dragGhost!=null) {
                 ghostX.Step(dt,55); ghostY.Step(dt,55); ghostScale.Step(dt,28); ghostAlpha.Step(dt,35); placeholderX.Step(dt,28); placeholderY.Step(dt,28);
@@ -403,9 +448,16 @@ namespace Polka {
             if(!active) StopRendering();
         }
 
+        Point ScaleOrigin() {
+            if(Store.Settings.Placement=="left") return new Point(0,.5);
+            if(Store.Settings.Placement=="right") return new Point(1,.5);
+            return new Point(.5,Store.Settings.Placement=="top"?0:1);
+        }
         Point BaseImageCenter(IconView view) {
             var point=view.Image.TranslatePoint(new Point(effectiveSize/2,effectiveSize/2),root);
-            point.Y-=view.Translate.Y-effectiveSize*(view.Scale.ScaleY-1)/2;
+            Point origin=view.Image.RenderTransformOrigin;
+            point.X-=view.Translate.X+effectiveSize*(.5-origin.X)*(view.Scale.ScaleX-1);
+            point.Y-=view.Translate.Y+effectiveSize*(.5-origin.Y)*(view.Scale.ScaleY-1);
             return point;
         }
         void OnPointerMove(object sender,MouseEventArgs e) {
@@ -558,7 +610,7 @@ namespace Polka {
             menu.Items.Add(MenuDivider());
             menu.Items.Add(Menu(L10n.T("SettingsMenu"),ShowSettings));
             menu.Items.Add(BuildLanguageMenu());
-            menu.Items.Add(Menu(L10n.T("CenterMenu"),CenterBottom));
+            menu.Items.Add(BuildPlacementMenu());
             menu.Items.Add(MenuDivider());
             menu.Items.Add(Menu(L10n.T("Exit"),Exit)); return menu;
         }
@@ -632,15 +684,36 @@ namespace Polka {
             if(helperRunning) return;
             if(e.LeftButton!=MouseButtonState.Pressed) return;
             moving=true; try { DragMove(); } catch(InvalidOperationException) {} finally { moving=false; }
+            Store.Settings.Placement="free";
+            ApplySettings();
+            if(settingsWindow!=null) settingsWindow.RefreshLanguage();
             ClampPosition(); SaveQuietly(); e.Handled=true;
         }
         internal void CenterBottom() {
+            SetPlacement("bottom");
+        }
+        internal void SetPlacement(string placement) {
             if(helperRunning) return;
-            var area=Native.WorkingArea(this); Left=area.Left+(area.Width-Width)/2; Top=area.Bottom-Height-10;
-            SaveQuietly();
+            if(placement!="free" && placement!="bottom" && placement!="top" && placement!="left" && placement!="right") placement="free";
+            Store.Settings.Placement=placement;
+            ApplySettings(); SaveQuietly();
+            if(settingsWindow!=null) settingsWindow.RefreshLanguage();
+        }
+        void AnchorPosition(Rect area) {
+            double gapX=Math.Min(10,Math.Max(0,(area.Width-Width)/2)), gapY=Math.Min(10,Math.Max(0,(area.Height-Height)/2));
+            if(Store.Settings.Placement=="left" || Store.Settings.Placement=="right") {
+                Left=Store.Settings.Placement=="left"?area.Left+gapX:area.Right-Width-gapX;
+                Top=area.Top+(area.Height-Height)/2;
+            } else {
+                Left=area.Left+(area.Width-Width)/2;
+                Top=Store.Settings.Placement=="top"?area.Top+gapY:area.Bottom-Height-gapY;
+            }
+            ClampPosition(area);
         }
         void ClampPosition() {
-            var area=Native.WorkingArea(this);
+            ClampPosition(Native.WorkingArea(this));
+        }
+        void ClampPosition(Rect area) {
             Left=Math.Max(area.Left,Math.Min(area.Right-Width,Left)); Top=Math.Max(area.Top,Math.Min(area.Bottom-Height,Top));
         }
         internal void SaveQuietly() {
@@ -692,6 +765,17 @@ namespace Polka {
                 languageMenu.Items.Add(item);
             }
             return languageMenu;
+        }
+        MenuItem BuildPlacementMenu() {
+            var placementMenu=new MenuItem { Header=L10n.T("Placement"), Foreground=Brushes.White, Background=Brushes.Transparent };
+            foreach(string placement in new[]{"bottom","top","left","right","free"}) {
+                string choice=placement;
+                string key="Placement"+Char.ToUpperInvariant(choice[0])+choice.Substring(1);
+                var item=Menu(L10n.T(key),delegate { SetPlacement(choice); });
+                item.IsCheckable=true; item.IsChecked=Store.Settings.Placement==choice;
+                placementMenu.Items.Add(item);
+            }
+            return placementMenu;
         }
         void ShowDock() { Show(); WindowState=WindowState.Normal; if(host==null || host.ShowRequested()) Activate(); }
         void InitTray() {

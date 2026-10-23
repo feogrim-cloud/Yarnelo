@@ -2,7 +2,7 @@
 
 [English app overview](../README.md) · [Описание на русском](../README.ru.md) · [English installation](../docs/LINUX.md) · [Установка на русском](../docs/LINUX.ru.md)
 
-A native **Python 3.11 / PySide6 Essentials / Qt 6** dock, with no embedded browser or web server. It supports up to 30 shortcuts, one to four rows, adjustable background opacity, icon size and magnification, animated hover/click/rearrangement, and English/Russian menus and settings.
+A native **Python 3.11 / PySide6 Essentials / Qt 6** dock, with no embedded browser or web server. It supports up to 30 shortcuts, one to four preferred rows with automatic overflow rows, four screen-edge positions, square-to-rounded backgrounds, adjustable opacity, icon size and magnification, animated hover/click/rearrangement, and English/Russian menus and settings.
 
 ## Ready-made packages
 
@@ -26,9 +26,10 @@ System requirements include a graphical desktop, Qt/X11 or Wayland libraries, `x
 - Drop a `.desktop` file, ordinary file or folder from the file manager, or use **+**. Computer opens the filesystem root; Trash uses the desktop file manager.
 - Drop operations **only add references**. Yarnelo never removes or moves original files. To clear the desktop, move originals yourself to a permanent folder, then add them from that location.
 - Drag an icon inside the dock to rearrange it. Releasing outside cancels the move. Right-click an icon to open it, reveal its folder or remove its reference.
-- Drag the left handle or unused background to move the dock. The menu can select a monitor or return it to the bottom center. Wayland window managers may restrict positioning.
+- **Settings → Position** or the right-click **Position** submenu places the dock at the top, bottom, left or right center. Side docks are vertical and keep icons upright. A selected edge remains centered when the screen or dock size changes. Drag the handle or unused background to switch to free positioning; the handle is at the top for a side dock and on the left for a horizontal dock. The menu can also select a monitor. Wayland window managers may restrict positioning.
 - Right-click → **Language / Язык → English / Русский** switches the interface without restarting and saves the choice. The initial default is Russian for a Russian locale, English otherwise.
-- Settings control rows, background opacity (icons keep their contrast), size, magnification and labels. The size shrinks automatically if 30 icons in a single row would not fit the monitor.
+- Settings use two columns without a vertical scrollbar. They control preferred rows, background opacity (icons keep their contrast), corner rounding, size, magnification and labels. Corner rounding **0** gives square corners; **100** makes the background fully rounded.
+- If the dock would extend beyond the available screen area, Yarnelo adds rows automatically before reducing the chosen icon size. For side docks it adds columns. Your preferred one-to-four-row setting is kept, so a larger screen restores it. On very small screens, icons shrink only if no arrangement fits at the requested size.
 - Settings are at `$XDG_CONFIG_HOME/yarnelo/settings.json` or `~/.config/yarnelo/settings.json`. Writes are atomic; corrupt original data is preserved beside a fresh profile. Windows profiles are not automatically imported.
 - One instance runs per user. Launching again shows the existing dock without taking focus. Exit through the dock or notification-area menu, where supported.
 
@@ -50,7 +51,9 @@ QT_QPA_PLATFORM=offscreen python linux/yarnelo.py --smoke-test
 QT_QPA_PLATFORM=offscreen python linux/yarnelo.py --smoke-test --smoke-output /tmp/yarnelo-smoke.png
 ```
 
-The smoke test creates a Qt application and renders the dock in memory. It does not verify a particular window manager, real app launches, games or system Trash.
+The smoke test creates a Qt application and renders the dock in memory. It also checks all four positions with 30 shortcuts, legacy settings, background rounding, and unclipped English/Russian settings at 1280×720, 640×480 and 640×360 logical work areas. With `--smoke-output`, settings previews are saved beside the requested dock PNG. It does not verify a particular window manager, real app launches, games or system Trash.
+
+Новые настройки: **скругление углов** от 0 (прямые) до 100 (полное), положение **сверху / снизу / слева / справа по центру** и свободное перемещение за ручку. По бокам панель становится вертикальной, а значки остаются прямыми. Если ярлыки не помещаются, панель сначала добавляет ряды или боковые столбцы; выбранные 1–4 ряда сохраняются как предпочтение. Окно настроек состоит из двух столбцов без вертикальной прокрутки. Ограничения X11/XWayland, описанные выше, продолжают действовать.
 
 ## Build packages
 

@@ -14,6 +14,12 @@ Find your architecture in **Settings → System → About → System type**. Cho
 
 Windows x64/x86 needs **Microsoft .NET Framework 4.8 or 4.8.1**. Native ARM64 needs **Windows 11 and .NET Framework 4.8.1**. Windows 10 ARM64, Windows 7 and Windows 8.1 are outside this release's compatibility scope. The installer checks the required runtime. Official downloads: [.NET Framework 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48) · [.NET Framework 4.8.1](https://dotnet.microsoft.com/download/dotnet-framework/net481).
 
+## Dock appearance and position
+
+Right-click the dock → **Settings**. The two-column window shows all controls without vertical scrolling and scales down only when the working area is smaller. **Corner rounding** spans square corners (0), intermediate rounding and a capsule (100); background opacity is independent of icon opacity.
+
+Choose a centered **Top, Bottom, Left or Right** position on the dock's current monitor. Left/right docks are vertical with upright icons. Dragging the handle switches to free positioning. Your preferred one to four rows becomes columns at a side edge. When shortcuts exceed the screen, extra rows/columns are added automatically before reducing icon size; your saved preference is retained. Anchored positions are reapplied when the dock size changes.
+
 ## EXE installer
 
 1. Download the matching `Setup.exe` from the release's Assets section.

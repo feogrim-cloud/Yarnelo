@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from yarnelo_model import (
-    MAX_ITEMS, Item, ModelError, Settings, config_path, desktop_metadata,
+    MAX_ITEMS, PLACEMENTS, Item, ModelError, Settings, config_path, desktop_metadata, dock_layout,
     load_settings, move_item, preserve_invalid_settings, save_settings, slot_indices,
 )
 from yarnelo import external_environment
@@ -44,6 +44,61 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(["1", "0", "2", "3", "4"], [i.id for i in items])
         with self.assertRaises(ModelError):
             move_item(items, "missing", 0)
+
+    def test_new_appearance_settings_preserve_legacy_shortcuts_and_saved_choice(self):
+        legacy = {"rows": 3, "x": -1200, "y": 80, "items": [{"id": "old-trash", "kind": "trash"}]}
+        settings = Settings.from_dict(legacy)
+        self.assertEqual((23.0, "free", -1200, 80), (settings.corner_radius, settings.placement, settings.x, settings.y))
+        for placement in PLACEMENTS:
+            for radius in (0, 18.5, 100):
+                settings.placement, settings.corner_radius = placement, radius
+                restored = Settings.from_dict(settings.to_dict())
+                self.assertEqual((placement, radius, 3, "old-trash"), (restored.placement, restored.corner_radius, restored.rows, restored.items[0].id))
+        self.assertEqual(0, Settings.from_dict({"corner_radius": -1}).corner_radius)
+        self.assertEqual(100, Settings.from_dict({"corner_radius": 101}).corner_radius)
+        for value in (True, float("nan"), float("inf"), "23", None):
+            with self.subTest(radius=value), self.assertRaises(ModelError):
+                Settings.from_dict({"corner_radius": value})
+        for value in (True, None, "unknown", [], {}):
+            with self.subTest(placement=value), self.assertRaises(ModelError):
+                Settings.from_dict({"placement": value})
+
+    def test_overflow_wraps_before_resizing_and_keeps_the_saved_preference(self):
+        settings = Settings(rows=1, icon_size=48, items=[Item(str(i), "path", f"/demo/{i}") for i in range(30)])
+        for placement in ("bottom", "top", "left", "right"):
+            settings.placement = placement
+            geometry = dock_layout(settings, 1280, 720)
+            self.assertGreater(geometry.rows, 1)
+            self.assertEqual(settings.icon_size, geometry.icon_size)
+            self.assertEqual(1, settings.rows)
+        settings.placement = "bottom"
+        self.assertEqual(1, dock_layout(settings, 3840, 2160).rows)
+        settings.placement = "left"
+        geometry = dock_layout(settings, 1920, 1080)
+        self.assertTrue(geometry.vertical)
+        self.assertEqual(geometry.positions[0][0], geometry.positions[1][0])
+        self.assertGreater(geometry.positions[1][1], geometry.positions[0][1])
+
+    def test_full_dock_fits_work_areas_without_losing_or_overlapping_tiles(self):
+        items = [Item(str(i), "path", f"/demo/{i}") for i in range(30)]
+        for width, height in ((320, 240), (640, 480), (1280, 720), (2560, 1440)):
+            for placement in PLACEMENTS:
+                for preferred_rows in (1, 4):
+                    for labels in (False, True):
+                        settings = Settings(rows=preferred_rows, icon_size=96, zoom=1.8, labels=labels, placement=placement, items=items)
+                        with self.subTest(screen=(width, height), placement=placement, rows=preferred_rows, labels=labels):
+                            geometry = dock_layout(settings, width, height)
+                            self.assertLessEqual(geometry.width, width - 20)
+                            self.assertLessEqual(geometry.height, height - 20)
+                            self.assertEqual(31, len(set(geometry.positions)))
+                            for x, y in geometry.positions:
+                                self.assertGreaterEqual(x, 0)
+                                self.assertGreaterEqual(y, 0)
+                                self.assertLessEqual(x + geometry.cell_width, geometry.width)
+                                self.assertLessEqual(y + geometry.cell_height, geometry.height)
+                            for index, (x, y) in enumerate(geometry.positions):
+                                for other_x, other_y in geometry.positions[index + 1:]:
+                                    self.assertTrue(x + geometry.cell_width <= other_x or other_x + geometry.cell_width <= x or y + geometry.cell_height <= other_y or other_y + geometry.cell_height <= y)
 
     def test_settings_atomic_roundtrip_preserves_unicode_and_missing_paths(self):
         with tempfile.TemporaryDirectory() as directory:

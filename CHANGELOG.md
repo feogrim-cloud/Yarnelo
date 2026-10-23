@@ -1,5 +1,23 @@
 # Changelog / Изменения
 
+## 1.7.0 — 2026-10-23
+
+### English
+
+- Background corner rounding from square corners to a capsule, saved with your other preferences.
+- Wider two-column settings without vertical scrolling, fitted to the available screen space.
+- Top, bottom, left and right centered placement; vertical side docks keep icons upright. Dragging the handle restores free placement.
+- Automatic extra rows or columns when shortcuts would overflow the screen, preserving the requested icon size whenever possible.
+- The new controls and guidance are available in English and Russian on Windows and Linux; existing shortcut profiles remain compatible.
+
+### Русский
+
+- Настройка скругления фона от прямых углов до капсулы с сохранением выбора.
+- Более широкое окно настроек в два столбца без вертикальной прокрутки, подстраивающееся под доступную область экрана.
+- Размещение по центру сверху, снизу, слева и справа; вертикальные боковые панели сохраняют ориентацию значков. Перетаскивание ручки возвращает свободное размещение.
+- Дополнительные ряды или столбцы при нехватке места на экране с сохранением выбранного размера значков, пока это возможно.
+- Новые пункты и подсказки на русском и английском для Windows и Linux; прежние профили ярлыков совместимы.
+
 ## 1.6.0 — 2026-10-23
 
 ### English

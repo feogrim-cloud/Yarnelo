@@ -117,6 +117,20 @@ namespace Polka {
             submenu.Measure(new Size(double.PositiveInfinity,double.PositiveInfinity));
             Layout(submenu,Math.Max(150,submenu.DesiredSize.Width),submenu.DesiredSize.Height);
             Save(Path.Combine(output,"yarnelo-language-menu.png"),1440,670,"English or Russian. Your choice.","Change the interface language from the dock menu. Your choice is saved.",panel,new Rect(110,440,dock.Width,dock.Height),menu,new Rect(900,177,menuWidth,menuHeight),submenu,new Rect(900+menuWidth+4,330,submenu.ActualWidth,submenu.ActualHeight));
+            foreach(string code in new[]{"en","ru"}) {
+                store.Settings.Language=code; L10n.SetLanguage(code);
+                var settings=new SettingsWindow(dock);
+                var content=(FrameworkElement)settings.Content;
+                System.Windows.Documents.TextElement.SetForeground(content,settings.Foreground);
+                System.Windows.Documents.TextElement.SetFontFamily(content,settings.FontFamily);
+                settings.Content=null;
+                Layout(content,settings.Width,settings.Height);
+                int canvasWidth=(int)Math.Max(1200,settings.Width+120),canvasHeight=(int)(settings.Height+220);
+                Save(Path.Combine(output,"yarnelo-settings-"+code+".png"),canvasWidth,canvasHeight,
+                    code=="ru"?"Панель под ваш рабочий стол.":"A dock that fits your desktop.",
+                    code=="ru"?"Скругление фона · четыре края экрана · автоматический перенос":"Corner rounding · four screen edges · automatic wrapping",
+                    content,new Rect((canvasWidth-settings.Width)/2,160,settings.Width,settings.Height),null,Rect.Empty);
+            }
             if(PresentationSource.FromVisual(dock)!=null) throw new InvalidOperationException("Renderer must never show a native dock window.");
             Console.WriteLine("Rendered actual controls without showing windows, starting applications, moving shortcuts or reading the installed profile.");
             return 0;

@@ -67,6 +67,7 @@ internal static class StorageTests
         Store store = NewStore("move", out desktop, out data);
         Check(store.IsFirstRun, "fresh directory reported as first run");
         Check(store.Settings.Rows == 1, "new dock defaults to one row");
+        Check(store.Settings.CornerRadius == 23 && store.Settings.Placement == "free", "new dock preserves the established corner radius and draggable placement");
         string original = Shortcut(desktop, "Приложение.lnk");
         byte[] originalBytes = File.ReadAllBytes(original);
         DockItem item = store.Add(original);
@@ -159,6 +160,38 @@ internal static class StorageTests
         store = new Store(data, desktop);
         Check(store.Settings.Rows == 1 && store.Settings.IconSize == 38,
             "old settings without row count keep single row and existing preferences");
+        Check(store.Settings.CornerRadius == 23 && store.Settings.Placement == "free",
+            "legacy JSON gains corner and placement defaults without moving the dock");
+
+        store = NewStore("appearance-placement", out desktop, out data);
+        original = Shortcut(desktop, "Retained.lnk");
+        originalBytes = File.ReadAllBytes(original);
+        item = store.Add(original);
+        string managedPath = item.Path;
+        foreach (string placement in new[] { "free", "bottom", "top", "left", "right" })
+        {
+            store.Settings.Placement = placement;
+            store.Settings.CornerRadius = placement == "free" ? 0 : placement == "right" ? 100 : 23;
+            store.Save();
+            store = new Store(data, desktop);
+            Check(store.Settings.Placement == placement, placement + " dock placement survives reload");
+            Check(store.Settings.CornerRadius == (placement == "free" ? 0 : placement == "right" ? 100 : 23), "square, soft and maximum corner choices survive reload");
+            Check(store.Settings.Items.Count == 1 && store.Settings.Items[0].Path == managedPath &&
+                store.Settings.Items[0].OriginalPath == original && store.Settings.Items[0].DesktopSourceMoved &&
+                !File.Exists(original) && File.ReadAllBytes(managedPath).SequenceEqual(originalBytes),
+                "appearance changes preserve managed shortcut ownership, restoration path and exact bytes");
+        }
+        double[] invalidCorners = { Double.NaN, Double.PositiveInfinity, -50, 200 };
+        double[] normalizedCorners = { 23, 23, 0, 100 };
+        for (int index = 0; index < invalidCorners.Length; index++)
+        {
+            store.Settings.CornerRadius = invalidCorners[index];
+            store.Settings.Placement = index == 0 ? null : index == 1 ? "unknown" : "TOP";
+            store.Save();
+            store = new Store(data, desktop);
+            Check(store.Settings.CornerRadius == normalizedCorners[index], "nonfinite and out-of-range corners sanitize to a finite supported value");
+            Check(store.Settings.Placement == (index < 2 ? "free" : "top"), "invalid placement falls back safely and supported placement ignores case");
+        }
 
         store = NewStore("corruption", out desktop, out data);
         store.Add("shell:MyComputerFolder");

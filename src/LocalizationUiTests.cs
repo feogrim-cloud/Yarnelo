@@ -17,6 +17,38 @@ namespace Polka {
         static readonly BindingFlags PrivateInstance=BindingFlags.Instance|BindingFlags.NonPublic;
         static void Check(bool value,string message) { if(!value) throw new Exception(message); assertions++; }
         static T Field<T>(object value,string name) { return (T)value.GetType().GetField(name,PrivateInstance).GetValue(value); }
+        static IEnumerable<DependencyObject> Visuals(DependencyObject root) {
+            yield return root;
+            for(int index=0;index<VisualTreeHelper.GetChildrenCount(root);index++)
+                foreach(var child in Visuals(VisualTreeHelper.GetChild(root,index))) yield return child;
+        }
+        static T Tagged<T>(SettingsWindow settings,string tag) where T:FrameworkElement {
+            return Visuals((DependencyObject)settings.Content).OfType<T>().Single(element=>Object.Equals(element.Tag,tag));
+        }
+        static void CheckSettingsSheet(SettingsWindow settings,string directory,string language) {
+            foreach(var area in new[]{new Size(1920,1040),new Size(1280,680),new Size(800,576),new Size(640,480)}) {
+                settings.FitToWorkingArea(new Rect(new Point(),area));
+                Check(settings.Width<=area.Width-23 && settings.Height<=area.Height-23,"settings sheet fits working area including high-DPI equivalent sizes");
+                string name="settings-"+language+"-"+(int)area.Width+"x"+(int)area.Height+".png";
+                Render(settings,Path.Combine(directory,name),new Size(settings.Width,settings.Height));
+                var sheet=(FrameworkElement)settings.Content;
+                Check(!Visuals(sheet).OfType<ScrollViewer>().Any(),"settings has no vertical or horizontal scrolling surface");
+                var columns=Tagged<Grid>(settings,"settings-columns");
+                foreach(var tag in new[]{"settings-appearance","settings-behavior"}) {
+                    var column=Tagged<StackPanel>(settings,tag);
+                    Check(column.DesiredSize.Height<=columns.ActualHeight+.1,"all settings fit their two-column layout: "+language+" "+tag+" desired="+column.DesiredSize.Height+" available="+columns.ActualHeight);
+                }
+                foreach(var control in Visuals(sheet).OfType<FrameworkElement>().Where(element=>element is Button || element is Slider || element is CheckBox || element is TextBlock)) {
+                    if(control.ActualWidth==0 || control.ActualHeight==0) continue;
+                    var bounds=control.TransformToAncestor(sheet).TransformBounds(new Rect(control.RenderSize));
+                    Check(bounds.Left>=-.5 && bounds.Top>=-.5 && bounds.Right<=sheet.ActualWidth+.5 && bounds.Bottom<=sheet.ActualHeight+.5,
+                        "all settings controls and text remain visible: "+language+" "+control.GetType().Name+" "+control.Tag);
+                }
+                Check(Visuals(sheet).OfType<Button>().Count(button=>System.Windows.Automation.AutomationProperties.GetName(button).StartsWith("Placement: ",StringComparison.Ordinal))==5,
+                    "settings exposes all four centered edge positions and free placement");
+            }
+            settings.FitToWorkingArea(new Rect(0,0,1920,1040));
+        }
         static void Render(FrameworkElement element,string path,Size size) {
             var window=element as Window;
             var content=window==null ? element : (FrameworkElement)window.Content;
@@ -87,9 +119,23 @@ namespace Polka {
                 Field<TextBlock>(dock,"notice").Visibility=Visibility.Collapsed;
                 Render(dock,Path.Combine(directory,"dock-en.png"),new Size(dock.Width,dock.Height));
                 Render(settings,Path.Combine(directory,"settings-en.png"),new Size(settings.Width,settings.Height));
+                CheckSettingsSheet(settings,directory,"en");
+                var square=Tagged<Button>(settings,"corner-preset-0");
+                square.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Check(store.Settings.CornerRadius==0 && new Store(store.DataDirectory,desktop,desktop).Settings.CornerRadius==0,"square corner preset updates and persists production preference");
+                Tagged<Button>(settings,"corner-preset-100").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Check(store.Settings.CornerRadius==100 && new Store(store.DataDirectory,desktop,desktop).Settings.CornerRadius==100,"fully rounded corner preset updates and persists production preference");
+                var leftPosition=Visuals((DependencyObject)settings.Content).OfType<Button>().Single(button=>System.Windows.Automation.AutomationProperties.GetName(button)=="Placement: left");
+                leftPosition.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Check(store.Settings.Placement=="left" && new Store(store.DataDirectory,desktop,desktop).Settings.Placement=="left","side placement button persists its chosen anchor");
+                Check(Visuals((DependencyObject)settings.Content).OfType<TextBlock>().Any(block=>block.Text=="Number of columns"),"side placement updates the row selector to upright icon columns");
+                var freePosition=Visuals((DependencyObject)settings.Content).OfType<Button>().Single(button=>System.Windows.Automation.AutomationProperties.GetName(button)=="Placement: free");
+                freePosition.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Check(store.Settings.Placement=="free","free placement remains available after choosing an edge anchor");
                 dock.SetLanguage("ru");
                 Check(dock.Title=="Yarnelo — панель ярлыков" && settings.Title=="Настройки — Yarnelo","switching back updates both existing windows");
                 Render(settings,Path.Combine(directory,"settings-ru.png"),new Size(settings.Width,settings.Height));
+                CheckSettingsSheet(settings,directory,"ru");
                 Check(Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null && !dock.IsVisible && !settings.IsVisible,"localization tests never start a visible window, tray or desktop host");
                 Console.WriteLine("PASS: "+assertions+" localization UI assertions; own-window renders: "+directory);
                 return 0;

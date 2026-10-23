@@ -15,8 +15,9 @@ from typing import Any
 
 from yarnelo_i18n import LANGUAGES, text
 
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 MAX_ITEMS = 30
+PLACEMENTS = ("free", "bottom", "top", "left", "right")
 
 
 class ModelError(ValueError):
@@ -59,6 +60,8 @@ class Settings:
     icon_size: int = 48
     zoom: float = 1.35
     labels: bool = False
+    corner_radius: float = 23.0
+    placement: str = "free"
     language: str = "auto"
     screen: str = ""
     x: int | None = None
@@ -77,6 +80,7 @@ class Settings:
             ("opacity", 0.12, 1.0, float),
             ("icon_size", 24, 96, int),
             ("zoom", 1.0, 1.8, float),
+            ("corner_radius", 0.0, 100.0, float),
         ):
             value = data.get(name, getattr(result, name))
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
@@ -85,6 +89,10 @@ class Settings:
         if not isinstance(data.get("labels", False), bool):
             raise ModelError("invalid_value", name="labels")
         result.labels = data.get("labels", False)
+        placement = data.get("placement", "free")
+        if not isinstance(placement, str) or placement not in PLACEMENTS:
+            raise ModelError("invalid_value", name="placement")
+        result.placement = placement
         language = data.get("language", "auto")
         if language not in LANGUAGES:
             raise ModelError("invalid_value", name="language")
@@ -202,12 +210,73 @@ def desktop_metadata(path: Path, locale_name: str = "") -> tuple[str, str]:
 
 def slot_indices(item_count: int, rows: int) -> list[tuple[int, int]]:
     """Balanced row-major slots, including the persistent add button."""
-    if not 0 <= item_count <= MAX_ITEMS or not 1 <= rows <= 4:
+    if not 0 <= item_count <= MAX_ITEMS or not 1 <= rows <= MAX_ITEMS + 1:
         raise ModelError("invalid_layout")
     total = item_count + 1
     used_rows = min(rows, total)
     base, extra = divmod(total, used_rows)
     return [(row, column) for row in range(used_rows) for column in range(base + (1 if row < extra else 0))]
+
+
+@dataclass(frozen=True)
+class DockLayout:
+    width: int
+    height: int
+    icon_size: float
+    rows: int
+    vertical: bool
+    cell_width: int
+    cell_height: int
+    positions: tuple[tuple[int, int], ...]
+
+
+def dock_layout(settings: Settings, available_width: int, available_height: int) -> DockLayout:
+    """Wrap before reducing icons; transpose side docks without rotating content.
+
+    The saved row count is a preference, not a geometry cache. This lets a dock
+    return to its requested number of rows on a larger monitor.
+    """
+    vertical = settings.placement in ("left", "right")
+    max_width, max_height = max(1, available_width - 20), max(1, available_height - 20)
+    first_rows = min(settings.rows, len(settings.items) + 1)
+
+    def candidate(rows, size):
+        slots = slot_indices(len(settings.items), rows)
+        columns = max(column for _, column in slots) + 1
+        used_rows = max(row for row, _ in slots) + 1
+        cell_width = math.ceil(size * settings.zoom + 14)
+        cell_height = cell_width + (18 if settings.labels else 0)
+        width, height = ((20 + used_rows * cell_width, 38 + columns * cell_height) if vertical
+                         else (38 + columns * cell_width, 20 + used_rows * cell_height))
+        counts = {row: sum(r == row for r, _ in slots) for row in range(used_rows)}
+        points = []
+        for row, column in slots:
+            offset = (columns - counts[row]) * (cell_height if vertical else cell_width) // 2
+            points.append((10 + row * cell_width, 26 + offset + column * cell_height) if vertical
+                          else (26 + offset + column * cell_width, 10 + row * cell_height))
+        return DockLayout(width, height, size, used_rows, vertical, cell_width, cell_height, tuple(points))
+
+    choices = range(first_rows, len(settings.items) + 2)
+    for rows in choices:
+        result = candidate(rows, settings.icon_size)
+        if result.width <= max_width and result.height <= max_height:
+            return result
+    # Extremely small work areas can require a smaller icon after every
+    # arrangement has been tried. Pick the one with the largest visible icons.
+    best = None
+    for rows in choices:
+        low, high = 1.0, float(settings.icon_size)
+        for _ in range(20):
+            middle = (low + high) / 2
+            result = candidate(rows, middle)
+            if result.width <= max_width and result.height <= max_height:
+                low = middle
+            else:
+                high = middle
+        result = candidate(rows, low)
+        if best is None or result.icon_size > best.icon_size + 0.01:
+            best = result
+    return best
 
 
 def move_item(items: list[Item], item_id: str, destination: int) -> None:

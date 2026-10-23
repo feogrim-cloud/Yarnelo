@@ -153,7 +153,9 @@ The Linux preview has no startup-at-sign-in switch. Add the command through your
 
 ## Shortcuts, language and settings
 
-Drop a `.desktop` file, ordinary file or folder on the dock. **+** and the context menu also add Computer and Trash. Computer opens the filesystem root. Drag icons to rearrange them. Use **Settings…** for row count, background opacity, icon size, magnification and labels.
+Drop a `.desktop` file, ordinary file or folder on the dock. **+** and the context menu also add Computer and Trash. Computer opens the filesystem root. Drag icons to rearrange them. The two-column **Settings…** window provides background opacity, corner rounding (0 square, 100 capsule), icon size, magnification and labels without vertical scrolling.
+
+Choose top, bottom, left or right centered placement; side docks run vertically with upright icons. Drag the handle for free positioning. One to four preferred rows become columns at the sides. Extra rows/columns are added automatically when needed before icon size is reduced, without replacing the saved preference. Positioning remains subject to the X11/XWayland compositor limitations described above.
 
 Choose **Language / Язык → English / Русский** in the dock's context menu to switch the interface immediately. The choice is saved. The initial default follows the system locale: Russian for a Russian locale, English otherwise. User file and shortcut names stay as they are.
 
