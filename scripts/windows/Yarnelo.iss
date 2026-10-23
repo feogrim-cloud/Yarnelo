@@ -17,6 +17,10 @@
 AppId={{0FD657E9-E4CC-4BD3-8C71-EE8AA91BA43D}
 AppName=Yarnelo
 AppVersion={#AppVersion}
+VersionInfoVersion={#AppVersion}
+VersionInfoTextVersion={#AppVersion}
+VersionInfoProductVersion={#AppVersion}
+VersionInfoProductTextVersion={#AppVersion}
 AppVerName=Yarnelo {#AppVersion} ({#AppArchitecture})
 AppPublisher=feogrim-cloud
 AppPublisherURL=https://github.com/feogrim-cloud/Yarnelo
