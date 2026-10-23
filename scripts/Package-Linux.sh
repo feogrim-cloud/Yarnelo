@@ -54,7 +54,13 @@ app="$build/frozen/yarnelo"
 
 install -m 644 "$repo/LICENSE" "$app/LICENSE"
 install -m 644 "$repo/linux/packaging/THIRD-PARTY-NOTICES.txt" "$app/THIRD-PARTY-NOTICES.txt"
-mkdir -p "$app/docs" "$app/licenses/bzip2"
+mkdir -p "$app/docs" "$app/licenses/bzip2" "$app/licenses/AppImage-runtime" "$app/build-tools"
+install -m 644 "$repo/linux/packaging/APPIMAGE-RUNTIME-LICENSE.txt" "$app/licenses/AppImage-runtime/LICENSE"
+# Official build-tool provenance is supplied by FetchReleaseAsset.py in CI.
+# Keep the verified runtime's source commit/archive and digest with every format.
+for provenance in "$repo"/work/tools/*.source.json; do
+    [[ ! -f $provenance ]] || install -m 644 "$provenance" "$app/build-tools/$(basename -- "$provenance")"
+done
 # bzip2 is deliberately bundled because its SONAME differs between DEB/RPM
 # distributions. Preserve the full upstream/Debian notice shipped by Ubuntu.
 [[ -f /usr/share/doc/libbz2-1.0/copyright ]] || die 'Missing copyright notice for the bundled libbz2-1.0 library.'
@@ -86,7 +92,11 @@ sources = [
     f"Qt SVG {qt_version}: https://code.qt.io/qt/qtsvg.git/tree/?h=v{qt_version}",
     f"Qt Image Formats {qt_version}: https://code.qt.io/qt/qtimageformats.git/tree/?h=v{qt_version}",
     "bzip2 1.0.8: https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz",
+    "AppImage type2-runtime source: https://github.com/AppImage/type2-runtime",
+    "AppImage type2-runtime build instructions: https://github.com/AppImage/type2-runtime/blob/main/BUILD.md",
 ]
+for provenance in sorted((destination / "build-tools").glob("*.source.json")):
+    sources.append(f"Verified AppImage tool/runtime source commit, source archive and SHA-256: build-tools/{provenance.name}")
 for name in ("PyInstaller", "PySide6", "PySide6-Essentials", "shiboken6"):
     try:
         distribution = metadata.distribution(name)

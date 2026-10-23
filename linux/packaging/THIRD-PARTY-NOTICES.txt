@@ -28,3 +28,17 @@ the resulting squashfs-root/AppRun after replacing compatible libraries.
 The exact bundled versions are recorded in build-versions.txt. References above
 identify upstream source repositories; corresponding release tags follow those
 recorded versions. This notice does not grant a license to Yarnelo itself.
+
+AppImage runtime
+----------------
+The AppImage format embeds the official AppImage/type2-runtime executable,
+without Yarnelo changes to its source. Its MIT license and third-party notices
+are included in licenses/AppImage-runtime/LICENSE, including references to the
+statically linked musl, libfuse (LGPL 2), squashfuse, zstd and zlib components.
+
+Original source: https://github.com/AppImage/type2-runtime
+Build instructions: https://github.com/AppImage/type2-runtime/blob/main/BUILD.md
+When built by the project CI, build-tools/*.source.json records the exact
+downloaded tool/runtime asset, verified SHA-256, source commit and source archive
+URL. See also corresponding-sources.txt. AppImage tooling licenses do not change
+the license of Yarnelo's original code or artwork.

@@ -22,6 +22,15 @@ def main():
     url = f"https://api.github.com/repos/{repository}/releases/tags/continuous"
     with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=60) as reply:
         release = json.load(reply)
+    reference_url = f"https://api.github.com/repos/{repository}/git/ref/tags/continuous"
+    with urllib.request.urlopen(urllib.request.Request(reference_url, headers=headers), timeout=60) as reply:
+        source_object = json.load(reply)["object"]
+    while source_object["type"] == "tag":
+        tag_url = f"https://api.github.com/repos/{repository}/git/tags/{source_object['sha']}"
+        with urllib.request.urlopen(urllib.request.Request(tag_url, headers=headers), timeout=60) as reply:
+            source_object = json.load(reply)["object"]
+    if source_object["type"] != "commit":
+        raise RuntimeError("Unexpected upstream source reference.")
     asset = next(item for item in release["assets"] if item["name"] == asset_name)
     digest = asset.get("digest") or ""
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
@@ -46,6 +55,17 @@ def main():
         target.chmod(0o755)
     finally:
         temporary.unlink(missing_ok=True)
+    source_record = {
+        "repository": repository,
+        "asset": asset_name,
+        "digest": digest,
+        "source_commit": source_object["sha"],
+        "source_archive": f"https://github.com/{repository}/archive/{source_object['sha']}.tar.gz",
+        "build_instructions": f"https://github.com/{repository}/tree/{source_object['sha']}",
+    }
+    target.with_name(target.name + ".source.json").write_text(
+        json.dumps(source_record, indent=2) + "\n", encoding="utf-8"
+    )
     print(f"Verified {repository}/{asset_name}: {digest}")
 
 
