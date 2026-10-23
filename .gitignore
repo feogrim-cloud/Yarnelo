@@ -1,0 +1,28 @@
+# Build products and local test fixtures
+/build/
+/dist/
+/work/
+/src/build/
+**/bin/
+**/obj/
+*.exe
+*.dll
+*.pdb
+*.zip
+
+# Personal dock data must never be committed
+**/[Dd]ata/
+settings.json
+settings.json.bak
+*.lnk
+*.url
+*.log
+
+# Editor and OS state
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
+*.tmp

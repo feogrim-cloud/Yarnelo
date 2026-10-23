@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<title>Yarnelo — flowing Y</title>
+<desc>Original asymmetrical Y ribbon mark for Yarnelo. Rounded glass tile, lavender arm, mint-cyan flowing thread and coral stitch.</desc>
+<defs>
+ <linearGradient id="bg" x1="60" y1="24" x2="442" y2="488" gradientUnits="userSpaceOnUse"><stop stop-color="#283149"/><stop offset="1" stop-color="#0d1321"/></linearGradient>
+ <linearGradient id="lavender" x1="125" y1="131" x2="279" y2="282" gradientUnits="userSpaceOnUse"><stop stop-color="#d1c6ff"/><stop offset="1" stop-color="#8b6ef0"/></linearGradient>
+ <linearGradient id="mint" x1="390" y1="60" x2="230" y2="450" gradientUnits="userSpaceOnUse"><stop stop-color="#91ffe0"/><stop offset=".62" stop-color="#48dad8"/><stop offset="1" stop-color="#2eaed1"/></linearGradient>
+ <radialGradient id="purpleGlow"><stop stop-color="#987fff" stop-opacity=".15"/><stop offset="1" stop-color="#987fff" stop-opacity="0"/></radialGradient>
+ <radialGradient id="mintGlow"><stop stop-color="#40f1db" stop-opacity=".11"/><stop offset="1" stop-color="#40f1db" stop-opacity="0"/></radialGradient>
+ <clipPath id="tile"><rect x="24" y="24" width="464" height="464" rx="112"/></clipPath>
+</defs>
+<rect x="24" y="24" width="464" height="464" rx="112" fill="url(#bg)" stroke="#b9d0f7" stroke-opacity=".21" stroke-width="2"/>
+<g clip-path="url(#tile)"><ellipse cx="240" cy="221" rx="165" ry="165" fill="url(#purpleGlow)"/><ellipse cx="306" cy="342" rx="160" ry="150" fill="url(#mintGlow)"/></g>
+<g transform="translate(0 10)" fill="none" stroke="#000613" stroke-opacity=".26" stroke-width="68" stroke-linecap="round" stroke-linejoin="round"><path d="M146 157C169 198 209 237 257 263M367 132C344 183 309 226 268 258C254 281 246 309 247 337C248 369 267 383 306 383"/></g>
+<g fill="none" stroke-width="68" stroke-linecap="round" stroke-linejoin="round"><path d="M146 157C169 198 209 237 257 263" stroke="url(#lavender)"/><path d="M367 132C344 183 309 226 268 258C254 281 246 309 247 337C248 369 267 383 306 383" stroke="url(#mint)"/></g>
+<g fill="none" stroke-width="3" stroke-linecap="round"><path d="M139 145C163 187 196 222 225 240" stroke="#f3ecff" stroke-opacity=".35"/><path d="M358 121C336 173 300 218 260 247" stroke="#e8fffa" stroke-opacity=".39"/></g>
+<path d="M350 139L340 157" fill="none" stroke="#ffb2a6" stroke-width="10" stroke-linecap="round"/>
+</svg>
