@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller recipe. Only the four Qt modules used by Yarnelo are included."""
 from pathlib import Path
+from PySide6.QtCore import QLibraryInfo
 
 root = Path(SPECPATH).resolve().parents[1]
 qt_modules = (
@@ -21,6 +22,8 @@ app = Analysis(
     datas=[
         (str(root / "assets" / "Yarnelo-Icon-256.png"), "assets"),
         (str(root / "assets" / "Yarnelo-Icon.svg"), "assets"),
+        # Keep standard file/message dialog buttons in the selected app language.
+        (str(Path(QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)) / "qtbase_ru.qm"), "PySide6/Qt/translations"),
     ],
     hiddenimports=["PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets", "PySide6.QtNetwork"],
     hookspath=[],

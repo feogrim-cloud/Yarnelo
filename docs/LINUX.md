@@ -1,42 +1,44 @@
-# Yarnelo для Linux: установка и использование
+# Yarnelo for Linux: installation and use
 
-Linux-версия Yarnelo — **preview** на Qt 6: до 30 ярлыков, 1–4 ряда, регулируемая прозрачность фона, размер значков, плавное увеличение и перестановка. Python и Qt включены в готовые сборки.
+**English** · [Русский](LINUX.ru.md)
 
-Пакеты скачиваются только из [релизов feogrim-cloud/Yarnelo](https://github.com/feogrim-cloud/Yarnelo/releases). Скачайте также `SHA256SUMS` и выполните `sha256sum --check SHA256SUMS --ignore-missing` в той же папке.
+Yarnelo for Linux is a **Qt 6 preview** with up to 30 shortcuts, one to four rows, adjustable background opacity and icon size, smooth hover magnification and animated rearrangement. Ready-made packages include Python and Qt.
 
-## Совместимость и окружение
+Download packages from [feogrim-cloud/Yarnelo releases](https://github.com/feogrim-cloud/Yarnelo/releases). Also download `SHA256SUMS` and run `sha256sum --check SHA256SUMS --ignore-missing` in the same folder.
 
-Готовые сборки предназначены для **x86_64 с glibc 2.35 или новее**: Ubuntu 22.04+, Debian 12+, Mint 21+ и достаточно новые Fedora/openSUSE/Arch. Это нижняя граница используемых библиотек, а не гарантия проверки каждого выпуска дистрибутива. Архитектуру и glibc можно проверить командами:
+## Compatibility and desktop environment
+
+Packages target **x86_64 with glibc 2.35 or newer**: Ubuntu 22.04+, Debian 12+, Mint 21+ and sufficiently recent Fedora/openSUSE/Arch. This is a library compatibility baseline, not a claim of testing every distribution release. Check your architecture and glibc with:
 
 ```bash
 uname -m
 getconf GNU_LIBC_VERSION
 ```
 
-Ожидаются `x86_64` и `glibc 2.35` либо новее. ARM64, 32-битный Linux, Alpine/musl и Ubuntu 20.04 не поддерживаются этими файлами. Нужен графический рабочий стол; это не серверная программа.
+Expect `x86_64` and `glibc 2.35` or newer. These binaries do not support ARM64, 32-bit Linux, Alpine/musl or Ubuntu 20.04. A graphical desktop is required.
 
-**Рекомендуется сеанс X11 с композитором.** Панель просит оконный менеджер держать её ниже обычных окон и не резервирует часть экрана. В Wayland-сеансе для готовых пакетов нужен XWayland. При ошибке выбора платформы можно явно указать X11:
+**An X11 session with compositing is recommended.** The dock requests placement below ordinary windows and does not reserve screen space. Ready-made packages need XWayland in a Wayland session. If platform selection fails, request X11 explicitly:
 
 ```bash
 QT_QPA_PLATFORM=xcb yarnelo
-# Для переносной сборки:
+# Portable example:
 QT_QPA_PLATFORM=xcb ./Yarnelo-Linux-x86_64.AppImage
 ```
 
-Нативный Wayland доступен только при самостоятельном запуске из исходников с соответствующими Qt-плагинами и остаётся экспериментальным. Позиционирование, порядок окон и значок в области уведомлений зависят от окружения. Linux-preview пока не повторяет Windows-механизм определения перекрытия и полноэкранных игр. Если конкретный композитор выводит панель поверх игры, выйдите из Yarnelo через её меню.
+Native Wayland is available only when running from source with the relevant Qt plugins and remains experimental. Window positioning, stacking and notification-area support depend on the desktop environment. The Linux preview does not yet reproduce Windows overlap/fullscreen detection. If your compositor places the dock above a game, exit Yarnelo through its menu.
 
-Для открытия файлов нужен `xdg-open`, для ярлыков `.desktop` — `gio`, для Корзины — файловый менеджер с поддержкой `trash:///`, обычно через GVfs. Пакеты DEB/RPM запрашивают основные зависимости автоматически; поведение Корзины зависит от файлового менеджера.
+Opening files requires `xdg-open`; launching `.desktop` files requires `gio`; Trash requires a file manager supporting `trash:///`, commonly through GVfs. DEB/RPM packages request the main dependencies automatically. Trash behavior depends on the file manager.
 
-## Ubuntu, Debian и Linux Mint: DEB
+## Ubuntu, Debian and Linux Mint: DEB
 
-В папке со скачанным пакетом:
+In the folder containing the download:
 
 ```bash
 sudo apt install ./Yarnelo-Linux-amd64.deb
 yarnelo
 ```
 
-Используйте `apt install ./файл.deb`, чтобы менеджер пакетов установил зависимости. Yarnelo появится в меню приложений. Файлы программы находятся в `/opt/yarnelo`, команда — `/usr/bin/yarnelo`.
+Using `apt install ./file.deb` lets the package manager install dependencies. Yarnelo appears in the application menu. Program files are in `/opt/yarnelo`, and the launcher is `/usr/bin/yarnelo`.
 
 ## Fedora: RPM
 
@@ -45,37 +47,37 @@ sudo dnf install ./Yarnelo-Linux-x86_64.rpm
 yarnelo
 ```
 
-RPM содержит требования к системным библиотекам по их SONAME, а не только по Fedora-названиям пакетов. Он устанавливает программу в `/opt/yarnelo`, команду `yarnelo` и пункт меню приложений.
+The RPM declares system-library SONAME requirements. It installs the app in `/opt/yarnelo`, the `yarnelo` command and an application-menu entry.
 
 ## openSUSE: RPM
 
-В достаточно новом выпуске с glibc 2.35+:
+On a sufficiently recent release with glibc 2.35+:
 
 ```bash
 sudo zypper install ./Yarnelo-Linux-x86_64.rpm
 yarnelo
 ```
 
-Используется тот же RPM. Отдельная проверка установки в openSUSE пока не выполнена; если менеджер пакетов не может разрешить зависимости, не обходите их проверку. Можно воспользоваться AppImage или TAR.GZ с установленными системными библиотеками.
+This is the same RPM. Installation on openSUSE has not been separately checked; do not bypass dependency checks if the package manager cannot resolve them. AppImage or TAR.GZ with the required system libraries is another option.
 
-## AppImage: один исполняемый файл
+## AppImage: a single executable file
 
 ```bash
 chmod +x ./Yarnelo-Linux-x86_64.AppImage
 ./Yarnelo-Linux-x86_64.AppImage
 ```
 
-Права администратора не нужны. Поместите файл в постоянную папку, например `~/Applications`, если хотите создать на него ярлык. Сам по себе AppImage не добавляет пункт в меню приложений и не включает автозапуск.
+Administrator rights are not needed. Put the file in a permanent folder, such as `~/Applications`, before creating a launcher. AppImage does not add an application-menu entry or enable startup automatically.
 
-Если система сообщает об отсутствии FUSE, используйте встроенное извлечение и запуск:
+If FUSE is unavailable, use built-in extraction and launch:
 
 ```bash
 APPIMAGE_EXTRACT_AND_RUN=1 ./Yarnelo-Linux-x86_64.AppImage
 ```
 
-Этот способ временно извлекает приложение и удаляет временные файлы после выхода. Альтернативный вариант без FUSE — TAR.GZ ниже.
+This extracts temporary files and removes them after exit. TAR.GZ below also works without FUSE.
 
-Если Qt сообщает, что не может загрузить плагин `xcb`, в Ubuntu / Debian / Mint установите недостающие системные компоненты:
+If Qt reports that the `xcb` plugin cannot load, install missing system components on Ubuntu / Debian / Mint:
 
 ```bash
 sudo apt install libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 \
@@ -83,9 +85,9 @@ sudo apt install libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 \
   libgl1 libegl1 xdg-utils libglib2.0-bin gvfs-backends
 ```
 
-Для диагностики запуска используйте `QT_DEBUG_PLUGINS=1 ./Yarnelo-Linux-x86_64.AppImage`: вывод укажет конкретную недостающую библиотеку. В других дистрибутивах установите соответствующий пакет своим менеджером пакетов.
+Use `QT_DEBUG_PLUGINS=1 ./Yarnelo-Linux-x86_64.AppImage` to identify the missing library. On other distributions, install the corresponding packages using their package manager.
 
-## TAR.GZ: переносная папка, в том числе для Arch Linux
+## TAR.GZ: a portable folder, including Arch Linux
 
 ```bash
 mkdir -p "$HOME/Applications"
@@ -93,13 +95,13 @@ tar -xzf ./Yarnelo-Linux-x86_64.tar.gz -C "$HOME/Applications"
 "$HOME/Applications/Yarnelo/yarnelo"
 ```
 
-Распакуйте архив полностью. Исполняемый файл `yarnelo` работает вместе с соседней папкой `_internal`; перемещать отдельно только один файл нельзя. Python из системы для этой сборки не требуется. Системные X11/OpenGL/GLib-библиотеки и средства `xdg-open`/`gio` остаются зависимостями окружения.
+Extract the entire archive. The `yarnelo` executable needs the adjacent `_internal` folder; do not move the executable by itself. System Python is not required. X11/OpenGL/GLib libraries and `xdg-open` / `gio` remain system dependencies.
 
-В Arch при отсутствии компонентов установите их пакетным менеджером; обновление системы выполняйте по обычным правилам Arch, без частичного обновления библиотек.
+On Arch, install any missing components with the package manager and follow normal Arch upgrade practices; do not partially upgrade system libraries.
 
-### Пункт меню для переносной версии
+### Application-menu entry for portable packages
 
-У DEB/RPM он создаётся автоматически. Для TAR.GZ из предыдущего примера можно создать его вручную:
+DEB/RPM create one automatically. For the TAR.GZ example above:
 
 ```bash
 mkdir -p "$HOME/.local/share/applications"
@@ -115,32 +117,34 @@ StartupNotify=false
 EOF
 ```
 
-Если программа расположена в другом месте, исправьте `Exec` и `Icon`. Для AppImage в `Exec` укажите полный путь к `.AppImage`, а для `Icon` сохраните [значок Yarnelo](https://github.com/feogrim-cloud/Yarnelo/blob/main/assets/Yarnelo-Icon-256.png) в постоянной папке и укажите его полный путь. Если используется обход FUSE, команда в ярлыке должна начинаться с `env APPIMAGE_EXTRACT_AND_RUN=1`, затем идёт путь к AppImage.
+Adjust `Exec` and `Icon` if you installed elsewhere. For AppImage, use its full path in `Exec` and save the [Yarnelo icon](https://github.com/feogrim-cloud/Yarnelo/blob/main/assets/Yarnelo-Icon-256.png) to a permanent folder for `Icon`. If you need the FUSE workaround, start the launcher command with `env APPIMAGE_EXTRACT_AND_RUN=1`, followed by the AppImage path.
 
-Linux-preview пока не имеет переключателя автозапуска. При необходимости добавьте эту команду через настройки автозапуска своего окружения или поместите исправленный `.desktop` в `$XDG_CONFIG_HOME/autostart` (обычно `~/.config/autostart`).
+The Linux preview has no startup-at-sign-in switch. Add the command through your desktop's startup settings, or put an adjusted `.desktop` file in `$XDG_CONFIG_HOME/autostart` (usually `~/.config/autostart`).
 
-## Ярлыки и настройки
+## Shortcuts, language and settings
 
-Перетащите `.desktop`, файл или папку на панель. Кнопка **+** и контекстное меню также добавляют ярлыки, «Компьютер» и Корзину. «Компьютер» открывает корень файловой системы. Порядок меняется перетаскиванием; число рядов, прозрачность, размер и увеличение — через «Настройки…».
+Drop a `.desktop` file, ordinary file or folder on the dock. **+** and the context menu also add Computer and Trash. Computer opens the filesystem root. Drag icons to rearrange them. Use **Settings…** for row count, background opacity, icon size, magnification and labels.
 
-Linux-версия сохраняет ссылки на исходные файлы и **не перемещает их с рабочего стола**. Если хотите убрать исходники, сначала перенесите их в постоянную папку, затем добавьте оттуда. Удаление значка из панели удаляет только ссылку внутри Yarnelo.
+Choose **Language / Язык → English / Русский** in the dock's context menu to switch the interface immediately. The choice is saved. The initial default follows the system locale: Russian for a Russian locale, English otherwise. User file and shortcut names stay as they are.
 
-Профиль находится в `$XDG_CONFIG_HOME/yarnelo/settings.json` или по умолчанию в `~/.config/yarnelo/settings.json`. У Windows и Linux разные профили: автоматического импорта Windows-ярлыков `.lnk` / `.url` нет.
+The Linux version stores references and **does not move originals off the desktop**. To clear your desktop, move originals to a permanent folder first, then add them from that location. Removing an icon only removes Yarnelo's reference.
 
-## Обновление и удаление
+The profile is `$XDG_CONFIG_HOME/yarnelo/settings.json`, or `~/.config/yarnelo/settings.json` by default. Linux and Windows profiles are separate; Windows `.lnk` / `.url` files are not automatically imported as Linux launchers.
 
-Перед заменой файлов закройте Yarnelo через контекстное меню панели или значок в области уведомлений. Для резервной копии сохраните каталог `yarnelo` из своей папки конфигурации.
+## Updating and removal
 
-- **DEB:** установите новый `.deb` той же командой `sudo apt install ./...`; удаление — `sudo apt remove yarnelo`.
-- **RPM / Fedora:** обновление — `sudo dnf upgrade ./Yarnelo-Linux-x86_64.rpm`; удаление — `sudo dnf remove yarnelo`.
-- **RPM / openSUSE:** установите новый RPM через `sudo zypper install ./...`; удаление — `sudo zypper remove yarnelo`.
-- **AppImage:** замените файл новым выпуском и снова разрешите исполнение через `chmod +x`; удаление — удалите сам файл.
-- **TAR.GZ:** распакуйте новый выпуск в прежнее постоянное место; удаление — удалите папку программы.
+Before replacing files, exit Yarnelo through the dock or notification-area menu. Back up the `yarnelo` directory from your configuration folder.
 
-Обновление пакетов не удаляет пользовательский профиль. При удалении программы он тоже сохраняется. Добавленные вручную пункты меню и автозапуска удаляются отдельно. Собственные файлы, папки и `.desktop`, на которые указывает панель, не затрагиваются.
+- **DEB:** install the new `.deb` with `sudo apt install ./...`; remove with `sudo apt remove yarnelo`.
+- **RPM / Fedora:** update with `sudo dnf upgrade ./Yarnelo-Linux-x86_64.rpm`; remove with `sudo dnf remove yarnelo`.
+- **RPM / openSUSE:** install the new RPM with `sudo zypper install ./...`; remove with `sudo zypper remove yarnelo`.
+- **AppImage:** replace the file and allow execution again with `chmod +x`; remove by deleting the file.
+- **TAR.GZ:** extract the new version to the original permanent location; remove by deleting the program folder.
 
-## Для разработчиков и лицензии
+Updates and removal preserve your user profile. Manually added launchers and startup entries are removed separately. Your own files, folders and `.desktop` originals are unaffected.
 
-Запуск из исходников и проверка интерфейса описаны в [linux/README.md](../linux/README.md). Упаковка выполняется на Ubuntu 22.04 x86_64 скриптом `scripts/Package-Linux.sh`; он создаёт один и тот же автономный GUI для TAR.GZ, AppImage, DEB и RPM.
+## Development and licenses
 
-Все права на собственный код и графику Yarnelo сохранены за автором. Python, PySide6/Shiboken, Qt и другие компоненты имеют собственные лицензии. В сборке находятся `licenses/`, `THIRD-PARTY-NOTICES.txt`, `build-versions.txt` и `corresponding-sources.txt`. Qt-библиотеки подключаются динамически и могут быть заменены совместимыми изменёнными версиями с соблюдением их лицензий. См. [LICENSE](../LICENSE).
+Source setup and interface checks are in [linux/README.md](../linux/README.md). The packaging script `scripts/Package-Linux.sh` runs on Ubuntu 22.04 x86_64 and packages the same standalone GUI as TAR.GZ, AppImage, DEB and RPM.
+
+All rights to Yarnelo's own code and artwork are reserved. Python, PySide6/Shiboken, Qt and other components retain their own licenses. Packages contain `licenses/`, `THIRD-PARTY-NOTICES.txt`, `build-versions.txt` and `corresponding-sources.txt`. Qt libraries are dynamically loaded and may be replaced with compatible modified versions under their licenses. See [LICENSE](../LICENSE).

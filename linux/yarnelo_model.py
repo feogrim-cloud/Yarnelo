@@ -13,12 +13,24 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-VERSION = "1.4.0"
+from yarnelo_i18n import LANGUAGES, text
+
+VERSION = "1.5.0"
 MAX_ITEMS = 30
 
 
 class ModelError(ValueError):
-    pass
+    """Keep a stable error key so UI messages follow the current language."""
+
+    def __init__(self, key: str, **values):
+        self.key, self.values = key, values
+        super().__init__(key)
+
+    def localized(self, language: str = "auto") -> str:
+        return text(self.key, language, **self.values)
+
+    def __str__(self) -> str:
+        return self.localized()
 
 
 @dataclass
@@ -30,11 +42,11 @@ class Item:
     @classmethod
     def create(cls, kind: str = "path", path: str = "") -> "Item":
         if kind not in {"path", "computer", "trash"}:
-            raise ModelError("Неизвестный тип ярлыка.")
+            raise ModelError("invalid_kind")
         if kind == "path":
             candidate = Path(path).expanduser().absolute()
             if not candidate.exists():
-                raise ModelError(f"Файл или папка не найдены: {candidate}")
+                raise ModelError("path_missing", path=candidate)
             # Preserve the entered symlink. Only a reference is stored; the file stays put.
             path = str(candidate)
         return cls(uuid.uuid4().hex, kind, path if kind == "path" else "")
@@ -47,6 +59,7 @@ class Settings:
     icon_size: int = 48
     zoom: float = 1.35
     labels: bool = False
+    language: str = "auto"
     screen: str = ""
     x: int | None = None
     y: int | None = None
@@ -55,9 +68,9 @@ class Settings:
     @classmethod
     def from_dict(cls, data: Any) -> "Settings":
         if not isinstance(data, dict):
-            raise ModelError("Настройки должны быть объектом JSON.")
+            raise ModelError("settings_object")
         if data.get("schema", 1) != 1:
-            raise ModelError("Формат настроек этой версии не поддерживается.")
+            raise ModelError("settings_schema")
         result = cls()
         for name, low, high, numeric_type in (
             ("rows", 1, 4, int),
@@ -67,37 +80,41 @@ class Settings:
         ):
             value = data.get(name, getattr(result, name))
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-                raise ModelError(f"Некорректное значение: {name}")
+                raise ModelError("invalid_value", name=name)
             setattr(result, name, numeric_type(min(high, max(low, value))))
         if not isinstance(data.get("labels", False), bool):
-            raise ModelError("Некорректное значение: labels")
+            raise ModelError("invalid_value", name="labels")
         result.labels = data.get("labels", False)
+        language = data.get("language", "auto")
+        if language not in LANGUAGES:
+            raise ModelError("invalid_value", name="language")
+        result.language = language
         result.screen = str(data.get("screen", ""))[:256]
         for name in ("x", "y"):
             value = data.get(name)
             if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
-                raise ModelError(f"Некорректная координата: {name}")
+                raise ModelError("invalid_coordinate", name=name)
             setattr(result, name, value)
         raw_items = data.get("items", [])
         if not isinstance(raw_items, list) or len(raw_items) > MAX_ITEMS:
-            raise ModelError("В панели может быть не больше 30 ярлыков.")
+            raise ModelError("item_limit")
         ids: set[str] = set()
         paths: set[tuple[str, str]] = set()
         for raw in raw_items:
             if not isinstance(raw, dict):
-                raise ModelError("Некорректная запись ярлыка.")
+                raise ModelError("invalid_item_record")
             ident, kind, path = raw.get("id"), raw.get("kind"), raw.get("path", "")
             if not isinstance(ident, str) or not ident or ident in ids:
-                raise ModelError("Некорректный или повторяющийся идентификатор ярлыка.")
+                raise ModelError("invalid_item_id")
             if kind not in {"path", "computer", "trash"} or not isinstance(path, str):
-                raise ModelError("Некорректный ярлык.")
+                raise ModelError("invalid_item")
             if kind == "path" and (not path or not Path(path).is_absolute()):
-                raise ModelError("Для ярлыка нужен абсолютный путь.")
+                raise ModelError("absolute_path_required")
             if kind != "path":
                 path = ""
             key = (kind, path)
             if key in paths:
-                raise ModelError("В настройках есть повторяющийся ярлык.")
+                raise ModelError("duplicate_item")
             ids.add(ident)
             paths.add(key)
             # Missing files remain removable in the dock instead of losing the entry.
@@ -111,7 +128,7 @@ class Settings:
         if any((i.kind, i.path) == (item.kind, item.path) for i in self.items):
             return False
         if len(self.items) >= MAX_ITEMS:
-            raise ModelError("В панели уже 30 ярлыков. Удалите один, чтобы добавить новый.")
+            raise ModelError("dock_full")
         self.items.append(item)
         return True
 
@@ -129,10 +146,10 @@ def load_settings(path: Path) -> Settings:
         if not path.exists():
             return Settings()
         if path.stat().st_size > 1024 * 1024:
-            raise ModelError("Файл настроек слишком большой.")
+            raise ModelError("settings_too_large")
         return Settings.from_dict(json.loads(path.read_text(encoding="utf-8")))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise ModelError(f"Не удалось прочитать настройки: {error}") from error
+        raise ModelError("settings_read_failed", error=error) from error
 
 
 def save_settings(path: Path, settings: Settings) -> None:
@@ -169,24 +186,24 @@ def desktop_metadata(path: Path, locale_name: str = "") -> tuple[str, str]:
     parser.optionxform = str
     try:
         if path.stat().st_size > 1024 * 1024:
-            raise ModelError("Файл .desktop слишком большой.")
+            raise ModelError("desktop_too_large")
         parser.read_string(path.read_text(encoding="utf-8-sig"))
         entry = parser["Desktop Entry"]
         if entry.get("Type") != "Application":
-            raise ModelError("Поддерживаются .desktop типа Application.")
+            raise ModelError("desktop_type")
         if not entry.get("Exec") and entry.get("DBusActivatable", "").lower() != "true":
-            raise ModelError("В .desktop не указано приложение для запуска.")
+            raise ModelError("desktop_no_exec")
         language = locale_name.split(".")[0].split("@")[0]
         name = entry.get(f"Name[{language}]") or entry.get(f"Name[{language.split('_')[0]}]") or entry.get("Name") or path.stem
         return name.replace("\\s", " ").replace("\\n", " ").replace("\\t", " ").replace("\\\\", "\\"), entry.get("Icon", "")
     except (KeyError, configparser.Error, OSError, UnicodeError) as error:
-        raise ModelError(f"Не удалось прочитать .desktop: {error}") from error
+        raise ModelError("desktop_read_failed", error=error) from error
 
 
 def slot_indices(item_count: int, rows: int) -> list[tuple[int, int]]:
     """Balanced row-major slots, including the persistent add button."""
     if not 0 <= item_count <= MAX_ITEMS or not 1 <= rows <= 4:
-        raise ModelError("Некорректный размер панели.")
+        raise ModelError("invalid_layout")
     total = item_count + 1
     used_rows = min(rows, total)
     base, extra = divmod(total, used_rows)
@@ -196,5 +213,5 @@ def slot_indices(item_count: int, rows: int) -> list[tuple[int, int]]:
 def move_item(items: list[Item], item_id: str, destination: int) -> None:
     source = next((index for index, item in enumerate(items) if item.id == item_id), None)
     if source is None or not 0 <= destination < len(items):
-        raise ModelError("Некорректное перемещение ярлыка.")
+        raise ModelError("invalid_move")
     items.insert(destination, items.pop(source))

@@ -52,7 +52,7 @@ namespace Polka
         {
             using (RegistryKey key = Registry.CurrentUser.CreateSubKey(StartupKey))
             {
-                if (key == null) throw new IOException("Не удалось открыть параметры автозапуска.");
+                if (key == null) throw new IOException(L10n.T("StartupOpenFailed"));
                 if (enabled) key.SetValue(StartupName, Quote(ExePath), RegistryValueKind.String);
                 else key.DeleteValue(StartupName, false);
             }
@@ -81,7 +81,7 @@ namespace Polka
             }
             if (File.Exists(item.Path) || Directory.Exists(item.Path))
                 Process.Start(new ProcessStartInfo("explorer.exe", "/select," + Quote(item.Path)) { UseShellExecute = true });
-            else throw new FileNotFoundException("Этот ярлык больше не найден.", item.Path);
+            else throw new FileNotFoundException(L10n.T("ShortcutMissing"), item.Path);
         }
 
         private static bool IsShellPath(string path)

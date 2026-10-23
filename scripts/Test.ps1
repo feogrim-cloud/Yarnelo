@@ -36,7 +36,7 @@ $compilerArgs = @(
     ('/out:' + $binary),
     '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Runtime.Serialization.dll'
 )
-& $compiler @compilerArgs (Join-Path $sources 'Store.cs') (Join-Path $sources 'StorageTests.cs')
+& $compiler @compilerArgs (Join-Path $sources 'Store.cs') (Join-Path $sources 'Localization.cs') (Join-Path $sources 'StorageTests.cs')
 if($LASTEXITCODE -ne 0) { throw 'Storage test compilation failed.' }
 
 # Every fixture writes below this new path; Store receives the fixture desktop
@@ -45,9 +45,28 @@ $fixtures = Join-Path $run 'fixtures'
 & $binary $fixtures
 if($LASTEXITCODE -ne 0) { throw "Storage tests failed. Fixtures are preserved at $fixtures" }
 
+# Localization renders only its own unshown WPF visual trees. No native dock,
+# desktop integration, tray, installed profile or startup registry is used.
+$localizationSources = @('Program.cs','DockWindow.cs','SettingsWindow.cs','Native.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','Localization.cs','LocalizationUiTests.cs') |
+    ForEach-Object { Join-Path $sources $_ }
+$localizationBinary = Join-Path $run 'LocalizationUiTests.exe'
+$localizationArgs = @(
+    '/nologo', '/target:exe', '/platform:x64', '/optimize+', '/codepage:65001',
+    '/main:Polka.LocalizationUiTests', ('/out:' + $localizationBinary),
+    '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Runtime.Serialization.dll',
+    '/reference:System.Xaml.dll', '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll',
+    ('/reference:' + (Join-Path $framework 'WPF\WindowsBase.dll')),
+    ('/reference:' + (Join-Path $framework 'WPF\PresentationCore.dll')),
+    ('/reference:' + (Join-Path $framework 'WPF\PresentationFramework.dll'))
+)
+& $compiler @localizationArgs @localizationSources
+if($LASTEXITCODE -ne 0) { throw 'Localization UI test compilation failed.' }
+& $localizationBinary (Join-Path $run 'localization-ui')
+if($LASTEXITCODE -ne 0) { throw 'Localization UI tests failed.' }
+
 if($CompileUiTests) {
     # Compile only: UI tests show and activate native WPF windows when executed.
-    $uiSources = @('Program.cs','DockWindow.cs','SettingsWindow.cs','Native.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','UiTests.cs') |
+    $uiSources = @('Program.cs','DockWindow.cs','SettingsWindow.cs','Native.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','Localization.cs','UiTests.cs') |
         ForEach-Object { Join-Path $sources $_ }
     $uiArgs = @(
         '/nologo', '/target:exe', '/platform:x64', '/optimize+', '/codepage:65001',

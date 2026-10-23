@@ -22,13 +22,13 @@ foreach($candidate in @($payloadPath, $outputPath)) {
         }
     }
 }
-$allowed = '^(Yarnelo\.exe|Yarnelo\.exe\.config|Yarnelo\.ico|Yarnelo-\d+\.\d+\.\d+\.ico|portable\.mode|Прочитай меня\.txt|Yarnelo-Icon(?:-(?:16|24|32|48|256))?\.png|Yarnelo-Icon\.svg|LICENSE|README\.md|INSTALL-WINDOWS\.md)$'
+$allowed = '^(Yarnelo\.exe|Yarnelo\.exe\.config|Yarnelo\.ico|Yarnelo-\d+\.\d+\.\d+\.ico|portable\.mode|Прочитай меня\.txt|Read me\.txt|Yarnelo-Icon(?:-(?:16|24|32|48|256))?\.png|Yarnelo-Icon\.svg|LICENSE|README(?:\.ru)?\.md|INSTALL-WINDOWS(?:\.ru)?\.md)$'
 foreach($entry in Get-ChildItem -LiteralPath $payloadPath -Force) {
     if($entry.PSIsContainer -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $entry.Name -notmatch $allowed) {
         throw "Unexpected file in installer payload: $($entry.Name)"
     }
 }
-foreach($name in @('Yarnelo.exe','Yarnelo.exe.config','Yarnelo.ico','portable.mode','LICENSE','README.md','INSTALL-WINDOWS.md','Прочитай меня.txt')) {
+foreach($name in @('Yarnelo.exe','Yarnelo.exe.config','Yarnelo.ico','portable.mode','LICENSE','README.md','README.ru.md','INSTALL-WINDOWS.md','INSTALL-WINDOWS.ru.md','Прочитай меня.txt','Read me.txt')) {
     if(!(Test-Path -LiteralPath (Join-Path $payloadPath $name) -PathType Leaf)) { throw "Missing installer file: $name" }
 }
 # AssemblyName.ProcessorArchitecture returns None under modern PowerShell.

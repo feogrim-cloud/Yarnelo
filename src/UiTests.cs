@@ -370,6 +370,8 @@ namespace Polka {
             }
         }
         [STAThread] public static int Main(string[] args) {
+            System.Threading.Thread.CurrentThread.CurrentUICulture=System.Globalization.CultureInfo.GetCultureInfo("ru-RU");
+            L10n.SetLanguage("ru");
             root=Path.GetFullPath(args.Length>0?args[0]:"work/animation-tests");
             Directory.CreateDirectory(root);
             string run=Path.Combine(root,"data-"+DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff"));

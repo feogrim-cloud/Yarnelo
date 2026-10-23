@@ -6,11 +6,11 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("Yarnelo")]
-[assembly: AssemblyDescription("Yarnelo — панель ярлыков для Windows")]
+[assembly: AssemblyDescription("Yarnelo — shortcut dock for Windows")]
 [assembly: AssemblyCompany("Yarnelo")]
 [assembly: AssemblyProduct("Yarnelo")]
-[assembly: AssemblyVersion("1.4.0.0")]
-[assembly: AssemblyFileVersion("1.4.0.0")]
+[assembly: AssemblyVersion("1.5.0.0")]
+[assembly: AssemblyFileVersion("1.5.0.0")]
 
 namespace Polka {
     internal static class Program {
@@ -56,7 +56,7 @@ namespace Polka {
                     }
                     return 0;
                 } catch(Exception ex) {
-                    MessageBox.Show("Не удалось завершить действие.\n"+ex.Message,"Yarnelo",MessageBoxButton.OK,MessageBoxImage.Warning); return 2;
+                    MessageBox.Show(L10n.T("ActionFinishFailed")+ex.Message,"Yarnelo",MessageBoxButton.OK,MessageBoxImage.Warning); return 2;
                 }
             }
             bool first;
@@ -65,7 +65,7 @@ namespace Polka {
                 var app=new Application { ShutdownMode=ShutdownMode.OnExplicitShutdown };
                 app.DispatcherUnhandledException += delegate(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e) {
                     try { File.AppendAllText(Path.Combine(DataDir ?? DefaultDataDirectory,"error.log"), DateTime.Now.ToString("s")+" "+e.Exception+Environment.NewLine); } catch {}
-                    MessageBox.Show("Не удалось выполнить действие.\n"+e.Exception.Message,"Yarnelo",MessageBoxButton.OK,MessageBoxImage.Warning);
+                    MessageBox.Show(L10n.T("ActionFailed")+e.Exception.Message,"Yarnelo",MessageBoxButton.OK,MessageBoxImage.Warning);
                     e.Handled=true;
                 };
                 try {
@@ -77,7 +77,7 @@ namespace Polka {
                     if(!String.IsNullOrEmpty(recoveryNotice)) dock.Toast(recoveryNotice);
                     app.Run(); return 0;
                 } catch(Exception ex) {
-                    MessageBox.Show("Yarnelo не смогла запуститься.\n"+ex.Message,"Yarnelo",MessageBoxButton.OK,MessageBoxImage.Error); return 1;
+                    MessageBox.Show(L10n.T("StartFailed")+ex.Message,"Yarnelo",MessageBoxButton.OK,MessageBoxImage.Error); return 1;
                 }
             }
         }

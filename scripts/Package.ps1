@@ -37,23 +37,25 @@ New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
 # Package only files produced by a fresh build, never a user's portable profile,
 # imported shortcuts, debug dumps, test fixtures or an installed application.
-$required = @('Yarnelo.exe','Yarnelo.exe.config','Yarnelo.ico','portable.mode','Прочитай меня.txt','Yarnelo-Icon.svg','Yarnelo-Icon.png')
+$required = @('Yarnelo.exe','Yarnelo.exe.config','Yarnelo.ico','portable.mode','Прочитай меня.txt','Read me.txt','Yarnelo-Icon.svg','Yarnelo-Icon.png')
 foreach($name in $required) {
     if(!(Test-Path -LiteralPath (Join-Path $stage $name) -PathType Leaf)) { throw "Missing package file: $name" }
 }
-$allowed = '^(Yarnelo\.exe|Yarnelo\.exe\.config|Yarnelo\.ico|Yarnelo-\d+\.\d+\.\d+\.ico|portable\.mode|Прочитай меня\.txt|Yarnelo-Icon(?:-(?:16|24|32|48|256))?\.png|Yarnelo-Icon\.svg)$'
+$allowed = '^(Yarnelo\.exe|Yarnelo\.exe\.config|Yarnelo\.ico|Yarnelo-\d+\.\d+\.\d+\.ico|portable\.mode|Прочитай меня\.txt|Read me\.txt|Yarnelo-Icon(?:-(?:16|24|32|48|256))?\.png|Yarnelo-Icon\.svg)$'
 foreach($entry in Get-ChildItem -LiteralPath $stage -Force) {
     if($entry.PSIsContainer -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $entry.Name -notmatch $allowed) {
         throw "Unexpected file in clean package directory: $($entry.Name)"
     }
 }
-foreach($name in @('LICENSE','README.md')) {
+foreach($name in @('LICENSE','README.md','README.ru.md')) {
     $document = Join-Path $repository $name
     if(Test-Path -LiteralPath $document -PathType Leaf) { Copy-Item -LiteralPath $document -Destination $stage }
 }
-$windowsGuide = Join-Path $repository 'docs\WINDOWS.ru.md'
-if(!(Test-Path -LiteralPath $windowsGuide -PathType Leaf)) { throw 'The Windows installation guide is missing.' }
-Copy-Item -LiteralPath $windowsGuide -Destination (Join-Path $stage 'INSTALL-WINDOWS.md')
+foreach($document in @(@('WINDOWS.md','INSTALL-WINDOWS.md'),@('WINDOWS.ru.md','INSTALL-WINDOWS.ru.md'))) {
+    $windowsGuide = Join-Path $repository ('docs\'+$document[0])
+    if(!(Test-Path -LiteralPath $windowsGuide -PathType Leaf)) { throw 'A Windows installation guide is missing.' }
+    Copy-Item -LiteralPath $windowsGuide -Destination (Join-Path $stage $document[1])
+}
 New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($archive)) -Force | Out-Null
 $files = @(Get-ChildItem -LiteralPath $stage -File | ForEach-Object { $_.FullName })
 Compress-Archive -LiteralPath $files -DestinationPath $archive -CompressionLevel Optimal

@@ -66,11 +66,25 @@ namespace Polka {
                     <Setter Property='Template'>
                         <Setter.Value>
                             <ControlTemplate TargetType='{x:Type MenuItem}'>
-                                <Border x:Name='body' Background='{TemplateBinding Background}' Padding='{TemplateBinding Padding}' CornerRadius='6' SnapsToDevicePixels='True'>
-                                    <ContentPresenter ContentSource='Header' RecognizesAccessKey='True' HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='Center'/>
-                                </Border>
+                                <Grid>
+                                    <Border x:Name='body' Background='{TemplateBinding Background}' Padding='{TemplateBinding Padding}' CornerRadius='6' SnapsToDevicePixels='True'>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width='Auto'/><ColumnDefinition Width='*'/><ColumnDefinition Width='Auto'/></Grid.ColumnDefinitions>
+                                            <TextBlock x:Name='check' Text='✓' Visibility='Collapsed' Margin='0,0,8,0' VerticalAlignment='Center'/>
+                                            <ContentPresenter Grid.Column='1' ContentSource='Header' RecognizesAccessKey='True' HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='Center'/>
+                                            <TextBlock x:Name='arrow' Grid.Column='2' Text='›' Visibility='Collapsed' Margin='18,0,0,0' VerticalAlignment='Center'/>
+                                        </Grid>
+                                    </Border>
+                                    <Popup x:Name='PART_Popup' AllowsTransparency='True' Focusable='False' IsOpen='{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}' PlacementTarget='{Binding ElementName=body}' Placement='Right' HorizontalOffset='2' PopupAnimation='Fade'>
+                                        <Border Background='#232733' BorderBrush='#484F63' BorderThickness='1' CornerRadius='10' Padding='5'>
+                                            <StackPanel IsItemsHost='True' KeyboardNavigation.DirectionalNavigation='Cycle'/>
+                                        </Border>
+                                    </Popup>
+                                </Grid>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property='IsHighlighted' Value='True'><Setter TargetName='body' Property='Background' Value='#3B527B'/></Trigger>
+                                    <Trigger Property='HasItems' Value='True'><Setter TargetName='arrow' Property='Visibility' Value='Visible'/></Trigger>
+                                    <Trigger Property='IsChecked' Value='True'><Setter TargetName='check' Property='Visibility' Value='Visible'/></Trigger>
                                     <Trigger Property='IsEnabled' Value='False'><Setter TargetName='body' Property='Opacity' Value='.4'/></Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -99,7 +113,8 @@ namespace Polka {
 
         public DockWindow(Store store) {
             Store=store;
-            Title="Yarnelo — панель ярлыков";
+            L10n.SetLanguage(Store.Settings.Language);
+            Title=L10n.T("DockTitle");
             WindowStyle=WindowStyle.None; AllowsTransparency=true; Background=Brushes.Transparent;
             ShowInTaskbar=Program.TestMode; ResizeMode=ResizeMode.NoResize;
             ShowActivated=false;
@@ -156,7 +171,7 @@ namespace Polka {
                     return IntPtr.Zero;
                 });
                 InitTray();
-                if(Store.IsFirstRun) Toast("Перетащите ярлыки сюда · до 30 значков · настройки по кнопке +");
+                if(Store.IsFirstRun) Toast(L10n.T("Welcome"));
                 recycleTimer=new DispatcherTimer { Interval=TimeSpan.FromSeconds(20) };
                 recycleTimer.Tick += delegate {
                     var v=views.FirstOrDefault(x=>x.Item.Path=="shell:RecycleBinFolder");
@@ -222,14 +237,14 @@ namespace Polka {
             FinishLanding();
             var previousIds=new HashSet<string>(views.Select(x=>x.Item.Id));
             strip.Children.Clear(); views.Clear(); pressed=null;
-            var handle=PlainButton(new TextBlock { Text="⠿", FontSize=21, Foreground=new SolidColorBrush(Color.FromRgb(151,159,179)) },"Переместить панель · правая кнопка: настройки");
+            var handle=PlainButton(new TextBlock { Text="⠿", FontSize=21, Foreground=new SolidColorBrush(Color.FromRgb(151,159,179)) },L10n.T("MoveDock"));
             handle.Width=19; handle.Height=effectiveSize+8; handle.VerticalAlignment=VerticalAlignment.Center;
             handle.PreviewMouseLeftButtonDown += delegate(object s,MouseButtonEventArgs e) { MoveDock(e); };
             handle.Click += delegate { };
             strip.Children.Add(handle);
             double iconAreaWidth=0;
             if(Store.Settings.Items.Count==0) {
-                var empty=PlainButton(new TextBlock { Text="Перетащите ярлыки", FontSize=12, Foreground=new SolidColorBrush(Color.FromRgb(192,200,217)), Margin=new Thickness(6,0,12,0) },"Добавить ярлыки");
+                var empty=PlainButton(new TextBlock { Text=L10n.T("DropShortcuts"), FontSize=12, Foreground=new SolidColorBrush(Color.FromRgb(192,200,217)), Margin=new Thickness(6,0,12,0) },L10n.T("AddShortcuts"));
                 empty.Click+=delegate { PickFiles(); }; strip.Children.Add(empty); Width=310;
                 empty.Measure(new Size(double.PositiveInfinity,double.PositiveInfinity)); iconAreaWidth=empty.DesiredSize.Width;
             }
@@ -245,9 +260,9 @@ namespace Polka {
                 RenderOptions.SetBitmapScalingMode(v.Image,BitmapScalingMode.HighQuality);
                 var stack=new StackPanel { Orientation=Orientation.Vertical, HorizontalAlignment=HorizontalAlignment.Center };
                 stack.Children.Add(v.Image);
-                if(Store.Settings.ShowLabels) stack.Children.Add(new TextBlock { Text=item.Name, FontSize=10, MaxWidth=slot-2,
+                if(Store.Settings.ShowLabels) stack.Children.Add(new TextBlock { Text=L10n.DisplayName(item), FontSize=10, MaxWidth=slot-2,
                     TextTrimming=TextTrimming.CharacterEllipsis, TextAlignment=TextAlignment.Center, Margin=new Thickness(0,6,0,0), IsHitTestVisible=false });
-                v.Button=PlainButton(stack,item.Name); v.Button.Width=slot; v.Button.Height=effectiveSize+8+(Store.Settings.ShowLabels?21:0);
+                v.Button=PlainButton(stack,L10n.DisplayName(item)); v.Button.Width=slot; v.Button.Height=effectiveSize+8+(Store.Settings.ShowLabels?21:0);
                 v.Button.RenderTransform=v.Shift;
                 v.Button.VerticalAlignment=VerticalAlignment.Bottom;
                 v.Button.ContextMenu=BuildItemMenu(item);
@@ -258,7 +273,7 @@ namespace Polka {
                 };
                 v.Button.PreviewMouseLeftButtonUp += delegate { if(!internalDrag) { v.Pressing=false; pressed=null; StartRendering(); } };
                 v.Button.LostMouseCapture += delegate { if(!internalDrag) { v.Pressing=false; if(pressed==v) pressed=null; StartRendering(); } };
-                v.Button.Click += delegate { if(internalDrag || endingDrag) return; v.Pressing=false; pressed=null; Bounce(v); try { Native.Launch(v.Item); } catch(Exception ex) { Toast("Не удалось открыть: "+ex.Message); } };
+                v.Button.Click += delegate { if(internalDrag || endingDrag) return; v.Pressing=false; pressed=null; Bounce(v); try { Native.Launch(v.Item); } catch(Exception ex) { Toast(L10n.T("OpenFailed")+ex.Message); } };
                 if(ready && !previousIds.Contains(item.Id)) {
                     v.SizeMotion.Reset(.72); v.AlphaMotion.Reset(0); v.ShiftMotion.Reset(8); v.AlphaMotion.Target=1; v.ShiftMotion.Target=0;
                     v.Scale.ScaleX=v.Scale.ScaleY=.72; v.Button.Opacity=0; v.Shift.X=8;
@@ -273,7 +288,7 @@ namespace Polka {
                 Width=glyphSize, Height=glyphSize, Stretch=Stretch.Uniform, StrokeThickness=1.7,
                 StrokeStartLineCap=PenLineCap.Round, StrokeEndLineCap=PenLineCap.Round,
                 Stroke=new SolidColorBrush(Color.FromRgb(184,198,224)), IsHitTestVisible=false };
-            var plus=PlainButton(plusGlyph,"Добавить ярлыки и открыть настройки");
+            var plus=PlainButton(plusGlyph,L10n.T("AddAndSettings"));
             double available=Width-root.Margin.Left-root.Margin.Right-glass.BorderThickness.Left-glass.BorderThickness.Right-strip.Margin.Left-strip.Margin.Right;
             plus.Width=Math.Max(26,available-handle.Width-iconAreaWidth-divider.Width-divider.Margin.Left-divider.Margin.Right);
             plus.Height=effectiveSize+8; plus.VerticalAlignment=VerticalAlignment.Center;
@@ -517,7 +532,7 @@ namespace Polka {
                 catch(Exception ex) { errors.Add(ex.Message); }
             }
             added=Store.Settings.Items.Count-before; ApplySettings(); SaveQuietly();
-            Toast(errors.Count>0 ? String.Join(" · ",errors.Distinct().Take(2)) : added>0 ? "Добавлено: "+added+" · ярлыков "+Store.Settings.Items.Count+" / 30" : "Этот ярлык уже в панели");
+            Toast(errors.Count>0 ? String.Join(" · ",errors.Distinct().Take(2)) : added>0 ? L10n.T("AddedCount",added,Store.Settings.Items.Count) : L10n.T("AlreadyAdded"));
             if(Store.Settings.MoveDesktopShortcuts && Store.Settings.Items.Count(x=>x.PendingPublicMove)>pendingBefore) MovePublicShortcuts();
         }
 
@@ -534,27 +549,28 @@ namespace Polka {
         }
         ContextMenu BuildDockMenu() {
             var menu=NewMenu();
-            menu.Items.Add(Menu("Добавить ярлыки или файлы…",PickFiles));
-            menu.Items.Add(Menu("Добавить папку…",PickFolder));
-            menu.Items.Add(Menu("Этот компьютер",delegate { AddPaths(new[]{"shell:MyComputerFolder"}); }));
-            menu.Items.Add(Menu("Корзина",delegate { AddPaths(new[]{"shell:RecycleBinFolder"}); }));
+            menu.Items.Add(Menu(L10n.T("AddFiles"),PickFiles));
+            menu.Items.Add(Menu(L10n.T("AddFolder"),PickFolder));
+            menu.Items.Add(Menu(L10n.T("Computer"),delegate { AddPaths(new[]{"shell:MyComputerFolder"}); }));
+            menu.Items.Add(Menu(L10n.T("Trash"),delegate { AddPaths(new[]{"shell:RecycleBinFolder"}); }));
             int pending=Store.Settings.Items.Count(x=>x.PendingPublicMove);
-            if(pending>0) menu.Items.Add(Menu("Перенести общие ярлыки в панель ("+pending+")…",delegate { MovePublicShortcuts(); }));
+            if(pending>0) menu.Items.Add(Menu(L10n.T("MoveSharedCount",pending),delegate { MovePublicShortcuts(); }));
             menu.Items.Add(MenuDivider());
-            menu.Items.Add(Menu("⚙  Настройки",ShowSettings));
-            menu.Items.Add(Menu("Вниз по центру",CenterBottom));
+            menu.Items.Add(Menu(L10n.T("SettingsMenu"),ShowSettings));
+            menu.Items.Add(BuildLanguageMenu());
+            menu.Items.Add(Menu(L10n.T("CenterMenu"),CenterBottom));
             menu.Items.Add(MenuDivider());
-            menu.Items.Add(Menu("Выход",Exit)); return menu;
+            menu.Items.Add(Menu(L10n.T("Exit"),Exit)); return menu;
         }
         ContextMenu BuildItemMenu(DockItem item) {
             var menu=NewMenu();
-            menu.Items.Add(Menu("Открыть",delegate { try { Native.Launch(item); } catch(Exception ex) { Toast(ex.Message); } }));
-            if(!item.Path.StartsWith("shell:",StringComparison.OrdinalIgnoreCase)) menu.Items.Add(Menu("Показать в папке",delegate { try { Native.Reveal(item); } catch(Exception ex) { Toast(ex.Message); } }));
-            menu.Items.Add(Menu("Переименовать…",delegate {
-                string name=AskName(item.Name); if(!String.IsNullOrWhiteSpace(name)) { item.Name=name.Trim(); SaveQuietly(); ApplySettings(); }
+            menu.Items.Add(Menu(L10n.T("Open"),delegate { try { Native.Launch(item); } catch(Exception ex) { Toast(ex.Message); } }));
+            if(!item.Path.StartsWith("shell:",StringComparison.OrdinalIgnoreCase)) menu.Items.Add(Menu(L10n.T("Reveal"),delegate { try { Native.Reveal(item); } catch(Exception ex) { Toast(ex.Message); } }));
+            menu.Items.Add(Menu(L10n.T("Rename"),delegate {
+                string name=AskName(L10n.DisplayName(item)); if(!String.IsNullOrWhiteSpace(name)) { item.Name=name.Trim(); item.UserNamed=true; SaveQuietly(); ApplySettings(); }
             }));
             menu.Items.Add(MenuDivider());
-            menu.Items.Add(Menu(item.ManagedShortcut ? "Убрать и вернуть ярлык на рабочий стол" : "Убрать из панели",delegate { RemoveItem(item); })); return menu;
+            menu.Items.Add(Menu(item.ManagedShortcut ? L10n.T("RemoveRestore") : L10n.T("Remove"),delegate { RemoveItem(item); })); return menu;
         }
         async void RemoveItem(DockItem item) {
             try {
@@ -563,16 +579,16 @@ namespace Polka {
                     item=Store.Settings.Items.FirstOrDefault(x=>x.Id==item.Id);
                     if(item==null) return;
                 }
-                Store.Remove(item); ApplySettings(); Toast(String.IsNullOrEmpty(Store.LastNotice)?"Ярлык убран из панели":Store.LastNotice);
+                Store.Remove(item); ApplySettings(); Toast(String.IsNullOrEmpty(Store.LastNotice)?L10n.T("Removed"):Store.LastNotice);
             } catch(Exception ex) { Toast(ex.Message); }
         }
         async void MovePublicShortcuts() {
-            if(await RunPublicHelper("--public-move",null)) Toast("Общие ярлыки перенесены с рабочего стола в панель");
+            if(await RunPublicHelper("--public-move",null)) Toast(L10n.T("SharedMoved"));
         }
         async Task<bool> RunPublicHelper(string operation,string itemId) {
             if(helperRunning) return false;
             try { Store.Settings.Left=Left; Store.Settings.Top=Top; Store.Save(); }
-            catch(Exception ex) { Toast("Не удалось сохранить панель: "+ex.Message); return false; }
+            catch(Exception ex) { Toast(L10n.T("SaveDockFailed")+ex.Message); return false; }
             helperRunning=true; IsEnabled=false;
             if(settingsWindow!=null) settingsWindow.IsEnabled=false;
             string data=Store.DataDirectory;
@@ -584,31 +600,31 @@ namespace Polka {
                     using(var process=System.Diagnostics.Process.Start(info)) { process.WaitForExit(); return process.ExitCode; }
                 });
                 Store=new Store(data); ApplySettings();
-                if(code!=0) { Toast("Действие завершено не полностью. Сохранённые копии остались в панели."); return false; }
+                if(code!=0) { Toast(L10n.T("Incomplete")); return false; }
                 return true;
             } catch(System.ComponentModel.Win32Exception ex) {
-                Toast(ex.NativeErrorCode==1223 ? "Действие отменено. Сохранённые копии остались в панели." : ex.Message); return false;
+                Toast(ex.NativeErrorCode==1223 ? L10n.T("Cancelled") : ex.Message); return false;
             } finally {
                 helperRunning=false;
                 IsEnabled=true; if(settingsWindow!=null) settingsWindow.IsEnabled=true;
             }
         }
         string AskName(string current) {
-            var dialog=new Window { Title="Название ярлыка", Width=380, Height=165, ResizeMode=ResizeMode.NoResize, WindowStartupLocation=WindowStartupLocation.CenterOwner, Owner=this, Background=new SolidColorBrush(Color.FromRgb(30,34,45)), Foreground=Brushes.White, ShowInTaskbar=false };
+            var dialog=new Window { Title=L10n.T("ShortcutName"), Width=380, Height=165, ResizeMode=ResizeMode.NoResize, WindowStartupLocation=WindowStartupLocation.CenterOwner, Owner=this, Background=new SolidColorBrush(Color.FromRgb(30,34,45)), Foreground=Brushes.White, ShowInTaskbar=false };
             var layout=new StackPanel { Margin=new Thickness(20) }; var box=new TextBox { Text=current, FontSize=15, Margin=new Thickness(0,0,0,15), MaxLength=80 };
-            var ok=new Button { Content="Сохранить", Height=31, IsDefault=true }; ok.Click+=delegate { dialog.DialogResult=true; };
+            var ok=new Button { Content=L10n.T("Save"), Height=31, IsDefault=true }; ok.Click+=delegate { dialog.DialogResult=true; };
             layout.Children.Add(box); layout.Children.Add(ok); dialog.Content=layout; dialog.Loaded+=delegate { box.Focus(); box.SelectAll(); };
             return dialog.ShowDialog()==true?box.Text:null;
         }
         internal void PickFiles() {
             if(helperRunning) return;
-            var dialog=new Microsoft.Win32.OpenFileDialog { Title="Добавить в Yarnelo", Multiselect=true, CheckFileExists=true,
-                Filter="Ярлыки и программы|*.lnk;*.url;*.exe|Все файлы|*.*", DereferenceLinks=false };
+            var dialog=new Microsoft.Win32.OpenFileDialog { Title=L10n.T("AddToYarnelo"), Multiselect=true, CheckFileExists=true,
+                Filter=L10n.T("FileFilter"), DereferenceLinks=false };
             if(dialog.ShowDialog(this)==true) AddPaths(dialog.FileNames);
         }
         void PickFolder() {
             if(helperRunning) return;
-            using(var dialog=new Forms.FolderBrowserDialog { Description="Выберите папку для панели. Сама папка останется на месте.", ShowNewFolderButton=false }) {
+            using(var dialog=new Forms.FolderBrowserDialog { Description=L10n.T("FolderPrompt"), ShowNewFolderButton=false }) {
                 if(dialog.ShowDialog()==Forms.DialogResult.OK) AddPaths(new[]{dialog.SelectedPath});
             }
         }
@@ -630,7 +646,7 @@ namespace Polka {
         internal void SaveQuietly() {
             if(helperRunning) return;
             if(ready) { Store.Settings.Left=Left; Store.Settings.Top=Top; }
-            try { Store.Save(); } catch(Exception ex) { Toast("Не удалось сохранить настройки: "+ex.Message); }
+            try { Store.Save(); } catch(Exception ex) { Toast(L10n.T("SaveSettingsFailed")+ex.Message); }
         }
         internal void Toast(string text) { notice.Text=text; notice.Visibility=Visibility.Visible; noticeTimer.Stop(); noticeTimer.Start(); }
         internal void ShowSettings() {
@@ -640,15 +656,66 @@ namespace Polka {
             settingsWindow.Closed+=delegate { settingsWindow=null; SaveQuietly(); };
             settingsWindow.Show(); settingsWindow.Activate();
         }
+        internal void SetLanguage(string language) {
+            if(helperRunning) return;
+            string normalized=L10n.Normalize(language);
+            string previous=Store.Settings.Language;
+            Store.Settings.Language=normalized;
+            // Save first so the interface never claims a preference that was
+            // lost on disk. Restore the current checkmarks on a failed save.
+            try { Store.Save(); }
+            catch(Exception ex) {
+                Store.Settings.Language=previous;
+                L10n.SetLanguage(previous);
+                RefreshLanguageUi();
+                Toast(L10n.T("SaveSettingsFailed")+ex.Message);
+                return;
+            }
+            L10n.SetLanguage(normalized);
+            RefreshLanguageUi();
+        }
+        void RefreshLanguageUi() {
+            // An open popup retains old strings, so close it before replacing menus.
+            foreach(var menu in openMenus.ToArray()) menu.IsOpen=false;
+            notice.Visibility=Visibility.Collapsed;
+            Title=L10n.T("DockTitle");
+            ApplySettings();
+            if(tray!=null) RefreshTrayMenu();
+            if(settingsWindow!=null) settingsWindow.RefreshLanguage();
+        }
+        MenuItem BuildLanguageMenu() {
+            var languageMenu=new MenuItem { Header=L10n.T("Language"), Foreground=Brushes.White, Background=Brushes.Transparent };
+            foreach(string code in new[]{"en","ru"}) {
+                string choice=code;
+                var item=Menu(code=="en"?"English":"Русский",delegate { SetLanguage(choice); });
+                item.IsCheckable=true; item.IsChecked=Store.Settings.Language==code;
+                languageMenu.Items.Add(item);
+            }
+            return languageMenu;
+        }
         void ShowDock() { Show(); WindowState=WindowState.Normal; if(host==null || host.ShowRequested()) Activate(); }
         void InitTray() {
-            tray=new Forms.NotifyIcon { Text="Yarnelo — панель ярлыков", Visible=true };
+            tray=new Forms.NotifyIcon { Text=L10n.T("DockTitle"), Visible=true };
             try { tray.Icon=System.Drawing.Icon.ExtractAssociatedIcon(Native.ExePath); } catch { tray.Icon=System.Drawing.SystemIcons.Application; }
+            RefreshTrayMenu();
+            tray.DoubleClick+=delegate { Dispatcher.BeginInvoke(new Action(ShowDock)); };
+        }
+        void RefreshTrayMenu() {
+            var previous=tray.ContextMenuStrip;
             var menu=new Forms.ContextMenuStrip();
-            menu.Items.Add("Показать панель",null,delegate { Dispatcher.BeginInvoke(new Action(ShowDock)); });
-            menu.Items.Add("Настройки",null,delegate { Dispatcher.BeginInvoke(new Action(ShowSettings)); });
-            menu.Items.Add("Выход",null,delegate { Dispatcher.BeginInvoke(new Action(Exit)); });
-            tray.ContextMenuStrip=menu; tray.DoubleClick+=delegate { Dispatcher.BeginInvoke(new Action(ShowDock)); };
+            menu.Items.Add(L10n.T("ShowDock"),null,delegate { Dispatcher.BeginInvoke(new Action(ShowDock)); });
+            menu.Items.Add(L10n.T("Settings"),null,delegate { Dispatcher.BeginInvoke(new Action(ShowSettings)); });
+            var languageMenu=new Forms.ToolStripMenuItem(L10n.T("Language"));
+            foreach(string code in new[]{"en","ru"}) {
+                string choice=code;
+                var item=new Forms.ToolStripMenuItem(code=="en"?"English":"Русский") { Checked=Store.Settings.Language==code };
+                item.Click+=delegate { Dispatcher.BeginInvoke(new Action(delegate { SetLanguage(choice); })); };
+                languageMenu.DropDownItems.Add(item);
+            }
+            menu.Items.Add(languageMenu);
+            menu.Items.Add(L10n.T("Exit"),null,delegate { Dispatcher.BeginInvoke(new Action(Exit)); });
+            tray.Text=L10n.T("DockTitle"); tray.ContextMenuStrip=menu;
+            if(previous!=null) previous.Dispose();
         }
         void Exit() { if(helperRunning) return; exiting=true; SaveQuietly(); if(settingsWindow!=null) settingsWindow.Close(); Close(); }
     }

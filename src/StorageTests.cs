@@ -35,6 +35,9 @@ internal static class StorageTests
 
     private static void Main(string[] args)
     {
+        // Original regression fixtures deliberately exercise Russian recovery names.
+        System.Threading.Thread.CurrentThread.CurrentUICulture = System.Globalization.CultureInfo.GetCultureInfo("ru-RU");
+        L10n.SetLanguage("ru");
         if (args.Length == 2 && args[0] == "--reject-reparse-fixture")
         {
             bool rejectedPath = false;
@@ -449,6 +452,64 @@ internal static class StorageTests
         }
         else Console.WriteLine("SKIP: native hardlink configuration fixture unavailable (Win32 " + Marshal.GetLastWin32Error() + ").");
 
-        Console.WriteLine("PASS: " + assertions.ToString() + " storage assertions. Test data: " + root);
+        LocalizationStorage();
+        Console.WriteLine("PASS: " + assertions.ToString() + " storage and localization assertions. Test data: " + root);
+    }
+    private static void LocalizationStorage()
+    {
+        var originalCulture=System.Threading.Thread.CurrentThread.CurrentUICulture;
+        try {
+            System.Threading.Thread.CurrentThread.CurrentUICulture=System.Globalization.CultureInfo.GetCultureInfo("en-US");
+            Check(new DockSettings().Language=="en", "English OS culture selects English for a fresh profile");
+            System.Threading.Thread.CurrentThread.CurrentUICulture=System.Globalization.CultureInfo.GetCultureInfo("ru-RU");
+            Check(new DockSettings().Language=="ru", "Russian OS culture selects Russian for a fresh profile");
+            System.Threading.Thread.CurrentThread.CurrentUICulture=System.Globalization.CultureInfo.GetCultureInfo("de-DE");
+            Check(new DockSettings().Language=="en" && L10n.Normalize("invalid")=="en", "unsupported language safely falls back to English");
+            string desktop,data;
+            Store store=NewStore("localization",out desktop,out data);
+            var computer=store.Add("shell:MyComputerFolder");
+            var trash=store.Add("shell:RecycleBinFolder");
+            string original=Shortcut(desktop,"My game.lnk");
+            var managed=store.Add(original);
+            byte[] managedBytes=File.ReadAllBytes(managed.Path);
+            string id=managed.Id, savedPath=managed.Path;
+            store.Settings.Rows=3; store.Settings.Opacity=.44; store.Settings.Language="ru"; store.Save();
+            store=new Store(data,desktop);
+            Check(store.Settings.Language=="ru" && L10n.Language=="ru", "selected Russian overrides non-Russian OS on reload");
+            computer=store.Settings.Items[0]; trash=store.Settings.Items[1];
+            Check(L10n.DisplayName(computer)=="Этот компьютер" && L10n.DisplayName(trash)=="Корзина", "built-in labels follow selected Russian");
+            string originalComputerName=computer.Name;
+            store.Settings.Language="en"; L10n.SetLanguage("en");
+            Check(L10n.DisplayName(computer)=="This PC" && computer.Name==originalComputerName, "changing language translates display without rewriting stored title");
+            computer.Name="Игровой ПК"; computer.UserNamed=true;
+            trash.Name="Recycle Bin"; trash.UserNamed=true;
+            store.Save(); store=new Store(data,desktop);
+            Check(store.Settings.Language=="en" && L10n.Language=="en", "selected English persists");
+            L10n.SetLanguage("ru");
+            Check(L10n.DisplayName(store.Settings.Items[0])=="Игровой ПК" && L10n.DisplayName(store.Settings.Items[1])=="Recycle Bin", "explicit custom names survive language changes, including default-looking names");
+            managed=store.Settings.Items[2];
+            Check(managed.Id==id && managed.Path==savedPath && managed.ManagedShortcut && !File.Exists(original) && managedBytes.SequenceEqual(File.ReadAllBytes(savedPath)), "language changes preserve moved shortcut identity and exact bytes");
+            Check(store.Settings.Rows==3 && Math.Abs(store.Settings.Opacity-.44)<.0001, "language changes preserve existing visual settings");
+            File.WriteAllText(Path.Combine(data,"settings.json"),"{\"Rows\":2,\"Items\":[{\"Id\":\"legacy\",\"Name\":\"My custom PC\",\"Path\":\"shell:MyComputerFolder\"}]}",new UTF8Encoding(false));
+            store=new Store(data,desktop);
+            Check(store.Settings.Language=="en" && store.Settings.Rows==2 && L10n.DisplayName(store.Settings.Items[0])=="My custom PC", "legacy profile gains OS language while preserving custom shell titles and layout");
+            System.Threading.Thread.CurrentThread.CurrentUICulture=System.Globalization.CultureInfo.GetCultureInfo("ru-RU");
+            store=NewStore("localized-backup-recovery",out desktop,out data);
+            store.Settings.Language="en"; store.Save(); store.Save();
+            File.WriteAllText(Path.Combine(data,"settings.json"),"{invalid-main");
+            L10n.SetLanguage("ru");
+            store=new Store(data,desktop);
+            Check(store.Settings.Language=="en" && store.LastNotice.StartsWith("Settings were restored from a backup.",StringComparison.Ordinal), "backup recovery notice uses saved English language on Russian OS before UI startup");
+            foreach(string code in new[]{"ru","en"}) {
+                L10n.SetLanguage(code);
+                foreach(string key in L10n.Keys) Check(!String.IsNullOrWhiteSpace(L10n.T(key,1,2)), "complete and format-valid "+code+" translation: "+key);
+            }
+            bool unknownRejected=false;
+            try { L10n.T("missing-test-key"); } catch(ArgumentException) { unknownRejected=true; }
+            Check(unknownRejected,"missing translation keys fail clearly during tests");
+        } finally {
+            System.Threading.Thread.CurrentThread.CurrentUICulture=originalCulture;
+            L10n.SetLanguage("ru");
+        }
     }
 }

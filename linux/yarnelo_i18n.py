@@ -1,0 +1,173 @@
+"""English/Russian application text, independent of Qt and saved user data."""
+
+from __future__ import annotations
+
+import locale
+import os
+
+LANGUAGES = ("auto", "en", "ru")
+
+TEXT = {
+    "en": {
+        "app_description": "Yarnelo — desktop shortcut dock for Linux",
+        "help_version": "show the application version and exit",
+        "help_language": "interface language (auto follows the system language)",
+        "help_smoke": "render offscreen without reading or modifying user settings",
+        "help_smoke_output": "optional PNG output for --smoke-test",
+        "smoke_requires": "--smoke-output requires --smoke-test",
+        "add_shortcuts": "Add shortcuts",
+        "trash": "Trash",
+        "computer": "Computer",
+        "settings_title": "Yarnelo — Settings",
+        "dock_title": "Yarnelo — Desktop dock",
+        "show_labels": "Show labels",
+        "row_count": "Number of rows",
+        "background_opacity": "Background opacity",
+        "icon_size": "Icon size",
+        "hover_zoom": "Hover magnification",
+        "platform_note": "On X11 the dock stays below ordinary windows.\nOn Wayland its placement depends on your desktop environment.",
+        "ok": "OK",
+        "cancel": "Cancel",
+        "show_dock": "Show dock",
+        "settings": "Settings…",
+        "quit": "Quit",
+        "save_failed": "Could not save settings.\n{error}",
+        "add_files_title": "Add shortcuts and files",
+        "all_files": "All files (*)",
+        "add_folder_title": "Add folder",
+        "command_missing": "System command {program} was not found. See the Linux dependency installation instructions.",
+        "open_failed": "Could not open the shortcut.\n{error}",
+        "command_failed": "The system command failed.",
+        "launch_failed": "Could not start {program}: {error}",
+        "target_missing": "The file or folder could no longer be found:\n{path}\nYou can remove this shortcut using its right-click menu.",
+        "open": "Open",
+        "open_parent": "Open shortcut folder",
+        "remove": "Remove from dock",
+        "add": "Add",
+        "files": "Shortcuts and files…",
+        "folder": "Folder…",
+        "bottom_center": "Center at bottom",
+        "monitor": "Monitor",
+        "language": "Language",
+        "language_auto": "System default",
+        "language_en": "English",
+        "language_ru": "Русский",
+        "instance_running": "Another instance of Yarnelo is already starting or running.",
+        "instance_failed": "Could not start a single instance:\n{error}",
+        "settings_recovered": "{error}\nThe dock started with default settings. When you save, the original file will be preserved next to it as settings.invalid-….json.",
+        "invalid_kind": "Unknown shortcut type.",
+        "path_missing": "File or folder not found: {path}",
+        "settings_object": "Settings must be a JSON object.",
+        "settings_schema": "This settings format is not supported by this version.",
+        "invalid_value": "Invalid value: {name}",
+        "invalid_coordinate": "Invalid coordinate: {name}",
+        "item_limit": "The dock can contain at most 30 shortcuts.",
+        "invalid_item_record": "Invalid shortcut entry.",
+        "invalid_item_id": "Invalid or duplicate shortcut ID.",
+        "invalid_item": "Invalid shortcut.",
+        "absolute_path_required": "A shortcut requires an absolute path.",
+        "duplicate_item": "The settings contain a duplicate shortcut.",
+        "dock_full": "The dock already has 30 shortcuts. Remove one to add another.",
+        "settings_too_large": "The settings file is too large.",
+        "settings_read_failed": "Could not read settings: {error}",
+        "desktop_too_large": "The .desktop file is too large.",
+        "desktop_type": "Only Application-type .desktop entries are supported.",
+        "desktop_no_exec": "The .desktop entry does not specify an application to launch.",
+        "desktop_read_failed": "Could not read the .desktop file: {error}",
+        "invalid_layout": "Invalid dock size.",
+        "invalid_move": "Invalid shortcut move.",
+    },
+    "ru": {
+        "app_description": "Yarnelo — панель ярлыков для Linux",
+        "help_version": "показать версию приложения и выйти",
+        "help_language": "язык интерфейса (auto — язык системы)",
+        "help_smoke": "проверить отрисовку без чтения и изменения пользовательских настроек",
+        "help_smoke_output": "сохранить PNG при проверке --smoke-test",
+        "smoke_requires": "--smoke-output требует --smoke-test",
+        "add_shortcuts": "Добавить ярлыки",
+        "trash": "Корзина",
+        "computer": "Компьютер",
+        "settings_title": "Yarnelo — настройки",
+        "dock_title": "Yarnelo — панель ярлыков",
+        "show_labels": "Показывать подписи",
+        "row_count": "Количество рядов",
+        "background_opacity": "Непрозрачность фона",
+        "icon_size": "Размер значков",
+        "hover_zoom": "Увеличение при наведении",
+        "platform_note": "На X11 панель располагается под обычными окнами.\nНа Wayland положение зависит от вашего окружения.",
+        "ok": "ОК",
+        "cancel": "Отмена",
+        "show_dock": "Показать панель",
+        "settings": "Настройки…",
+        "quit": "Выход",
+        "save_failed": "Не удалось сохранить настройки.\n{error}",
+        "add_files_title": "Добавить ярлыки и файлы",
+        "all_files": "Все файлы (*)",
+        "add_folder_title": "Добавить папку",
+        "command_missing": "Не найдена системная команда {program}. См. инструкцию по установке зависимостей Linux.",
+        "open_failed": "Не удалось открыть ярлык.\n{error}",
+        "command_failed": "Системная команда завершилась с ошибкой.",
+        "launch_failed": "Не удалось запустить {program}: {error}",
+        "target_missing": "Файл или папка больше не найдены:\n{path}\nЯрлык можно убрать через меню правой кнопкой.",
+        "open": "Открыть",
+        "open_parent": "Открыть папку ярлыка",
+        "remove": "Убрать с панели",
+        "add": "Добавить",
+        "files": "Ярлыки и файлы…",
+        "folder": "Папку…",
+        "bottom_center": "Вниз по центру",
+        "monitor": "Монитор",
+        "language": "Язык",
+        "language_auto": "Как в системе",
+        "language_en": "English",
+        "language_ru": "Русский",
+        "instance_running": "Другой экземпляр Yarnelo уже запускается или работает.",
+        "instance_failed": "Не удалось запустить единственный экземпляр:\n{error}",
+        "settings_recovered": "{error}\nПанель запущена с начальными настройками. При сохранении исходный файл будет сохранён рядом как settings.invalid-….json.",
+        "invalid_kind": "Неизвестный тип ярлыка.",
+        "path_missing": "Файл или папка не найдены: {path}",
+        "settings_object": "Настройки должны быть объектом JSON.",
+        "settings_schema": "Формат настроек этой версии не поддерживается.",
+        "invalid_value": "Некорректное значение: {name}",
+        "invalid_coordinate": "Некорректная координата: {name}",
+        "item_limit": "В панели может быть не больше 30 ярлыков.",
+        "invalid_item_record": "Некорректная запись ярлыка.",
+        "invalid_item_id": "Некорректный или повторяющийся идентификатор ярлыка.",
+        "invalid_item": "Некорректный ярлык.",
+        "absolute_path_required": "Для ярлыка нужен абсолютный путь.",
+        "duplicate_item": "В настройках есть повторяющийся ярлык.",
+        "dock_full": "В панели уже 30 ярлыков. Удалите один, чтобы добавить новый.",
+        "settings_too_large": "Файл настроек слишком большой.",
+        "settings_read_failed": "Не удалось прочитать настройки: {error}",
+        "desktop_too_large": "Файл .desktop слишком большой.",
+        "desktop_type": "Поддерживаются .desktop типа Application.",
+        "desktop_no_exec": "В .desktop не указано приложение для запуска.",
+        "desktop_read_failed": "Не удалось прочитать .desktop: {error}",
+        "invalid_layout": "Некорректный размер панели.",
+        "invalid_move": "Некорректное перемещение ярлыка.",
+    },
+}
+
+
+def system_language() -> str:
+    # Honor the desktop's message locale; LC_ALL overrides LC_MESSAGES and LANG.
+    name = next((os.environ[key] for key in ("LC_ALL", "LC_MESSAGES", "LANG") if os.environ.get(key)), "")
+    if not name:
+        try:
+            name = locale.getlocale()[0] or ""
+        except (ValueError, TypeError):
+            name = ""
+    return "ru" if name.replace("-", "_").split("_")[0].split(".")[0].lower() == "ru" else "en"
+
+
+def resolve_language(language: str = "auto") -> str:
+    return language if language in ("en", "ru") else system_language()
+
+
+def text(key: str, language: str = "auto", **values) -> str:
+    return TEXT[resolve_language(language)][key].format(**values)
+
+
+def error_text(error: Exception, language: str = "auto") -> str:
+    localize = getattr(error, "localized", None)
+    return localize(language) if localize else str(error)

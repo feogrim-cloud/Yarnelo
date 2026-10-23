@@ -1,35 +1,38 @@
-# Установка Yarnelo
+# Install Yarnelo
 
-Готовые файлы находятся в разделе **Assets** на [странице релизов](https://github.com/feogrim-cloud/Yarnelo/releases). Кнопки GitHub **Source code** скачивают исходники; для обычной установки выберите файл из таблицы.
+**English** · [Русский](INSTALL.ru.md)
 
-## Какой файл скачать
+Download ready-made files from **Assets** on the [Releases page](https://github.com/feogrim-cloud/Yarnelo/releases). GitHub's **Source code** links download the source; choose a package below to install the app.
 
-| Ваша система | Рекомендуемый файл | Другой вариант |
+## Choose a download
+
+| Your system | Recommended file | Alternative |
 | --- | --- | --- |
-| Windows 10 / 11, Intel или AMD, 64 бита | `Yarnelo-Windows-x64-Setup.exe` | `Yarnelo-Windows-x64-Portable.zip` |
-| Windows 10, 32 бита | `Yarnelo-Windows-x86-Setup.exe` | `Yarnelo-Windows-x86-Portable.zip` |
-| Ubuntu 22.04+, Debian 12+, Linux Mint 21+, x86_64 | `Yarnelo-Linux-amd64.deb` | AppImage или TAR.GZ |
-| Fedora, x86_64 | `Yarnelo-Linux-x86_64.rpm` | AppImage или TAR.GZ |
-| openSUSE с glibc 2.35+, x86_64 | `Yarnelo-Linux-x86_64.rpm` | AppImage или TAR.GZ; отдельная проверка openSUSE пока не выполнена |
-| Arch Linux и другие Linux с glibc 2.35+, x86_64 | `Yarnelo-Linux-x86_64.AppImage` | `Yarnelo-Linux-x86_64.tar.gz` |
+| Windows 10 / 11, Intel or AMD, 64-bit | `Yarnelo-Windows-x64-Setup.exe` | `Yarnelo-Windows-x64-Portable.zip` |
+| Windows 10, 32-bit | `Yarnelo-Windows-x86-Setup.exe` | `Yarnelo-Windows-x86-Portable.zip` |
+| Ubuntu 22.04+, Debian 12+, Linux Mint 21+, x86_64 | `Yarnelo-Linux-amd64.deb` | AppImage or TAR.GZ |
+| Fedora, x86_64 | `Yarnelo-Linux-x86_64.rpm` | AppImage or TAR.GZ |
+| openSUSE with glibc 2.35+, x86_64 | `Yarnelo-Linux-x86_64.rpm` | AppImage or TAR.GZ; openSUSE installation has not been separately checked |
+| Arch and other Linux distributions with glibc 2.35+, x86_64 | `Yarnelo-Linux-x86_64.AppImage` | `Yarnelo-Linux-x86_64.tar.gz` |
 
-В Linux названия архитектур `amd64` и `x86_64` означают одну и ту же 64-битную архитектуру Intel/AMD. Бинарные сборки содержат Python и Qt: отдельно устанавливать их не нужно. Для Windows нужен .NET Framework 4.8 или 4.8.1; установщик проверит его наличие.
+On Linux, `amd64` and `x86_64` refer to the same 64-bit Intel/AMD architecture. Packages include Python and Qt. Windows requires .NET Framework 4.8 or 4.8.1; the installer checks for it.
 
-Windows 7 / 8.1, Windows ARM64, Linux ARM64, Alpine/musl и Ubuntu 20.04 не входят в заявленную совместимость. Linux-версия пока имеет статус **preview**: рекомендуется X11; в Wayland-сеансе используется XWayland. Особенности наложения окон описаны в [руководстве Linux](LINUX.md#совместимость-и-окружение).
+Windows 7 / 8.1, native Windows ARM64, Linux ARM64, 32-bit Linux, Alpine/musl and Ubuntu 20.04 are outside this release's compatibility scope. Linux is a **preview**: X11 is recommended; Wayland sessions require XWayland for ready-made packages. See [Linux compatibility](LINUX.md#compatibility-and-desktop-environment).
 
 ## Windows
 
-1. Запустите `Setup.exe` нужной разрядности и пройдите мастер. Права администратора не нужны.
-2. Откройте Yarnelo из меню «Пуск».
-3. Перетащите ярлыки на панель. Настройки открываются правой кнопкой по панели.
+1. Run the appropriate `Setup.exe` and follow the wizard. Administrator rights are not required.
+2. Open Yarnelo from the Start menu.
+3. Drop shortcuts on the dock. Right-click the dock for settings.
+4. Choose **Language → English / Русский** to change the interface language.
 
-Для переносной версии распакуйте **весь** ZIP в постоянную доступную для записи папку и запустите `Yarnelo.exe`.
+For the portable version, extract the **entire** ZIP to a permanent writable folder and run `Yarnelo.exe`.
 
-Обновление, автозапуск, хранение ярлыков и удаление: [подробная инструкция Windows](WINDOWS.ru.md).
+Updating, startup at sign-in, shortcut storage and removal: [Windows guide](WINDOWS.md).
 
 ## Linux
 
-В терминале перейдите в папку со скачанным файлом. Выполните подходящий вариант.
+In a terminal, open the folder containing the downloaded package and use the appropriate command.
 
 Ubuntu / Debian / Mint:
 
@@ -52,39 +55,41 @@ sudo zypper install ./Yarnelo-Linux-x86_64.rpm
 yarnelo
 ```
 
-AppImage без системной установки:
+AppImage, without system installation:
 
 ```bash
 chmod +x ./Yarnelo-Linux-x86_64.AppImage
 ./Yarnelo-Linux-x86_64.AppImage
 ```
 
-Если AppImage сообщает об отсутствии FUSE:
+If AppImage reports that FUSE is unavailable:
 
 ```bash
 APPIMAGE_EXTRACT_AND_RUN=1 ./Yarnelo-Linux-x86_64.AppImage
 ```
 
-Дистрибутивные зависимости, TAR.GZ, значок в меню приложений, обновление и удаление: [подробная инструкция Linux](LINUX.md).
+Right-click the dock → **Language / Язык** to choose **English / Русский**. The selection is saved. The first launch chooses Russian for a Russian system locale and English otherwise.
 
-## Проверка скачанных файлов
+Dependencies, TAR.GZ, application-menu entries, updates and removal: [Linux guide](LINUX.md).
 
-Скачайте `SHA256SUMS` из того же релиза в папку с пакетами. На Linux:
+## Verify downloaded files
+
+Download `SHA256SUMS` from the same release into the folder containing the packages. On Linux:
 
 ```bash
 sha256sum --check SHA256SUMS --ignore-missing
 ```
 
-Команда проверит скачанные файлы, перечисленные в списке; для них должно появиться `OK`. Проверяйте именно файлы одного релиза.
+Downloaded files listed in the manifest should report `OK`. Use files and checksums from the same release.
 
-На Windows в PowerShell:
+On Windows, in PowerShell:
 
 ```powershell
 Get-FileHash .\Yarnelo-Windows-x64-Setup.exe -Algorithm SHA256
 ```
 
-Сравните результат со строкой нужного файла в `SHA256SUMS` или с соседним файлом `.sha256`. Для x86 либо ZIP подставьте его имя. Windows-файлы пока не подписаны сертификатом разработчика.
+Compare the result with the matching filename in `SHA256SUMS` or its adjacent `.sha256` file. Substitute the x86 or ZIP filename when appropriate. Windows files are currently unsigned.
 
-## Лицензия
+## Rights
 
-Все права на собственный код и графику Yarnelo сохранены за автором. Сторонние библиотеки распространяются по своим лицензиям: см. [LICENSE](../LICENSE), `THIRD-PARTY-NOTICES.txt`, каталог `licenses` и `corresponding-sources.txt` внутри Linux-сборки.
+All rights to Yarnelo's own code and artwork are reserved. Third-party libraries retain their own licenses: see [LICENSE](../LICENSE), `THIRD-PARTY-NOTICES.txt`, the `licenses` directory and `corresponding-sources.txt` inside Linux packages.

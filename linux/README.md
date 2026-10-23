@@ -1,14 +1,16 @@
-# Yarnelo для Linux — preview
+# Yarnelo for Linux — preview
 
-Нативная панель на Qt 6. Внутри нет браузера или веб-сервера. Первая Linux-версия содержит до 30 ярлыков, 1–4 ряда, регулируемую непрозрачность фона, размер и увеличение значков, плавное наведение/нажатие и перестановку с анимацией соседей.
+[English app overview](../README.md) · [Описание на русском](../README.ru.md) · [English installation](../docs/LINUX.md) · [Установка на русском](../docs/LINUX.ru.md)
 
-## Запуск готовой сборки
+A native **Python 3.11 / PySide6 Essentials / Qt 6** dock, with no embedded browser or web server. It supports up to 30 shortcuts, one to four rows, adjustable background opacity, icon size and magnification, animated hover/click/rearrangement, and English/Russian menus and settings.
 
-Инструкции для дистрибутивов и установка ярлыка находятся в [общем руководстве Linux](../docs/LINUX.md). Архив нужно распаковать полностью: исполняемый файл `yarnelo` запускается вместе с соседней папкой `_internal`. Для готовой сборки Python отдельно не нужен.
+## Ready-made packages
 
-## Запуск из исходников
+Use the [Linux installation guide](../docs/LINUX.md) for distribution packages and portable launchers. The TAR.GZ must be extracted completely: `yarnelo` needs its adjacent `_internal` folder. Ready-made packages do not need a separately installed Python runtime.
 
-Нужен Python 3.11 или новее с доступным пакетом PySide6-Essentials для вашей архитектуры. Из корня репозитория:
+## Run from source
+
+Use Python 3.11 or newer with a PySide6-Essentials wheel available for your architecture. From the repository root:
 
 ```bash
 python3 -m venv .venv
@@ -17,34 +19,49 @@ python -m pip install -r linux/requirements.txt
 python linux/yarnelo.py
 ```
 
-Системные компоненты: рабочее графическое окружение, Qt/X11 или Wayland-библиотеки, `xdg-open`; для запуска `.desktop` — `gio` (обычно входит в GLib), для Корзины — файловый менеджер с поддержкой `trash:///`, часто с GVfs. Исполняемые файлы и пакеты для Windows на Linux не работают.
+System requirements include a graphical desktop, Qt/X11 or Wayland libraries, `xdg-open`, `gio` for `.desktop` launchers (usually part of GLib), and a file manager supporting `trash:///` for Trash, often through GVfs. Windows binaries do not run as Linux apps.
 
-## Использование и данные
+## Use and data
 
-- Перетащите `.desktop`, файл или папку из файлового менеджера, либо откройте меню кнопки **+**. Также доступны «Компьютер» (корень файловой системы) и Корзина.
-- Перетаскивание **только добавляет ссылку**. Yarnelo не удаляет и не перемещает исходные файлы. Чтобы освободить рабочий стол, перенесите оригиналы самостоятельно и заново укажите их постоянное расположение.
-- Перетащите значок внутри панели для перестановки. Отпускание за границами отменяет перестановку. Правой кнопкой по значку — открытие, папка ярлыка или удаление ссылки с панели.
-- Перетаскивайте панель за ручку слева или свободный фон. В меню можно выбрать монитор или вернуть панель вниз по центру. На Wayland ручное положение может ограничивать оконный менеджер.
-- Настройки: число рядов, непрозрачность **фона** (иконки сохраняют контраст), размер, увеличение, подписи. Если 30 значков в один ряд не помещаются, размер автоматически уменьшается до ширины монитора.
-- Настройки сохраняются в `$XDG_CONFIG_HOME/yarnelo/settings.json` или `~/.config/yarnelo/settings.json`. Запись атомарная; повреждённый исходный файл сохраняется рядом перед записью новых настроек. Windows-профиль автоматически не импортируется.
-- Один экземпляр на пользователя. Повторный запуск показывает текущую панель без переключения фокуса. Выход доступен через меню панели или области уведомлений, если окружение её поддерживает.
+- Drop a `.desktop` file, ordinary file or folder from the file manager, or use **+**. Computer opens the filesystem root; Trash uses the desktop file manager.
+- Drop operations **only add references**. Yarnelo never removes or moves original files. To clear the desktop, move originals yourself to a permanent folder, then add them from that location.
+- Drag an icon inside the dock to rearrange it. Releasing outside cancels the move. Right-click an icon to open it, reveal its folder or remove its reference.
+- Drag the left handle or unused background to move the dock. The menu can select a monitor or return it to the bottom center. Wayland window managers may restrict positioning.
+- Right-click → **Language / Язык → English / Русский** switches the interface without restarting and saves the choice. The initial default is Russian for a Russian locale, English otherwise.
+- Settings control rows, background opacity (icons keep their contrast), size, magnification and labels. The size shrinks automatically if 30 icons in a single row would not fit the monitor.
+- Settings are at `$XDG_CONFIG_HOME/yarnelo/settings.json` or `~/.config/yarnelo/settings.json`. Writes are atomic; corrupt original data is preserved beside a fresh profile. Windows profiles are not automatically imported.
+- One instance runs per user. Launching again shows the existing dock without taking focus. Exit through the dock or notification-area menu, where supported.
 
-## Ограничения preview
+## Preview limitations
 
-**Рекомендуется X11.** На X11 Yarnelo просит оконный менеджер держать панель ниже обычных окон; она не резервирует участок экрана. Прозрачность требует композитора. Нет режима «поверх всех окон», перехватов клавиатуры или мыши, вмешательства в игры.
+**X11 is recommended.** On X11, Yarnelo requests placement below ordinary windows and does not reserve screen space. Transparency requires compositing. The Linux preview has no “always on top” mode or keyboard/mouse hooks.
 
-**Wayland — best effort через XWayland.** Готовая сборка включает платформенный модуль X11 (`xcb`); на Wayland нужен XWayland. Позиционирование, нижний слой, показ поверх рабочего стола и область уведомлений зависят от окружения и композитора. При необходимости запускайте `QT_QPA_PLATFORM=xcb ./yarnelo`. Нативный Qt/Wayland доступен только при запуске из исходников с установленным платформенным модулем; в этом режиме панель работает как отдельное окно. Linux-preview не повторяет Windows-механизм определения перекрытия/полноэкранных игр; отсутствие помех каждому игровому режиму не заявлено. Если панель оказывается поверх игры, закройте её через меню.
+**Wayland is best effort through XWayland.** Ready-made packages include the X11 `xcb` platform plugin and need XWayland. Positioning, stacking above the desktop and notification-area support depend on the desktop/compositor. Use `QT_QPA_PLATFORM=xcb ./yarnelo` if needed. Native Qt/Wayland is available only when running from source with an installed platform plugin; the dock behaves as a separate window. The Linux preview does not reproduce Windows overlap/fullscreen-game detection or guarantee behavior in every game mode. Exit Yarnelo if a compositor puts it above a game.
 
-Иконки берутся из темы окружения и `Icon=` файла `.desktop`. Пустая тема может дать стандартные значки. Запуск `.desktop` выполняет системный `gio launch`: Yarnelo не разбирает и не исполняет `Exec=` через командную оболочку, но сам ярлык всё равно запускает указанное автором приложение. Добавляйте только знакомые ярлыки. `.lnk` и `.url` Windows не поддерживаются как Linux-приложения.
+Icons come from the desktop theme and each launcher's `Icon=` field. Sparse icon themes may show generic icons. `gio launch` handles launchers; Yarnelo does not interpret `Exec=` through a shell, but a launcher still runs its author's program. Add launchers you trust. Windows `.lnk` and `.url` files are not supported as Linux application launchers.
 
-## Проверка
+## Checks
 
 ```bash
 python -m unittest discover -s linux/tests -v
 python linux/yarnelo.py --version
 QT_QPA_PLATFORM=offscreen python linux/yarnelo.py --smoke-test
-# При необходимости сохранить изображение, не читая и не меняя профиль:
+# Optional image, without reading or modifying the user profile:
 QT_QPA_PLATFORM=offscreen python linux/yarnelo.py --smoke-test --smoke-output /tmp/yarnelo-smoke.png
 ```
 
-Smoke-тест создаёт Qt-приложение и рисует панель в памяти. Он не проверяет конкретный оконный менеджер, настоящий запуск приложений, игровое поведение или работу системной Корзины.
+The smoke test creates a Qt application and renders the dock in memory. It does not verify a particular window manager, real app launches, games or system Trash.
+
+## Build packages
+
+The supported binary build baseline is **Ubuntu 22.04 x86_64 / glibc 2.35**. The GitHub Actions workflow installs the pinned Python, PySide6, PyInstaller and fpm versions and fetches verified official AppImage tools. Refer to [the workflow](../.github/workflows/build.yml) for its system dependencies and exact build environment.
+
+With that environment prepared:
+
+```bash
+APPIMAGETOOL=/absolute/path/appimagetool-x86_64.AppImage \
+APPIMAGE_RUNTIME=/absolute/path/runtime-x86_64 \
+bash scripts/Package-Linux.sh --output dist --version "$(cat VERSION)" --smoke-test
+```
+
+The script uses **PyInstaller**, **appimagetool** and **fpm** to create TAR.GZ, AppImage, DEB and RPM packages. External tools fetched by `scripts/FetchReleaseAsset.py` are checked against the published SHA-256 digests. Builds include third-party notices, licenses and corresponding-source links. See the root [technology stack](../README.md#technology-stack) and [rights](../LICENSE).

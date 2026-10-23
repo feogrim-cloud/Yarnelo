@@ -9,7 +9,7 @@ die() { printf 'Package-Linux: %s\n' "$*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "Missing command: $1"; }
 repo=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 output="$repo/dist"
-version=1.4.0
+version=$(tr -d '\r\n' < "$repo/VERSION")
 smoke_test=false
 
 while (($#)); do
@@ -18,7 +18,7 @@ while (($#)); do
         --version) (($# >= 2)) || die '--version needs a version'; version=$2; shift 2 ;;
         --smoke-test) smoke_test=true; shift ;;
         -h|--help)
-            printf '%s\n' 'Usage: bash scripts/Package-Linux.sh [--output DIRECTORY] [--version 1.4.0] [--smoke-test]' \
+            printf '%s\n' 'Usage: bash scripts/Package-Linux.sh [--output DIRECTORY] [--version 1.5.0] [--smoke-test]' \
               'Requires Python + PyInstaller + linux/requirements.txt, fpm, dpkg-deb, rpmbuild,' \
               'desktop-file-validate, APPIMAGETOOL and APPIMAGE_RUNTIME (verified local files).'
             exit 0 ;;
@@ -65,7 +65,7 @@ done
 # distributions. Preserve the full upstream/Debian notice shipped by Ubuntu.
 [[ -f /usr/share/doc/libbz2-1.0/copyright ]] || die 'Missing copyright notice for the bundled libbz2-1.0 library.'
 install -m 644 /usr/share/doc/libbz2-1.0/copyright "$app/licenses/bzip2/copyright"
-for document in "$repo/docs/INSTALL.md" "$repo/linux/README.md"; do
+for document in "$repo/docs/INSTALL.md" "$repo/docs/INSTALL.ru.md" "$repo/docs/LINUX.md" "$repo/docs/LINUX.ru.md" "$repo/linux/README.md"; do
     [[ ! -f $document ]] || install -m 644 "$document" "$app/docs/$(basename -- "$document")"
 done
 

@@ -1,4 +1,20 @@
-# Изменения
+# Changelog / Изменения
+
+## 1.5.0 — 2026-10-23
+
+### English
+
+- English and Russian interface on Windows and Linux, with a saved language choice in the dock menu and immediate switching.
+- The first-launch language follows the system locale: Russian for a Russian locale, English otherwise; existing profiles remain compatible.
+- English default README and complete Russian counterpart, with single-row, multi-row and language-menu screenshots.
+- Documented Windows and Linux technology stacks, English/Russian installation guides and bilingual release notes.
+
+### Русский
+
+- Русский и английский интерфейс Windows и Linux; выбор в меню панели сохраняется и применяется без перезапуска.
+- При первом запуске русская локаль системы выбирает русский язык, остальные — английский; совместимость прежних профилей сохраняется.
+- Основной README на английском и полная русская версия со скриншотами одного ряда, нескольких рядов и меню языка.
+- Описание стека Windows и Linux, инструкции установки на двух языках и двуязычные заметки к выпуску.
 
 ## 1.4.0 — 2026-10-23
 

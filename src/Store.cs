@@ -47,6 +47,7 @@ namespace Polka
         [DataMember(Order = 10)] public bool LaunchAtLogin { get; set; }
         [DataMember(Order = 11)] public List<DockItem> Items { get; set; }
         [DataMember(Order = 12)] public int Rows { get; set; }
+        [DataMember(Order = 13)] public string Language { get; set; }
 
         public DockSettings() { SetDefaults(); }
 
@@ -66,6 +67,7 @@ namespace Polka
             ShowLabels = false;
             LaunchAtLogin = false;
             Rows = 1;
+            Language = L10n.Normalize(null);
             Items = new List<DockItem>();
         }
     }
@@ -87,6 +89,9 @@ namespace Polka
         internal bool PendingSourceDelete;
         [DataMember(Order = 7, EmitDefaultValue = false)]
         public bool PendingPublicMove { get; set; }
+        // A title deliberately entered by the user is never translated.
+        [DataMember(Order = 8, EmitDefaultValue = false)]
+        public bool UserNamed { get; set; }
     }
 
     public sealed class Store
@@ -135,6 +140,8 @@ namespace Polka
             }
             IsFirstRun = !File.Exists(settingsPath) && !File.Exists(backupPath);
             bool repair = Load();
+            Settings.Language = L10n.Normalize(Settings.Language);
+            L10n.SetLanguage(Settings.Language);
             repair = RecoverInterruptedImports() || repair;
             SanitizeSettings();
             if (repair)
@@ -143,7 +150,7 @@ namespace Polka
                 catch (Exception ex)
                 {
                     if (!IsFileError(ex)) throw;
-                    AddNotice("Настройки восстановлены в памяти, но пока не удалось сохранить их: " + ex.Message);
+                    AddNotice(L10n.T("RecoveredSaveFailed") + ex.Message);
                 }
             }
         }
@@ -186,20 +193,20 @@ namespace Polka
             });
             if (duplicate != null) return duplicate;
             if (Settings.Items.Count >= MaximumItems)
-                throw new InvalidOperationException("На панели уже 30 значков. Удалите один из них, чтобы добавить новый.");
+                throw new InvalidOperationException(L10n.T("DockFull"));
 
             bool isDirectory = false;
             if (shellPath == null)
             {
                 if (!File.Exists(source) && !Directory.Exists(source))
-                    throw new FileNotFoundException("Не удалось найти файл или папку для этого ярлыка.", source);
+                    throw new FileNotFoundException(L10n.T("TargetMissing"), source);
                 isDirectory = Directory.Exists(source);
             }
             DockItem added = new DockItem
             {
                 Id = Guid.NewGuid().ToString("N"),
-                Name = shellPath == "shell:MyComputerFolder" ? "Этот компьютер" :
-                    shellPath == "shell:RecycleBinFolder" ? "Корзина" :
+                Name = shellPath == "shell:MyComputerFolder" ? L10n.T("Computer") :
+                    shellPath == "shell:RecycleBinFolder" ? L10n.T("Trash") :
                     isDirectory ? new DirectoryInfo(source).Name : System.IO.Path.GetFileNameWithoutExtension(source),
                 Path = source,
                 OriginalPath = source,
@@ -219,7 +226,7 @@ namespace Polka
                     added.DesktopSourceMoved = Settings.MoveDesktopShortcuts && !publicShortcut;
                     added.PendingPublicMove = Settings.MoveDesktopShortcuts && publicShortcut;
                     if (added.PendingPublicMove)
-                        AddNotice("Это общий ярлык для всех пользователей. Его копия добавлена на панель; чтобы убрать оригинал с общего рабочего стола, выполните отдельное действие с правами администратора.");
+                        AddNotice(L10n.T("SharedCopyNotice"));
                 }
                 catch (Exception ex)
                 {
@@ -227,7 +234,7 @@ namespace Polka
                     // Referencing the original is a safe fallback if this location
                     // does not permit the app to create its managed copy.
                     TryDelete(imported);
-                    AddNotice("Ярлык добавлен, но остался на рабочем столе: не удалось сохранить его копию. " + ex.Message);
+                    AddNotice(L10n.T("ImportCopyFailed") + ex.Message);
                 }
             }
 
@@ -247,16 +254,16 @@ namespace Polka
                     // The imported bytes and the record needed to recover them
                     // are already durable before the source can be removed.
                     if (File.Exists(source) && !FilesEqual(source, added.Path))
-                        throw new IOException("Ярлык изменился во время добавления; его новый вариант сохранён на рабочем столе.");
+                        throw new IOException(L10n.T("ImportChanged"));
                     File.Delete(source);
-                    if (File.Exists(source)) throw new IOException("Исходный ярлык всё ещё существует.");
+                    if (File.Exists(source)) throw new IOException(L10n.T("SourceStillExists"));
                     added.DesktopSourceMoved = true;
                 }
                 catch (Exception ex)
                 {
                     if (!IsFileError(ex)) throw;
                     added.DesktopSourceMoved = false;
-                    AddNotice("Ярлык добавлен на панель как копия; убрать оригинал с рабочего стола не удалось. " + ex.Message);
+                    AddNotice(L10n.T("ImportRemoveFailed") + ex.Message);
                 }
                 added.PendingSourceDelete = false;
                 try { Save(); }
@@ -264,7 +271,7 @@ namespace Polka
                 {
                     if (!IsFileError(ex)) throw;
                     // The first saved record deliberately remains recoverable.
-                    AddNotice("Изменение добавлено, но его последний этап пока не удалось сохранить. Оно будет проверено при следующем запуске. " + ex.Message);
+                    AddNotice(L10n.T("FinalSavePending") + ex.Message);
                 }
             }
             return added;
@@ -289,7 +296,7 @@ namespace Polka
                 Guid parsed;
                 if (!Guid.TryParseExact(item.Id, "N", out parsed))
                 {
-                    AddNotice("Не удалось проверить идентификатор общего ярлыка: " + item.Name + ". Оригинал не изменён.");
+                    AddNotice(L10n.T("SharedIdFailed") + item.Name + L10n.T("OriginalUnchangedSuffix"));
                     continue;
                 }
                 string imported = System.IO.Path.Combine(libraryDirectory, item.Id + System.IO.Path.GetExtension(original));
@@ -304,7 +311,7 @@ namespace Polka
                     if (File.Exists(imported))
                     {
                         if (!FilesEqual(imported, original))
-                            throw new IOException("Существующая копия отличается от исходного ярлыка.");
+                            throw new IOException(L10n.T("CopiesDiffer"));
                     }
                     else
                     {
@@ -330,11 +337,11 @@ namespace Polka
                     item.PendingPublicMove = oldPendingPublic;
                     if (created) TryDeleteOwnedShortcut(imported);
                     if (!IsFileError(ex)) throw;
-                    AddNotice("Не удалось подготовить копию общего ярлыка «" + item.Name + "». Оригинал не изменён. " + ex.Message);
+                    AddNotice(L10n.T("SharedCopyPreparePrefix") + item.Name + L10n.T("SharedCopyPrepareSuffix") + ex.Message);
                 }
             }
             if (prepared > 0 && Settings.MoveDesktopShortcuts)
-                AddNotice("Общие ярлыки подготовлены на панели. Для удаления оригиналов с общего рабочего стола выполните отдельное действие с правами администратора.");
+                AddNotice(L10n.T("SharedPrepared"));
             return prepared;
         }
 
@@ -347,7 +354,7 @@ namespace Polka
         public void ValidatePublicStorage(DockItem item)
         {
             if (item == null || !item.ManagedShortcut || !IsOwnedLibraryFile(item) || !IsPublicShortcut(item))
-                throw new IOException("Не удалось проверить пути общего ярлыка.");
+                throw new IOException(L10n.T("SharedPathsFailed"));
             RejectReparsePoints(DataDirectory);
             RejectReparsePoints(libraryDirectory);
             RejectReparsePoints(item.Path);
@@ -355,7 +362,7 @@ namespace Polka
             RejectReparsePoints(item.OriginalPath);
             if (!Directory.Exists(DataDirectory) || !Directory.Exists(libraryDirectory) ||
                 !Directory.Exists(publicDesktopDirectory))
-                throw new IOException("Не удалось проверить папки хранения общего ярлыка.");
+                throw new IOException(L10n.T("SharedFoldersFailed"));
         }
 
         // This method never requests elevation itself. The UI invokes it only
@@ -367,7 +374,7 @@ namespace Polka
             if (stored == null || !stored.ManagedShortcut || !IsOwnedLibraryFile(stored) ||
                 !IsPublicShortcut(stored))
             {
-                LastNotice = "Не удалось проверить сохранённую копию общего ярлыка; оригинал не изменён.";
+                LastNotice = L10n.T("SharedCopyVerifyFailed");
                 return false;
             }
             byte[] importedBytes;
@@ -379,7 +386,7 @@ namespace Polka
             catch (Exception ex)
             {
                 if (!IsFileError(ex)) throw;
-                LastNotice = "Не удалось безопасно проверить копию общего ярлыка; оригинал не изменён. " + ex.Message;
+                LastNotice = L10n.T("SharedCopySafeFailed") + ex.Message;
                 return false;
             }
             if (stored.DesktopSourceMoved && !stored.PendingSourceDelete && !stored.PendingPublicMove) return true;
@@ -389,12 +396,12 @@ namespace Polka
             catch (Exception ex)
             {
                 if (!IsFileError(ex)) throw;
-                LastNotice = "Не удалось безопасно проверить исходный общий ярлык; оригинал не изменён. " + ex.Message;
+                LastNotice = L10n.T("SharedSourceSafeFailed") + ex.Message;
                 return false;
             }
             if (!sourceMatches)
             {
-                LastNotice = "Общий ярлык изменился после добавления на панель. Оригинал оставлен на рабочем столе; добавьте его заново, чтобы перенести новый вариант.";
+                LastNotice = L10n.T("SharedChanged");
                 return false;
             }
 
@@ -411,14 +418,14 @@ namespace Polka
                 stored.PendingSourceDelete = wasPendingDelete;
                 stored.PendingPublicMove = wasPendingPublic;
                 if (!IsFileError(ex)) throw;
-                LastNotice = "Не удалось сохранить сведения для возврата общего ярлыка. Оригинал не изменён. " + ex.Message;
+                LastNotice = L10n.T("RestoreRecordFailed") + ex.Message;
                 return false;
             }
             try
             {
                 ValidatePublicStorage(stored);
                 if (File.Exists(stored.OriginalPath)) DeleteVerifiedShortcut(stored.OriginalPath, importedBytes);
-                if (File.Exists(stored.OriginalPath)) throw new IOException("Исходный общий ярлык всё ещё существует.");
+                if (File.Exists(stored.OriginalPath)) throw new IOException(L10n.T("SharedSourceStillExists"));
             }
             catch (Exception ex)
             {
@@ -426,12 +433,12 @@ namespace Polka
                 stored.DesktopSourceMoved = false;
                 stored.PendingSourceDelete = false;
                 stored.PendingPublicMove = true;
-                LastNotice = "Общий ярлык остался на рабочем столе. Для его переноса нужны права администратора. " + ex.Message;
+                LastNotice = L10n.T("SharedNeedsAdmin") + ex.Message;
                 try { Save(); }
                 catch (Exception saveError)
                 {
                     if (!IsFileError(saveError)) throw;
-                    AddNotice("Последний этап будет проверен при следующем запуске.");
+                    AddNotice(L10n.T("CheckNextLaunch"));
                 }
                 return false;
             }
@@ -442,7 +449,7 @@ namespace Polka
             catch (Exception ex)
             {
                 if (!IsFileError(ex)) throw;
-                LastNotice = "Общий ярлык перенесён. Завершение сохранения будет проверено при следующем запуске. " + ex.Message;
+                LastNotice = L10n.T("SharedMovedPending") + ex.Message;
             }
             return true;
         }
@@ -454,7 +461,7 @@ namespace Polka
             LastNotice = String.Empty;
             DockItem stored = FindStoredItem(item);
             if (stored == null || !stored.ManagedShortcut || !IsOwnedLibraryFile(stored) || !IsPublicShortcut(stored))
-                throw new IOException("Не удалось проверить сохранённый общий ярлык для возврата.");
+                throw new IOException(L10n.T("SharedRestoreVerifyFailed"));
             ValidatePublicStorage(stored);
             if (!stored.DesktopSourceMoved)
             {
@@ -472,7 +479,7 @@ namespace Polka
             catch (Exception ex)
             {
                 if (!IsFileError(ex)) throw;
-                LastNotice = "Для возврата общего ярлыка нужны права администратора. Сохранённая копия оставлена на панели. " + ex.Message;
+                LastNotice = L10n.T("SharedRestoreAdmin") + ex.Message;
                 throw new IOException(LastNotice, ex);
             }
             bool pendingPublic = stored.PendingPublicMove;
@@ -487,10 +494,10 @@ namespace Polka
                 stored.PendingPublicMove = pendingPublic;
                 stored.PendingSourceDelete = pendingDelete;
                 if (!IsFileError(ex)) throw;
-                LastNotice = "Общий ярлык возвращён, но сохранить изменение пока не удалось; копия на панели сохранена.";
+                LastNotice = L10n.T("SharedRestoredSavePending");
                 throw new IOException(LastNotice, ex);
             }
-            LastNotice = "Общий ярлык возвращён на рабочий стол: " + System.IO.Path.GetFileName(restoredPath);
+            LastNotice = L10n.T("SharedRestoredPrefix") + System.IO.Path.GetFileName(restoredPath);
         }
 
         public void Remove(DockItem item)
@@ -503,23 +510,23 @@ namespace Polka
             bool owned = stored.ManagedShortcut && IsOwnedLibraryFile(stored);
             if (NeedsPublicRestore(stored))
             {
-                LastNotice = "Для возврата общего ярлыка нужны права администратора. Ярлык оставлен на панели до возврата на рабочий стол.";
+                LastNotice = L10n.T("SharedRestoreRequired");
                 throw new IOException(LastNotice);
             }
             if (owned && stored.DesktopSourceMoved && File.Exists(stored.Path))
             {
                 if (!IsUserDesktopShortcut(stored.OriginalPath))
-                    throw new IOException("Не удалось проверить исходное место ярлыка. Его копия сохранена в папке панели.");
+                    throw new IOException(L10n.T("OriginalLocationFailed"));
                 try { restoredPath = RestoreShortcut(stored.Path, stored.OriginalPath); }
                 catch (Exception ex)
                 {
                     if (!IsFileError(ex)) throw;
-                    LastNotice = "Ярлык пока оставлен на панели: не удалось вернуть его на рабочий стол. " + ex.Message;
+                    LastNotice = L10n.T("RestoreFailed") + ex.Message;
                     throw new IOException(LastNotice, ex);
                 }
             }
             else if (owned && stored.DesktopSourceMoved && !File.Exists(stored.Path))
-                AddNotice("Копия ярлыка в папке панели не найдена; восстановить её на рабочий стол невозможно.");
+                AddNotice(L10n.T("CopyMissingRestore"));
 
             Settings.Items.RemoveAt(index);
             try { Save(); }
@@ -527,8 +534,8 @@ namespace Polka
             {
                 Settings.Items.Insert(index, stored);
                 if (restoredPath != null)
-                    AddNotice("Ярлык уже возвращён на рабочий стол, но удалить его из настроек панели пока не удалось.");
-                throw new IOException("Не удалось сохранить изменение панели. " + LastNotice, ex);
+                    AddNotice(L10n.T("RestoredRemovePending"));
+                throw new IOException(L10n.T("DockChangeSaveFailed") + LastNotice, ex);
             }
             // No original, shared, or arbitrary path is ever deleted here.
             if (owned)
@@ -537,16 +544,17 @@ namespace Polka
                 catch (Exception ex)
                 {
                     if (!IsFileError(ex)) throw;
-                    AddNotice("Значок удалён с панели, но его запасную копию пока не удалось очистить.");
+                    AddNotice(L10n.T("BackupCleanupPending"));
                 }
             }
             if (restoredPath != null)
-                AddNotice("Ярлык возвращён на рабочий стол: " + System.IO.Path.GetFileName(restoredPath));
+                AddNotice(L10n.T("RestoredPrefix") + System.IO.Path.GetFileName(restoredPath));
         }
 
         private bool Load()
         {
             Settings = new DockSettings();
+            L10n.SetLanguage(Settings.Language);
             bool mainExists = File.Exists(settingsPath);
             bool backupExists = File.Exists(backupPath);
             if (!mainExists && !backupExists) return false;
@@ -555,6 +563,7 @@ namespace Polka
             if (mainExists && TryRead(settingsPath, out loaded, out mainError))
             {
                 Settings = loaded;
+                L10n.SetLanguage(Settings.Language);
                 return false;
             }
             if (mainExists)
@@ -566,11 +575,12 @@ namespace Polka
             if (backupExists && TryRead(backupPath, out loaded, out backupError))
             {
                 Settings = loaded;
-                AddNotice("Настройки восстановлены из резервной копии. Предыдущий файл сохранён для проверки.");
+                L10n.SetLanguage(Settings.Language);
+                AddNotice(L10n.T("SettingsRecovered"));
                 return true;
             }
             if (backupExists) PreserveUnreadable(backupPath);
-            AddNotice("Файл настроек не удалось прочитать. Созданы начальные настройки; прежние файлы сохранены для проверки.");
+            AddNotice(L10n.T("SettingsReset"));
             return true;
         }
 
@@ -582,9 +592,9 @@ namespace Polka
             {
                 using (MemoryStream stream = new MemoryStream(ReadStorageBytes(path), false))
                 {
-                    if (stream.Length > 4 * 1024 * 1024) throw new SerializationException("Слишком большой файл настроек.");
+                    if (stream.Length > 4 * 1024 * 1024) throw new SerializationException(L10n.T("SettingsTooLarge"));
                     loaded = (DockSettings)new DataContractJsonSerializer(typeof(DockSettings)).ReadObject(stream);
-                    if (loaded == null) throw new SerializationException("Пустые настройки.");
+                    if (loaded == null) throw new SerializationException(L10n.T("SettingsEmpty"));
                 }
                 return true;
             }
@@ -593,7 +603,7 @@ namespace Polka
                 if (!IsFileError(ex) && !(ex is SerializationException) && !(ex is XmlException) &&
                     !(ex is FormatException) && !(ex is ArgumentException)) throw;
                 if (secureReads)
-                    throw new IOException("Безопасная загрузка существующих настроек прервана; файл не изменён. " + ex.Message, ex);
+                    throw new IOException(L10n.T("SecureLoadFailed") + ex.Message, ex);
                 error = ex;
                 return false;
             }
@@ -615,7 +625,7 @@ namespace Polka
             catch (Exception ex)
             {
                 if (!IsFileError(ex)) throw;
-                AddNotice("Не удалось создать отдельную копию прежних настроек: " + ex.Message);
+                AddNotice(L10n.T("PreserveSettingsFailed") + ex.Message);
             }
         }
 
@@ -642,7 +652,7 @@ namespace Polka
                     catch (Exception ex)
                     {
                         if (!IsFileError(ex)) throw;
-                        AddNotice("Незавершённый общий ярлык не изменён: его пути не прошли безопасную проверку. " + ex.Message);
+                        AddNotice(L10n.T("PendingSharedUnsafe") + ex.Message);
                         continue;
                     }
                 }
@@ -662,7 +672,7 @@ namespace Polka
                     item.PendingPublicMove = false;
                 }
                 changed = true;
-                AddNotice("Проверено незавершённое добавление ярлыка: " + (item.Name ?? "ярлык") + ".");
+                AddNotice(L10n.T("ImportCheckedPrefix") + (item.Name ?? L10n.T("ShortcutLower")) + ".");
             }
             return changed;
         }
@@ -678,6 +688,7 @@ namespace Polka
             Settings.IconSize = Clamp(Settings.IconSize, 24, 96, 52);
             Settings.Zoom = Clamp(Settings.Zoom, 1, 1.8, 1.28);
             Settings.Rows = Math.Max(1, Math.Min(4, Settings.Rows));
+            Settings.Language = L10n.Normalize(Settings.Language);
             if (Settings.Items == null) Settings.Items = new List<DockItem>();
             Settings.Items.RemoveAll(delegate(DockItem item) { return item == null || String.IsNullOrWhiteSpace(item.Path); });
             foreach (DockItem item in Settings.Items)
@@ -687,7 +698,7 @@ namespace Polka
                 if (String.IsNullOrWhiteSpace(item.Name))
                 {
                     try { item.Name = System.IO.Path.GetFileNameWithoutExtension(item.OriginalPath); }
-                    catch (ArgumentException) { item.Name = "Ярлык"; }
+                    catch (ArgumentException) { item.Name = L10n.T("Shortcut"); }
                 }
                 if (item.Name != null && item.Name.Length > 512) item.Name = item.Name.Substring(0, 512);
             }
@@ -702,7 +713,7 @@ namespace Polka
             for (int number = 0; number < 10000; number++)
             {
                 string destination = number == 0 ? original : System.IO.Path.Combine(restoreDirectory,
-                    stem + " (восстановлено " + number.ToString() + ")" + extension);
+                    stem + L10n.T("RestoredNamePrefix") + number.ToString() + ")" + extension);
                 if (File.Exists(destination) || Directory.Exists(destination)) continue;
                 try
                 {
@@ -715,7 +726,7 @@ namespace Polka
                     throw;
                 }
             }
-            throw new IOException("Не удалось выбрать свободное имя для восстановленного ярлыка.");
+            throw new IOException(L10n.T("RestoreNameFailed"));
         }
 
         private string RestoreShortcutBytes(byte[] bytes, string original)
@@ -727,7 +738,7 @@ namespace Polka
             {
                 RejectReparsePoints(restoreDirectory);
                 string destination = number == 0 ? original : System.IO.Path.Combine(restoreDirectory,
-                    stem + " (восстановлено " + number.ToString() + ")" + extension);
+                    stem + L10n.T("RestoredNamePrefix") + number.ToString() + ")" + extension);
                 try
                 {
                     // CreateNew never follows or overwrites an existing file,
@@ -746,7 +757,7 @@ namespace Polka
                     throw;
                 }
             }
-            throw new IOException("Не удалось выбрать свободное имя для восстановленного общего ярлыка.");
+            throw new IOException(L10n.T("SharedRestoreNameFailed"));
         }
 
         private bool IsUserDesktopShortcut(string path)
@@ -834,7 +845,7 @@ namespace Polka
 
         private static string NormalizePath(string path)
         {
-            if (String.IsNullOrWhiteSpace(path)) throw new ArgumentException("Путь не указан.", "path");
+            if (String.IsNullOrWhiteSpace(path)) throw new ArgumentException(L10n.T("PathMissing"), "path");
             string full = System.IO.Path.GetFullPath(path);
             string root = System.IO.Path.GetPathRoot(full);
             return full.Length > root.Length ? full.TrimEnd(System.IO.Path.DirectorySeparatorChar,
@@ -924,7 +935,7 @@ namespace Polka
 
         internal static void RejectReparsePoints(string path)
         {
-            if (String.IsNullOrWhiteSpace(path)) throw new IOException("Путь для безопасной проверки не указан.");
+            if (String.IsNullOrWhiteSpace(path)) throw new IOException(L10n.T("VerifyPathMissing"));
             string full = NormalizePath(path);
             Stack<string> ancestors = new Stack<string>();
             string current = full;
@@ -941,7 +952,7 @@ namespace Polka
                 try
                 {
                     if ((File.GetAttributes(component) & FileAttributes.ReparsePoint) != 0)
-                        throw new IOException("Ссылки и точки перенаправления не поддерживаются в безопасной операции: " + component);
+                        throw new IOException(L10n.T("ReparseUnsupported") + component);
                 }
                 catch (FileNotFoundException) { }
                 catch (DirectoryNotFoundException) { }
@@ -977,13 +988,13 @@ namespace Polka
         private static byte[] ReadVerifiedBytes(FileStream stream)
         {
             if (stream.Length < 0 || stream.Length > 4 * 1024 * 1024)
-                throw new IOException("Файл слишком велик для безопасной операции.");
+                throw new IOException(L10n.T("SafeFileTooLarge"));
             byte[] bytes = new byte[(int)stream.Length];
             int offset = 0;
             while (offset < bytes.Length)
             {
                 int read = stream.Read(bytes, offset, bytes.Length - offset);
-                if (read == 0) throw new IOException("Файл изменился во время чтения.");
+                if (read == 0) throw new IOException(L10n.T("ReadChanged"));
                 offset += read;
             }
             return bytes;
@@ -996,11 +1007,11 @@ namespace Polka
             using (FileStream stream = OpenVerifiedShortcut(path, true))
             {
                 if (!ReadVerifiedBytes(stream).SequenceEqual(expected))
-                    throw new IOException("Общий ярлык изменился во время переноса.");
+                    throw new IOException(L10n.T("SharedMoveChanged"));
                 FileDispositionInformation disposition = new FileDispositionInformation { DeleteFile = 1 };
                 if (!SetFileInformationByHandle(stream.SafeFileHandle, 4, ref disposition,
                     (uint)Marshal.SizeOf(typeof(FileDispositionInformation))))
-                    throw NativeFileError("Не удалось удалить проверенный общий ярлык.");
+                    throw NativeFileError(L10n.T("VerifiedDeleteFailed"));
             }
         }
 
@@ -1014,32 +1025,32 @@ namespace Polka
             {
                 int error = Marshal.GetLastWin32Error();
                 handle.Dispose();
-                throw new IOException("Не удалось открыть проверяемый файл: " + new Win32Exception(error).Message);
+                throw new IOException(L10n.T("VerifyOpenFailed") + new Win32Exception(error).Message);
             }
             try
             {
                 ByHandleFileInformation information;
                 if (!GetFileInformationByHandle(handle, out information))
-                    throw NativeFileError("Не удалось проверить свойства открытого файла.");
+                    throw NativeFileError(L10n.T("VerifyPropertiesFailed"));
                 if ((information.FileAttributes & (0x00000400u | 0x00000010u)) != 0 || information.NumberOfLinks != 1)
-                    throw new IOException("Ссылки, каталоги и файлы с несколькими жёсткими ссылками не поддерживаются в безопасной операции.");
+                    throw new IOException(L10n.T("SafeFileUnsupported"));
                 if (information.FileSizeHigh != 0 || information.FileSizeLow > 4 * 1024 * 1024)
-                    throw new IOException("Файл слишком велик для безопасной операции.");
+                    throw new IOException(L10n.T("SafeFileTooLarge"));
                 StringBuilder finalPath = new StringBuilder(512);
                 uint length = GetFinalPathNameByHandle(handle, finalPath, (uint)finalPath.Capacity, 0);
-                if (length == 0) throw NativeFileError("Не удалось проверить конечный путь открытого файла.");
+                if (length == 0) throw NativeFileError(L10n.T("VerifyFinalPathFailed"));
                 if (length >= finalPath.Capacity)
                 {
                     finalPath.Capacity = checked((int)length + 1);
                     length = GetFinalPathNameByHandle(handle, finalPath, (uint)finalPath.Capacity, 0);
                     if (length == 0 || length >= finalPath.Capacity)
-                        throw new IOException("Не удалось проверить полный конечный путь файла.");
+                        throw new IOException(L10n.T("VerifyFullFinalPathFailed"));
                 }
                 string resolved = finalPath.ToString();
                 if (resolved.StartsWith("\\\\?\\UNC\\", StringComparison.OrdinalIgnoreCase)) resolved = "\\\\" + resolved.Substring(8);
                 else if (resolved.StartsWith("\\\\?\\", StringComparison.OrdinalIgnoreCase)) resolved = resolved.Substring(4);
                 if (!String.Equals(NormalizePath(resolved), expected, StringComparison.OrdinalIgnoreCase))
-                    throw new IOException("Конечный путь открытого файла отличается от ожидаемого.");
+                    throw new IOException(L10n.T("FinalPathMismatch"));
                 FileStream stream = new FileStream(handle, FileAccess.Read);
                 handle = null;
                 return stream;
