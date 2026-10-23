@@ -10,6 +10,7 @@ This release adds **background corner rounding, four edge positions and automati
 - Settings now use **two columns without vertical scrolling** and fit the available screen space.
 - Choose **Top, Bottom, Left or Right** centered placement. Side docks are vertical with upright icons. Drag the handle for free positioning.
 - Choose one to four preferred rows. If the dock would exceed the screen, it automatically adds rows, or columns at a side edge, before reducing icon size. It returns to the preferred layout when there is room.
+- Linux packages now include Python 3.12.15 for compatibility with the official Qt binaries; normal shutdown and widget cleanup are checked before release. No separate Python installation is needed.
 
 Right-click the dock → **Settings** to use these controls. Changes are saved immediately and are available in English and Russian.
 
@@ -63,6 +64,7 @@ Windows installers run per user and retain `Data` on update/removal. Update a po
 - Настройки размещены **в два столбца без вертикальной прокрутки**; окно подстраивается под доступное место на экране.
 - Выберите расположение по центру **сверху, снизу, слева или справа**. Боковые панели вертикальные, значки остаются обычной ориентации. Перетаскивайте ручку для свободного размещения.
 - Выберите от одного до четырёх предпочтительных рядов. При выходе за пределы экрана панель сначала добавит ряды, либо столбцы у бокового края, и только затем уменьшит значки. Когда место появится, вернётся выбранная раскладка.
+- Linux-пакеты включают Python 3.12.15 для совместимости с официальными файлами Qt; перед выпуском проверяется обычное завершение и очистка виджетов. Отдельно устанавливать Python не нужно.
 
 Откройте правой кнопкой меню панели → **Настройки**. Изменения сохраняются сразу; все новые пункты доступны на русском и английском.
 

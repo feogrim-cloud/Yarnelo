@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -12,9 +13,19 @@ from yarnelo_model import (
     load_settings, move_item, preserve_invalid_settings, save_settings, slot_indices,
 )
 from yarnelo import external_environment
+import yarnelo
 
 
 class ModelTests(unittest.TestCase):
+    def test_incompatible_python_is_rejected_before_loading_qt(self):
+        args = SimpleNamespace(language="en", smoke_test=True, smoke_output=None)
+        for language, phrase in (("en", "requires Python 3.12"), ("ru", "нужен Python 3.12")):
+            args.language = language
+            with patch("yarnelo.arguments", return_value=args), patch("yarnelo.sys.version_info", (3, 11, 9)):
+                with self.assertRaises(SystemExit) as raised:
+                    yarnelo.main()
+            self.assertIn(phrase, str(raised.exception))
+
     def test_balanced_rows_include_add_button_without_lost_slots(self):
         for count in range(MAX_ITEMS + 1):
             for rows in range(1, 5):

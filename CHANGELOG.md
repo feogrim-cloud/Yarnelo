@@ -9,6 +9,7 @@
 - Top, bottom, left and right centered placement; vertical side docks keep icons upright. Dragging the handle restores free placement.
 - Automatic extra rows or columns when shortcuts would overflow the screen, preserving the requested icon size whenever possible.
 - The new controls and guidance are available in English and Russian on Windows and Linux; existing shortcut profiles remain compatible.
+- Linux packages bundle Python 3.12.15 to match the official Qt wheel runtime, with checks for normal event-loop shutdown and widget cleanup. Source launches require Python 3.12+.
 
 ### Русский
 
@@ -17,6 +18,7 @@
 - Размещение по центру сверху, снизу, слева и справа; вертикальные боковые панели сохраняют ориентацию значков. Перетаскивание ручки возвращает свободное размещение.
 - Дополнительные ряды или столбцы при нехватке места на экране с сохранением выбранного размера значков, пока это возможно.
 - Новые пункты и подсказки на русском и английском для Windows и Linux; прежние профили ярлыков совместимы.
+- Linux-пакеты включают Python 3.12.15 для совместимости с официальными сборками Qt; проверяются обычное завершение цикла событий и очистка виджетов. Запуск из исходников требует Python 3.12+.
 
 ## 1.6.0 — 2026-10-23
 

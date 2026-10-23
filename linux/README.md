@@ -2,7 +2,7 @@
 
 [English app overview](../README.md) · [Описание на русском](../README.ru.md) · [English installation](../docs/LINUX.md) · [Установка на русском](../docs/LINUX.ru.md)
 
-A native **Python 3.11 / PySide6 Essentials / Qt 6** dock, with no embedded browser or web server. It supports up to 30 shortcuts, one to four preferred rows with automatic overflow rows, four screen-edge positions, square-to-rounded backgrounds, adjustable opacity, icon size and magnification, animated hover/click/rearrangement, and English/Russian menus and settings.
+A native **Python 3.12 / PySide6 Essentials / Qt 6** dock, with no embedded browser or web server. It supports up to 30 shortcuts, one to four preferred rows with automatic overflow rows, four screen-edge positions, square-to-rounded backgrounds, adjustable opacity, icon size and magnification, animated hover/click/rearrangement, and English/Russian menus and settings.
 
 ## Ready-made packages
 
@@ -10,7 +10,7 @@ Use the [Linux installation guide](../docs/LINUX.md) for distribution packages a
 
 ## Run from source
 
-Use Python 3.11 or newer with a PySide6-Essentials wheel available for your architecture. From the repository root:
+Use Python 3.12 or newer with a PySide6-Essentials wheel available for your architecture. Python 3.11 and earlier are rejected before loading Qt, because the upstream ARM64 Qt binding is incompatible with their reference-count implementation. Ready-made packages bundle a compatible runtime and do not change the system Python. From the repository root:
 
 ```bash
 python3 -m venv .venv
@@ -59,7 +59,7 @@ The smoke test creates a Qt application and renders the dock in memory. It also 
 
 Supported native binary build baselines are **Ubuntu 22.04 x86_64 / glibc 2.35** and **Ubuntu 24.04 ARM64 / glibc 2.39**. Official PySide6 Essentials 6.12.0 and Shiboken ARM64 wheels need the newer glibc baseline: Debian 12 / Ubuntu 22.04 ARM64 cannot run these ready-made packages. On ARM64, use Ubuntu 24.04+, Debian 13+ or another graphical distribution with glibc 2.39+ and the required libraries. Raspberry Pi hardware alone does not establish compatibility; the OS must be 64-bit and meet the same requirements.
 
-The GitHub Actions workflow installs the pinned Python 3.11.17, PySide6 Essentials 6.12.0, PyInstaller 6.22.3 and fpm versions and fetches verified official AppImage tools for each architecture. Refer to [the workflow](../.github/workflows/build.yml) for its system dependencies and exact build environment. Package builds are native; cross-compiling Python/Qt bundles is not supported by this script.
+The GitHub Actions workflow installs the pinned Python 3.12.15, PySide6 Essentials 6.12.0, PyInstaller 6.22.3 and fpm versions and fetches verified official AppImage tools for each architecture. Python 3.12+ provides the runtime ABI required by the Qt wheels ([Qt development notes, PYSIDE-3424](https://wiki.qt.io/Qt_for_Python_Development_Notes#22._Oktober_2026)). The smoke test checks wrapped calls for reference-count loss and verifies normal Qt object destruction before exiting. Refer to [the workflow](../.github/workflows/build.yml) for its system dependencies and exact build environment. Package builds are native; cross-compiling Python/Qt bundles is not supported by this script.
 
 With that environment prepared:
 

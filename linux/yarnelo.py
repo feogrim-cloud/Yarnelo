@@ -56,19 +56,23 @@ def external_environment(environment: dict[str, str], bundle_root: Path) -> dict
 
 def main() -> int:
     args = arguments()
+    if sys.version_info < (3, 12):
+        # Reject incompatible interpreters before importing any Qt extension.
+        raise SystemExit(text("python_version_required", args.language or "auto"))
     if args.smoke_output and not args.smoke_test:
         raise SystemExit(text("smoke_requires", args.language or "auto"))
     if args.smoke_test:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     from PySide6.QtCore import (
-        QEasingCurve, QFileInfo, QLibraryInfo, QLocale, QLockFile, QPoint, QPointF, QProcess, QProcessEnvironment, Property,
+        QCoreApplication, QEvent, QEasingCurve, QFileInfo, QLibraryInfo, QLocale, QLockFile, QPoint, QPointF, QProcess, QProcessEnvironment, Property,
         QRect, QRectF, QSize, Qt, QTimer, QPropertyAnimation, QTranslator,
     )
     from PySide6.QtGui import (
         QActionGroup, QColor, QFont, QFontDatabase, QIcon, QImage, QLinearGradient, QPainter, QPen, QPixmap,
     )
     from PySide6.QtNetwork import QLocalServer, QLocalSocket
+    from shiboken6 import isValid
     from PySide6.QtWidgets import (
         QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
         QFileIconProvider, QHBoxLayout, QLabel, QMenu, QMessageBox,
@@ -81,6 +85,26 @@ def main() -> int:
     app.setOrganizationName("Yarnelo")
     app.setQuitOnLastWindowClosed(False)
     app.setStyle("Fusion")
+    if args.smoke_test:
+        # CPython before 3.12 has a mortal None singleton. A broken abi3 Qt
+        # wheel can silently decrement it on wrapped void calls, then crash at
+        # interpreter shutdown. Check actual calls before the larger UI test.
+        probe = QLabel("reference probe")
+        probe.setText("warmup")
+        app.processEvents()
+        before = sys.getrefcount(None)
+        for _ in range(100):
+            probe.setText("probe")
+        text_delta = sys.getrefcount(None) - before
+        before = sys.getrefcount(None)
+        for _ in range(100):
+            app.processEvents()
+        events_delta = sys.getrefcount(None) - before
+        print(f"Qt reference probe: setText={text_delta:+d}, processEvents={events_delta:+d}; None={sys.getrefcount(None)}", flush=True)
+        if text_delta < -10 or events_delta < -10:
+            raise RuntimeError("The installed Qt binding loses None references on wrapped calls; use linux/requirements.txt")
+        probe.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     if args.smoke_test and os.name == "nt":
         # The offscreen plugin on Windows has no native font discovery. This is
         # only for local visual QA; Linux uses its normal installed font database.
@@ -451,6 +475,7 @@ def main() -> int:
             self.panel_drag_offset: QPoint | None = None
             self.panel_drag_moved = False
             self.layout_key = None
+            self.shutting_down = False
             self.layout_pending = False
             self.screen_hooked = None
             self.setWindowTitle(self.t("dock_title"))
@@ -482,8 +507,41 @@ def main() -> int:
                 self.tray.activated.connect(lambda reason: self.show_passive() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
                 self.tray.show()
             self.apply_language()
-            app.screenAdded.connect(lambda screen: self.relayout())
-            app.screenRemoved.connect(lambda screen: self.relayout())
+            # A bound QObject method is disconnected with its receiver. Avoid
+            # application-owned lambdas retaining the dock past Qt shutdown.
+            app.screenAdded.connect(self.relayout)
+            app.screenRemoved.connect(self.relayout)
+            app.aboutToQuit.connect(self.shutdown)
+
+        def shutdown(self):
+            if self.shutting_down:
+                return
+            self.shutting_down = True
+            for signal in (app.screenAdded, app.screenRemoved):
+                try:
+                    signal.disconnect(self.relayout)
+                except (RuntimeError, TypeError):
+                    pass
+            if self.screen_hooked:
+                try:
+                    self.screen_hooked.availableGeometryChanged.disconnect(self.relayout)
+                except (RuntimeError, TypeError):
+                    pass
+                self.screen_hooked = None
+            for tile in [*self.tiles.values(), self.add_tile]:
+                tile.hover_animation.stop()
+                tile.press_animation.stop()
+                tile.position_animation.stop()
+            for menu in self.visible_menus:
+                menu.close()
+            if self.settings_dialog:
+                self.settings_dialog.close()
+            if self.tray:
+                self.tray.hide()
+            # Qt destroys children and their signal connections while the
+            # QApplication and Python runtime are both still alive.
+            self.close()
+            self.deleteLater()
 
         def t(self, key, **values):
             return text(key, self.settings.language, **values)
@@ -565,6 +623,8 @@ def main() -> int:
             self.relayout()
 
         def relayout(self, animate=False):
+            if self.shutting_down:
+                return
             animate = animate is True
             screen = self.current_screen()
             if not screen:
@@ -845,7 +905,8 @@ def main() -> int:
                 self.relayout(True)
                 self.persist()
             self.settings_dialog = None
-            dialog.deleteLater()
+            if isValid(dialog):
+                dialog.deleteLater()
 
         def reset_position(self):
             self.settings.placement = "bottom"
@@ -1108,6 +1169,20 @@ def main() -> int:
             if not image.save(str(args.smoke_output), "PNG"):
                 raise RuntimeError("Could not write smoke-test image")
         dock.close()
+        print(f"Qt smoke before shutdown: None={sys.getrefcount(None)}", flush=True)
+        shutdown_widgets = [widget for widget in app.allWidgets() if isinstance(widget, (Dock, Tile, SettingsDialog))]
+        # Run the real event-loop exit path, including aboutToQuit and queued
+        # DeferredDelete events. Returning from main with live widgets does not
+        # exercise this lifecycle and leaves teardown to interpreter finalizers.
+        QTimer.singleShot(0, app.quit)
+        exit_code = app.exec()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        app.processEvents()
+        if exit_code != 0 or any(isValid(widget) for widget in shutdown_widgets):
+            raise RuntimeError("Qt did not destroy the dock and tiles during normal shutdown")
+        import gc
+        gc.collect()
+        print(f"Qt smoke after shutdown: None={sys.getrefcount(None)}; widgets destroyed", flush=True)
         print(f"Yarnelo {VERSION}: Qt offscreen smoke test passed ({image.width()}x{image.height()})")
         return 0
 

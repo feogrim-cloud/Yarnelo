@@ -77,7 +77,7 @@ On Linux, configuration is stored at `$XDG_CONFIG_HOME/yarnelo/settings.json` or
 | Area | Technologies |
 | --- | --- |
 | Windows application | **C#**, **WPF**, **.NET Framework 4.8** for x64/x86 and **4.8.1** for ARM64; native **Win32 / Windows Shell** integration and **DWM** window bounds / visibility information |
-| Linux application | **Python 3.11**, **PySide6 Essentials / Qt 6**; Qt Widgets, Qt animation, local JSON configuration, `gio launch` and `xdg-open` |
+| Linux application | **Python 3.12**, **PySide6 Essentials / Qt 6**; Qt Widgets, Qt animation, local JSON configuration, `gio launch` and `xdg-open` |
 | Windows packaging | **PowerShell**, .NET Framework compiler for x64/x86 and Roslyn for ARM64, **Inno Setup 6**; x64/x86/ARM64 EXE installers and portable ZIPs |
 | Linux packaging | **PyInstaller**, **appimagetool / AppImage**, **fpm** for DEB/RPM, portable TAR.GZ; native Ubuntu 22.04 x86_64 and Ubuntu 24.04 ARM64 builds |
 | Checks and releases | **GitHub Actions** on Windows and Linux; C# storage checks, UI checks, Python `unittest`, Qt rendering checks, Windows installer checks, DEB/RPM installation checks and SHA-256 manifests |

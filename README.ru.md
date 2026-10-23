@@ -77,7 +77,7 @@ Yarnelo — полупрозрачная панель ярлыков для **Wi
 | Часть проекта | Технологии |
 | --- | --- |
 | Приложение Windows | **C#**, **WPF**, **.NET Framework 4.8** для x64/x86 и **4.8.1** для ARM64; нативная интеграция **Win32 / Windows Shell**, данные **DWM** о границах и видимости окон |
-| Приложение Linux | **Python 3.11**, **PySide6 Essentials / Qt 6**; Qt Widgets, анимации Qt, локальные настройки JSON, `gio launch` и `xdg-open` |
+| Приложение Linux | **Python 3.12**, **PySide6 Essentials / Qt 6**; Qt Widgets, анимации Qt, локальные настройки JSON, `gio launch` и `xdg-open` |
 | Упаковка Windows | **PowerShell**, компилятор .NET Framework для x64/x86 и Roslyn для ARM64, **Inno Setup 6**; установщики EXE и переносные ZIP для x64/x86/ARM64 |
 | Упаковка Linux | **PyInstaller**, **appimagetool / AppImage**, **fpm** для DEB/RPM, переносной TAR.GZ; нативная сборка Ubuntu 22.04 x86_64 и Ubuntu 24.04 ARM64 |
 | Проверки и релизы | **GitHub Actions** для Windows и Linux; проверки хранилища и интерфейса C#, Python `unittest`, отрисовка Qt, проверки установщика Windows, установка DEB/RPM и списки SHA-256 |
