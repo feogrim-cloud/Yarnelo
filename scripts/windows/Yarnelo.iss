@@ -30,10 +30,14 @@ DefaultDirName={localappdata}\Programs\Yarnelo
 DisableProgramGroupPage=yes
 DefaultGroupName=Yarnelo
 PrivilegesRequired=lowest
+#if AppArchitecture == "arm64"
+MinVersion=10.0.22000
+ArchitecturesAllowed=arm64
+#elif AppArchitecture == "x64"
 MinVersion=10.0
-#if AppArchitecture == "x64"
 ArchitecturesAllowed=x64os
 #else
+MinVersion=10.0
 ArchitecturesAllowed=x86compatible
 #endif
 OutputDir={#OutputDirectory}
@@ -70,8 +74,13 @@ Name: "{userdesktop}\Yarnelo"; Filename: "{app}\Yarnelo.exe"; WorkingDir: "{app}
 Filename: "{app}\Yarnelo.exe"; Description: "{cm:LaunchProgram,Yarnelo}"; Flags: nowait postinstall skipifsilent unchecked
 
 [CustomMessages]
+#if AppArchitecture == "arm64"
+english.DotNetRequired=Yarnelo ARM64 requires Windows 11 ARM64 and Microsoft .NET Framework 4.8.1. Install it from https://dotnet.microsoft.com/download/dotnet-framework/net481 and run Setup again.
+russian.DotNetRequired=Для Yarnelo ARM64 нужны Windows 11 ARM64 и Microsoft .NET Framework 4.8.1. Установите его с https://dotnet.microsoft.com/download/dotnet-framework/net481 и запустите установщик снова.
+#else
 english.DotNetRequired=Yarnelo requires Microsoft .NET Framework 4.8 or 4.8.1. Install it from https://dotnet.microsoft.com/download/dotnet-framework/net48 and run Setup again.
 russian.DotNetRequired=Для Yarnelo нужен Microsoft .NET Framework 4.8 или 4.8.1. Установите его с https://dotnet.microsoft.com/download/dotnet-framework/net48 и запустите установщик снова.
+#endif
 english.CloseFailed=Close Yarnelo using its tray menu and try again. Setup never force-closes applications.
 russian.CloseFailed=Закройте Yarnelo через меню в области уведомлений и повторите попытку. Установщик не завершает приложения принудительно.
 english.ProfileNote=Your Data folder is retained when updating or uninstalling. Before deleting Data, return imported shortcuts through the dock menu.
@@ -80,7 +89,11 @@ russian.ProfileNote=Папка Data сохраняется при обновле
 [Code]
 function InitializeSetup: Boolean;
 begin
+#if AppArchitecture == "arm64"
+  Result := IsDotNetInstalled(net481, 0);
+#else
   Result := IsDotNetInstalled(net48, 0);
+#endif
   if not Result then
     SuppressibleMsgBox(CustomMessage('DotNetRequired'), mbError, MB_OK, IDOK);
 end;

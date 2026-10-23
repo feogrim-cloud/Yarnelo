@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Optional version to publish after all checks, for example v1.5.1
+        description: Optional version to publish after all checks, for example v1.6.0
         type: string
         default: ''
 
@@ -18,20 +18,31 @@ permissions:
 jobs:
   windows:
     name: Windows ${{ matrix.arch }}
-    runs-on: windows-2022
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        arch: [x64, x86]
+        include:
+          - arch: x64
+            runner: windows-2022
+          - arch: x86
+            runner: windows-2022
+          - arch: arm64
+            runner: windows-11-arm
     env:
       TARGET_ARCH: ${{ matrix.arch }}
     defaults:
       run:
-        shell: powershell
+        shell: pwsh
     steps:
       - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-dotnet@v6.0.0
+        if: matrix.arch == 'arm64'
+        with:
+          dotnet-version: '8.0.x'
       - name: Run storage checks and compile UI tests
+        if: matrix.arch != 'arm64'
         run: ./scripts/Test.ps1 -CompileUiTests
       - name: Install official Inno Setup compiler
         run: |
@@ -53,6 +64,9 @@ jobs:
         run: ./scripts/windows/Test-Installer.ps1 -SetupPath "dist/Yarnelo-Windows-$env:TARGET_ARCH-Setup.exe" -Architecture $env:TARGET_ARCH
       - name: Verify graceful maintenance close in both interface languages
         run: ./scripts/windows/Test-Maintenance.ps1 -Architecture $env:TARGET_ARCH
+      - name: Verify actual WPF application runs natively on Windows ARM64
+        if: matrix.arch == 'arm64'
+        run: ./scripts/windows/Test-Arm64Runtime.ps1 -PortableArchive dist/Yarnelo-Windows-arm64-Portable.zip
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: Yarnelo-Windows-${{ matrix.arch }}
@@ -61,9 +75,25 @@ jobs:
           retention-days: 14
 
   linux:
-    name: Linux x86_64 packages
-    runs-on: ubuntu-22.04
+    name: Linux ${{ matrix.arch }} packages
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            deb_arch: amd64
+            runner: ubuntu-22.04
+            debian: debian:12
+          - arch: aarch64
+            deb_arch: arm64
+            runner: ubuntu-24.04-arm
+            debian: debian:13
+    env:
+      TARGET_ARCH: ${{ matrix.arch }}
+      DEB_ARCH: ${{ matrix.deb_arch }}
+      DEBIAN_IMAGE: ${{ matrix.debian }}
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-python@v7.1.0
@@ -78,32 +108,33 @@ jobs:
       - name: Check model, shell scripts and offscreen rendering
         run: |
           python -m unittest discover -s linux/tests -v
+          python -m unittest discover -s scripts/tests -v
           bash -n scripts/Package-Linux.sh linux/packaging/AppRun
           python linux/yarnelo.py --smoke-test --smoke-output work/linux-preview.png
       - name: Download and verify official AppImage tools
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python scripts/FetchReleaseAsset.py appimagetool work/tools/appimagetool-x86_64.AppImage
-          python scripts/FetchReleaseAsset.py runtime work/tools/runtime-x86_64
+          python scripts/FetchReleaseAsset.py appimagetool "work/tools/appimagetool-$TARGET_ARCH.AppImage" --architecture "$TARGET_ARCH"
+          python scripts/FetchReleaseAsset.py runtime "work/tools/runtime-$TARGET_ARCH" --architecture "$TARGET_ARCH"
       - name: Build and test standalone Linux packages
         run: |
-          APPIMAGETOOL="$PWD/work/tools/appimagetool-x86_64.AppImage" APPIMAGE_RUNTIME="$PWD/work/tools/runtime-x86_64" bash scripts/Package-Linux.sh --output dist --version "$(cat VERSION)" --smoke-test
+          APPIMAGETOOL="$PWD/work/tools/appimagetool-$TARGET_ARCH.AppImage" APPIMAGE_RUNTIME="$PWD/work/tools/runtime-$TARGET_ARCH" bash scripts/Package-Linux.sh --output dist --version "$(cat VERSION)" --smoke-test
       - name: Verify DEB installation on Ubuntu and Debian
         # This also checks the actual xcb GUI plugin, beyond offscreen rendering.
         run: |
           mkdir -p work/linux-display-check
-          tar -xzf dist/Yarnelo-Linux-x86_64.tar.gz -C work/linux-display-check
+          tar -xzf "dist/Yarnelo-Linux-$TARGET_ARCH.tar.gz" -C work/linux-display-check
           xvfb-run -a env QT_QPA_PLATFORM=xcb work/linux-display-check/Yarnelo/yarnelo --smoke-test
-          for image in ubuntu:24.04 debian:12; do
-            docker run --rm -v "$PWD/dist:/packages:ro" "$image" sh -ec 'apt-get update -qq; apt-get install -y /packages/Yarnelo-Linux-amd64.deb; QT_QPA_PLATFORM=offscreen yarnelo --smoke-test'
+          for image in ubuntu:24.04 "$DEBIAN_IMAGE"; do
+            docker run --rm -e DEB_ARCH="$DEB_ARCH" -v "$PWD/dist:/packages:ro" "$image" sh -ec 'apt-get update -qq; apt-get install -y "/packages/Yarnelo-Linux-$DEB_ARCH.deb"; QT_QPA_PLATFORM=offscreen yarnelo --smoke-test'
           done
       - name: Verify RPM installation on Fedora
         run: |
-          docker run --rm -v "$PWD/dist:/packages:ro" fedora:44 sh -ec 'dnf install -y /packages/Yarnelo-Linux-x86_64.rpm; QT_QPA_PLATFORM=offscreen yarnelo --smoke-test'
+          docker run --rm -e TARGET_ARCH="$TARGET_ARCH" -v "$PWD/dist:/packages:ro" fedora:44 sh -ec 'dnf install -y "/packages/Yarnelo-Linux-$TARGET_ARCH.rpm"; QT_QPA_PLATFORM=offscreen yarnelo --smoke-test'
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: Yarnelo-Linux-x86_64
+          name: Yarnelo-Linux-${{ matrix.arch }}
           path: dist/*
           if-no-files-found: error
           retention-days: 14

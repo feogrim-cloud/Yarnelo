@@ -54,7 +54,9 @@ The smoke test creates a Qt application and renders the dock in memory. It does 
 
 ## Build packages
 
-The supported binary build baseline is **Ubuntu 22.04 x86_64 / glibc 2.35**. The GitHub Actions workflow installs the pinned Python, PySide6, PyInstaller and fpm versions and fetches verified official AppImage tools. Refer to [the workflow](../.github/workflows/build.yml) for its system dependencies and exact build environment.
+Supported native binary build baselines are **Ubuntu 22.04 x86_64 / glibc 2.35** and **Ubuntu 24.04 ARM64 / glibc 2.39**. Official PySide6 Essentials 6.12.0 and Shiboken ARM64 wheels need the newer glibc baseline: Debian 12 / Ubuntu 22.04 ARM64 cannot run these ready-made packages. On ARM64, use Ubuntu 24.04+, Debian 13+ or another graphical distribution with glibc 2.39+ and the required libraries. Raspberry Pi hardware alone does not establish compatibility; the OS must be 64-bit and meet the same requirements.
+
+The GitHub Actions workflow installs the pinned Python 3.11.17, PySide6 Essentials 6.12.0, PyInstaller 6.22.3 and fpm versions and fetches verified official AppImage tools for each architecture. Refer to [the workflow](../.github/workflows/build.yml) for its system dependencies and exact build environment. Package builds are native; cross-compiling Python/Qt bundles is not supported by this script.
 
 With that environment prepared:
 
@@ -63,5 +65,15 @@ APPIMAGETOOL=/absolute/path/appimagetool-x86_64.AppImage \
 APPIMAGE_RUNTIME=/absolute/path/runtime-x86_64 \
 bash scripts/Package-Linux.sh --output dist --version "$(cat VERSION)" --smoke-test
 ```
+
+On an **ARM64 Ubuntu 24.04 build host**, use the native ARM64 tools with the same script:
+
+```bash
+APPIMAGETOOL=/absolute/path/appimagetool-aarch64.AppImage \
+APPIMAGE_RUNTIME=/absolute/path/runtime-aarch64 \
+bash scripts/Package-Linux.sh --output dist --version "$(cat VERSION)" --smoke-test
+```
+
+The script detects `uname -m`. ARM64 outputs are `Yarnelo-Linux-aarch64.AppImage`, `Yarnelo-Linux-aarch64.tar.gz`, `Yarnelo-Linux-aarch64.rpm` and `Yarnelo-Linux-arm64.deb`; the Debian architecture name is `arm64`, while the other formats use `aarch64`. Existing x86_64 output names are unchanged. Both architectures retain the X11/XWayland preview limitations above.
 
 The script uses **PyInstaller**, **appimagetool** and **fpm** to create TAR.GZ, AppImage, DEB and RPM packages. External tools fetched by `scripts/FetchReleaseAsset.py` are checked against the published SHA-256 digests. Builds include third-party notices, licenses and corresponding-source links. See the root [technology stack](../README.md#technology-stack) and [rights](../LICENSE).

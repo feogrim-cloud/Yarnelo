@@ -1,1 +1,3 @@
+# Official wheels: x86_64 uses manylinux_2_34; aarch64 uses manylinux_2_39.
+# Packaging builds on glibc 2.35 (x86_64) or 2.39 (aarch64) native hosts.
 PySide6-Essentials==6.12.0

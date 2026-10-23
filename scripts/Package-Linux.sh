@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build on Ubuntu 22.04 x86_64 (glibc 2.35); cross-compilation is unsupported.
+# Native builds: Ubuntu 22.04 x86_64/glibc 2.35 or Ubuntu 24.04 aarch64/glibc 2.39.
+# Qt's official ARM64 wheels require glibc 2.39. Cross-compilation is unsupported.
 # Dependencies are installed by CI, never fetched or installed by this script.
 set -Eeuo pipefail
 export LC_ALL=C.UTF-8
@@ -18,7 +19,7 @@ while (($#)); do
         --version) (($# >= 2)) || die '--version needs a version'; version=$2; shift 2 ;;
         --smoke-test) smoke_test=true; shift ;;
         -h|--help)
-            printf '%s\n' 'Usage: bash scripts/Package-Linux.sh [--output DIRECTORY] [--version 1.5.1] [--smoke-test]' \
+            printf '%s\n' 'Usage: bash scripts/Package-Linux.sh [--output DIRECTORY] [--version 1.6.0] [--smoke-test]' \
               'Requires Python + PyInstaller + linux/requirements.txt, fpm, dpkg-deb, rpmbuild,' \
               'desktop-file-validate, APPIMAGETOOL and APPIMAGE_RUNTIME (verified local files).'
             exit 0 ;;
@@ -27,15 +28,22 @@ while (($#)); do
 done
 
 [[ $(uname -s) == Linux ]] || die 'Build this package on Linux, not Windows/macOS.'
-[[ $(uname -m) == x86_64 ]] || die 'Only x86_64 builds are supported in this release.'
+architecture=$(uname -m)
+case "$architecture" in
+    x86_64) deb_architecture=amd64; glibc_baseline=2.35 ;;
+    aarch64) deb_architecture=arm64; glibc_baseline=2.39 ;;
+    *) die "Unsupported native Linux architecture: $architecture" ;;
+esac
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die 'Use a numeric major.minor.patch version.'
 for tool in python3 fpm dpkg-deb rpmbuild rpm tar gzip install sha256sum desktop-file-validate getconf realpath; do need "$tool"; done
-[[ $(getconf GNU_LIBC_VERSION) == 'glibc 2.35' ]] || die 'Use an Ubuntu 22.04/glibc 2.35 build host to preserve the published compatibility baseline.'
+[[ $(getconf GNU_LIBC_VERSION) == "glibc $glibc_baseline" ]] || die "Use a native $architecture/glibc $glibc_baseline build host to preserve the published compatibility baseline."
 python3 -c 'import PyInstaller, PySide6, shiboken6' || die 'Install PyInstaller and linux/requirements.txt first.'
 [[ -n ${APPIMAGETOOL:-} && -f $APPIMAGETOOL && -x $APPIMAGETOOL ]] || die 'APPIMAGETOOL must name a verified executable appimagetool file.'
-[[ -n ${APPIMAGE_RUNTIME:-} && -f $APPIMAGE_RUNTIME ]] || die 'APPIMAGE_RUNTIME must name a verified x86_64 type2-runtime file.'
+[[ -n ${APPIMAGE_RUNTIME:-} && -f $APPIMAGE_RUNTIME ]] || die "APPIMAGE_RUNTIME must name a verified $architecture type2-runtime file."
 appimagetool=$(realpath -- "$APPIMAGETOOL")
 appimage_runtime=$(realpath -- "$APPIMAGE_RUNTIME")
+python3 "$repo/linux/packaging/verify-native.py" "$architecture" "$appimagetool"
+python3 "$repo/linux/packaging/verify-native.py" "$architecture" "$appimage_runtime"
 desktop-file-validate "$repo/linux/packaging/yarnelo.desktop"
 [[ $(python3 "$repo/linux/yarnelo.py" --version) == *"$version"* ]] || die 'Requested version differs from linux/yarnelo.py.'
 
@@ -51,6 +59,9 @@ python3 -m PyInstaller --noconfirm --clean \
 app="$build/frozen/yarnelo"
 [[ -x $app/yarnelo ]] || die 'PyInstaller did not produce yarnelo.'
 [[ -f $app/_internal/assets/Yarnelo-Icon-256.png ]] || die 'The bundled application icon is missing.'
+python3 "$repo/linux/packaging/verify-native.py" "$architecture" "$app"
+printf 'Architecture: %s\nDEB architecture: %s\nMinimum glibc: %s\n' \
+    "$architecture" "$deb_architecture" "$glibc_baseline" > "$app/build-target.txt"
 
 install -m 644 "$repo/LICENSE" "$app/LICENSE"
 install -m 644 "$repo/linux/packaging/THIRD-PARTY-NOTICES.txt" "$app/THIRD-PARTY-NOTICES.txt"
@@ -134,7 +145,7 @@ portable="$build/portable/Yarnelo"
 mkdir -p "$portable"
 cp -a "$app/." "$portable/"
 install -m 644 "$repo/linux/packaging/yarnelo.desktop" "$portable/yarnelo.desktop"
-tar -C "$build/portable" -czf "$output/Yarnelo-Linux-x86_64.tar.gz" Yarnelo
+tar -C "$build/portable" -czf "$output/Yarnelo-Linux-$architecture.tar.gz" Yarnelo
 
 stage="$build/system"
 mkdir -p "$stage/opt/yarnelo" "$stage/usr/bin" "$stage/usr/share/applications" \
@@ -154,7 +165,7 @@ common=(-s dir -n yarnelo -v "$version" --iteration 1 --license 'All rights rese
 # Debian package names are stable across the documented Ubuntu/Debian releases.
 # Qt itself and Python are bundled; no Python/Qt package installation is needed.
 deb_dependencies=(
-    'libc6 (>= 2.35)' libgcc-s1 libstdc++6 libx11-6 libxcb1 libxcb-cursor0
+    "libc6 (>= $glibc_baseline)" libgcc-s1 libstdc++6 libx11-6 libxcb1 libxcb-cursor0
     libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-render0
     libxcb-shape0 libxcb-randr0 libxcb-xfixes0 libxcb-shm0 libxcb-sync1 libxcb-xinerama0
     libxcb-xkb1 libxkbcommon0 libxkbcommon-x11-0 libxext6 libxrender1 libxi6
@@ -163,15 +174,15 @@ deb_dependencies=(
 )
 deb_args=()
 for dependency in "${deb_dependencies[@]}"; do deb_args+=(--depends "$dependency"); done
-fpm "${common[@]}" -t deb -a amd64 "${deb_args[@]}" --deb-recommends gvfs-backends \
-    -p "$output/Yarnelo-Linux-amd64.deb" .
+fpm "${common[@]}" -t deb -a "$deb_architecture" "${deb_args[@]}" --deb-recommends gvfs-backends \
+    -p "$output/Yarnelo-Linux-$deb_architecture.deb" .
 
 # Automatic ELF SONAME requirements/providers avoid Fedora-only dependency names.
 # Shared libraries shipped inside this package satisfy their own SONAME requires.
-fpm "${common[@]}" -t rpm -a x86_64 --rpm-os linux --rpm-autoreqprov \
-    --rpm-digest sha256 --rpm-compression gzip --depends 'glibc >= 2.35' \
+fpm "${common[@]}" -t rpm -a "$architecture" --rpm-os linux --rpm-autoreqprov \
+    --rpm-digest sha256 --rpm-compression gzip --depends "glibc >= $glibc_baseline" \
     --depends /usr/bin/xdg-open --depends /usr/bin/gio \
-    -p "$output/Yarnelo-Linux-x86_64.rpm" .
+    -p "$output/Yarnelo-Linux-$architecture.rpm" .
 
 appdir="$build/Yarnelo.AppDir"
 mkdir -p "$appdir/usr/lib/yarnelo" "$appdir/usr/share/applications" \
@@ -183,17 +194,27 @@ install -m 644 "$repo/linux/packaging/yarnelo.desktop" "$appdir/usr/share/applic
 install -m 644 "$repo/assets/Yarnelo-Icon-256.png" "$appdir/yarnelo.png"
 install -m 644 "$repo/assets/Yarnelo-Icon-256.png" "$appdir/usr/share/icons/hicolor/256x256/apps/yarnelo.png"
 ln -s yarnelo.png "$appdir/.DirIcon"
-APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 VERSION="$version" \
+APPIMAGE_EXTRACT_AND_RUN=1 ARCH="$architecture" VERSION="$version" \
     "$appimagetool" --no-appstream --runtime-file "$appimage_runtime" \
-    "$appdir" "$output/Yarnelo-Linux-x86_64.AppImage"
-chmod 755 "$output/Yarnelo-Linux-x86_64.AppImage"
+    "$appdir" "$output/Yarnelo-Linux-$architecture.AppImage"
+chmod 755 "$output/Yarnelo-Linux-$architecture.AppImage"
+python3 "$repo/linux/packaging/verify-native.py" "$architecture" "$output/Yarnelo-Linux-$architecture.AppImage"
 
-dpkg-deb --info "$output/Yarnelo-Linux-amd64.deb"
-rpm -qpi "$output/Yarnelo-Linux-x86_64.rpm"
+dpkg-deb --info "$output/Yarnelo-Linux-$deb_architecture.deb"
+[[ $(dpkg-deb --field "$output/Yarnelo-Linux-$deb_architecture.deb" Architecture) == "$deb_architecture" ]] || die 'DEB architecture mismatch.'
+rpm -qpi "$output/Yarnelo-Linux-$architecture.rpm"
+[[ $(rpm -qp --queryformat '%{ARCH}' "$output/Yarnelo-Linux-$architecture.rpm") == "$architecture" ]] || die 'RPM architecture mismatch.'
 if $smoke_test; then
     APPIMAGE_EXTRACT_AND_RUN=1 QT_QPA_PLATFORM=offscreen \
-        "$output/Yarnelo-Linux-x86_64.AppImage" --smoke-test
+        "$output/Yarnelo-Linux-$architecture.AppImage" --smoke-test
+    mkdir -p "$build/check-tar" "$build/check-deb"
+    tar -xzf "$output/Yarnelo-Linux-$architecture.tar.gz" -C "$build/check-tar"
+    python3 "$repo/linux/packaging/verify-native.py" "$architecture" "$build/check-tar/Yarnelo"
+    QT_QPA_PLATFORM=offscreen "$build/check-tar/Yarnelo/yarnelo" --smoke-test
+    dpkg-deb --extract "$output/Yarnelo-Linux-$deb_architecture.deb" "$build/check-deb"
+    python3 "$repo/linux/packaging/verify-native.py" "$architecture" "$build/check-deb/opt/yarnelo"
+    QT_QPA_PLATFORM=offscreen "$build/check-deb/opt/yarnelo/yarnelo" --smoke-test
 fi
-printf 'Built Linux x86_64 packages in %s\n' "$output"
-sha256sum "$output/Yarnelo-Linux-x86_64.tar.gz" "$output/Yarnelo-Linux-x86_64.AppImage" \
-    "$output/Yarnelo-Linux-amd64.deb" "$output/Yarnelo-Linux-x86_64.rpm"
+printf 'Built native Linux %s packages in %s\n' "$architecture" "$output"
+sha256sum "$output/Yarnelo-Linux-$architecture.tar.gz" "$output/Yarnelo-Linux-$architecture.AppImage" \
+    "$output/Yarnelo-Linux-$deb_architecture.deb" "$output/Yarnelo-Linux-$architecture.rpm"

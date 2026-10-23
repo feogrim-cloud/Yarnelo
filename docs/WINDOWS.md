@@ -8,8 +8,11 @@
 | --- | --- | --- |
 | Windows 10 / 11, Intel or AMD, 64-bit | `Yarnelo-Windows-x64-Setup.exe` | `Yarnelo-Windows-x64-Portable.zip` |
 | Windows 10, 32-bit | `Yarnelo-Windows-x86-Setup.exe` | `Yarnelo-Windows-x86-Portable.zip` |
+| Windows 11, ARM64 (for example Snapdragon) | `Yarnelo-Windows-arm64-Setup.exe` | `Yarnelo-Windows-arm64-Portable.zip` |
 
-Find your architecture in **Settings → System → About → System type**. There is no native Windows ARM64 package. Windows 7 and 8.1 are outside the compatibility scope. **Microsoft .NET Framework 4.8 or 4.8.1** is required. The installer checks for it and links to [Microsoft's download page](https://dotnet.microsoft.com/download/dotnet-framework/net48) if necessary.
+Find your architecture in **Settings → System → About → System type**. Choose x64 for Intel/AMD x64 processors and ARM64 for ARM processors such as Snapdragon. Use x86 only for 32-bit Windows 10. These are separate native application builds; ARM64 is not an x64 executable repackaged for emulation.
+
+Windows x64/x86 needs **Microsoft .NET Framework 4.8 or 4.8.1**. Native ARM64 needs **Windows 11 and .NET Framework 4.8.1**. Windows 10 ARM64, Windows 7 and Windows 8.1 are outside this release's compatibility scope. The installer checks the required runtime. Official downloads: [.NET Framework 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48) · [.NET Framework 4.8.1](https://dotnet.microsoft.com/download/dotnet-framework/net481).
 
 ## EXE installer
 
@@ -24,7 +27,7 @@ The files are currently unsigned. If Windows displays SmartScreen, check that th
 Get-FileHash .\Yarnelo-Windows-x64-Setup.exe -Algorithm SHA256
 ```
 
-The hash must match the same filename in `SHA256SUMS`. Substitute the correct name for x86 or ZIP files. A checksum verifies download integrity; it does not replace a publisher signature.
+The hash must match the same filename in `SHA256SUMS`. Substitute the correct name for x86, arm64 or ZIP files. A checksum verifies download integrity; it does not replace a publisher signature.
 
 ## Portable version
 
@@ -56,6 +59,8 @@ For the installed version, run the new installer **in the same folder**. It asks
 
 For the portable version, exit Yarnelo from its notification-area menu and extract the new archive over the program files **in the original folder**, retaining `Data`. Back up the folder first. Do not simply copy an old `Data` profile to a different installation path: its absolute shortcut paths still refer to the old location.
 
+When switching an existing Windows 11 ARM device from an emulated build to native ARM64, close Yarnelo and back up the entire original folder first. Install or extract the ARM64 package into that **same folder** and retain `Data`. Do not combine files from different architecture packages. Desktop shortcut files and JSON settings are architecture-independent; their absolute paths still need the original folder.
+
 If Yarnelo is running from another folder, close it before launching the new copy. Installing beside an existing portable version does not import that version's shortcuts automatically.
 
 ## Uninstall
@@ -78,6 +83,13 @@ To build installers, also install official [Inno Setup 6.3 or newer](https://jrs
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Package.ps1 -Architecture x64 -BuildInstaller
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Package.ps1 -Architecture x86 -BuildInstaller
+```
+
+For native ARM64, install the **.NET 8 SDK**. `Build.ps1` uses its Roslyn compiler with `PlatformTarget=ARM64` and restores `Microsoft.NETFramework.ReferenceAssemblies.net481` version **1.0.3** from NuGet. The first build needs network access. This can compile ARM64 on Windows x64 or ARM64, but running the result needs Windows 11 ARM64 with .NET Framework 4.8.1:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\src\Build.ps1 -Architecture arm64 -Output .\build\arm64
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Package.ps1 -Architecture arm64 -BuildInstaller
 ```
 
 Results are written to `dist`: ZIP, Setup.exe and SHA-256 files. Use `-IsccPath 'C:\path\ISCC.exe'` for a nonstandard compiler location. Packaging creates a clean directory and rejects profile data, imported shortcuts and unrelated files.

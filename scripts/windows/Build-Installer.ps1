@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Payload,
-    [ValidateSet('x64', 'x86')]
+    [ValidateSet('x64', 'x86', 'arm64')]
     [string]$Architecture = 'x64',
     [Parameter(Mandatory = $true)]
     [string]$OutputDirectory,
@@ -41,6 +41,7 @@ if($peOffset -lt 0 -or $peOffset + 26 -gt $peBytes.Length -or [BitConverter]::To
 $machine = [BitConverter]::ToUInt16($peBytes, $peOffset + 4)
 $expectedMachine = 0x8664
 if($Architecture -eq 'x86') { $expectedMachine = 0x014c }
+if($Architecture -eq 'arm64') { $expectedMachine = 0xaa64 }
 if($machine -ne $expectedMachine) { throw ('Payload machine 0x{0:x4} does not match {1}' -f $machine, $Architecture) }
 
 if([string]::IsNullOrWhiteSpace($IsccPath)) {

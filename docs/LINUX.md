@@ -8,14 +8,21 @@ Download packages from [feogrim-cloud/Yarnelo releases](https://github.com/feogr
 
 ## Compatibility and desktop environment
 
-Packages target **x86_64 with glibc 2.35 or newer**: Ubuntu 22.04+, Debian 12+, Mint 21+ and sufficiently recent Fedora/openSUSE/Arch. This is a library compatibility baseline, not a claim of testing every distribution release. Check your architecture and glibc with:
+There are separate native packages for **x86_64** and **ARM64**. Choose both the processor architecture and the required library baseline:
+
+| Architecture shown by `uname -m` | Minimum glibc | Examples of matching systems | Package names |
+| --- | --- | --- | --- |
+| `x86_64` (Intel/AMD, also called `amd64`) | **2.35** | Ubuntu 22.04+, Debian 12+, Mint 21+ | `amd64.deb`, `x86_64.AppImage`, `x86_64.rpm`, `x86_64.tar.gz` |
+| `aarch64` (ARM 64-bit, also called `arm64`) | **2.39** | Ubuntu 24.04+, Debian 13+, sufficiently recent Fedora / other distributions | `arm64.deb`, `aarch64.AppImage`, `aarch64.rpm`, `aarch64.tar.gz` |
+
+These are library compatibility baselines, not a claim of testing every distribution release. Check your architecture and glibc with:
 
 ```bash
 uname -m
 getconf GNU_LIBC_VERSION
 ```
 
-Expect `x86_64` and `glibc 2.35` or newer. These binaries do not support ARM64, 32-bit Linux, Alpine/musl or Ubuntu 20.04. A graphical desktop is required.
+Match both values to the table. The ARM64 Qt wheels require a newer glibc than x86_64; **Debian 12 and Ubuntu 22.04 are not supported by the ARM64 binaries**. ARM hardware such as a Raspberry Pi needs a matching 64-bit graphical OS and libraries; 32-bit images, older Raspberry Pi OS releases and headless images are not automatically compatible. All ready-made packages require a graphical desktop. There are no 32-bit Linux, Alpine/musl or Ubuntu 20.04 binaries in this release.
 
 **An X11 session with compositing is recommended.** The dock requests placement below ordinary windows and does not reserve screen space. Ready-made packages need XWayland in a Wayland session. If platform selection fails, request X11 explicitly:
 
@@ -38,6 +45,13 @@ sudo apt install ./Yarnelo-Linux-amd64.deb
 yarnelo
 ```
 
+For **ARM64 on Ubuntu 24.04+ / Debian 13+**, install the ARM64 DEB instead:
+
+```bash
+sudo apt install ./Yarnelo-Linux-arm64.deb
+yarnelo
+```
+
 Using `apt install ./file.deb` lets the package manager install dependencies. Yarnelo appears in the application menu. Program files are in `/opt/yarnelo`, and the launcher is `/usr/bin/yarnelo`.
 
 ## Fedora: RPM
@@ -49,6 +63,13 @@ yarnelo
 
 The RPM declares system-library SONAME requirements. It installs the app in `/opt/yarnelo`, the `yarnelo` command and an application-menu entry.
 
+On **Fedora ARM64 with glibc 2.39+**, use:
+
+```bash
+sudo dnf install ./Yarnelo-Linux-aarch64.rpm
+yarnelo
+```
+
 ## openSUSE: RPM
 
 On a sufficiently recent release with glibc 2.35+:
@@ -58,13 +79,20 @@ sudo zypper install ./Yarnelo-Linux-x86_64.rpm
 yarnelo
 ```
 
-This is the same RPM. Installation on openSUSE has not been separately checked; do not bypass dependency checks if the package manager cannot resolve them. AppImage or TAR.GZ with the required system libraries is another option.
+For ARM64 with glibc 2.39+, substitute `Yarnelo-Linux-aarch64.rpm`. Installation on openSUSE has not been separately checked; do not bypass dependency checks if the package manager cannot resolve them. AppImage or TAR.GZ for the matching architecture with the required system libraries is another option.
 
 ## AppImage: a single executable file
 
 ```bash
 chmod +x ./Yarnelo-Linux-x86_64.AppImage
 ./Yarnelo-Linux-x86_64.AppImage
+```
+
+The **ARM64** equivalent, requiring glibc 2.39+, is:
+
+```bash
+chmod +x ./Yarnelo-Linux-aarch64.AppImage
+./Yarnelo-Linux-aarch64.AppImage
 ```
 
 Administrator rights are not needed. Put the file in a permanent folder, such as `~/Applications`, before creating a launcher. AppImage does not add an application-menu entry or enable startup automatically.
@@ -75,7 +103,7 @@ If FUSE is unavailable, use built-in extraction and launch:
 APPIMAGE_EXTRACT_AND_RUN=1 ./Yarnelo-Linux-x86_64.AppImage
 ```
 
-This extracts temporary files and removes them after exit. TAR.GZ below also works without FUSE.
+For ARM64, substitute `Yarnelo-Linux-aarch64.AppImage` in the same command. This extracts temporary files and removes them after exit. TAR.GZ below also works without FUSE. AppImage does not remove the architecture or minimum-glibc requirements.
 
 If Qt reports that the `xcb` plugin cannot load, install missing system components on Ubuntu / Debian / Mint:
 
@@ -94,6 +122,8 @@ mkdir -p "$HOME/Applications"
 tar -xzf ./Yarnelo-Linux-x86_64.tar.gz -C "$HOME/Applications"
 "$HOME/Applications/Yarnelo/yarnelo"
 ```
+
+On **ARM64**, use `Yarnelo-Linux-aarch64.tar.gz` instead. The extracted executable has the same path. Download only one architecture for your machine.
 
 Extract the entire archive. The `yarnelo` executable needs the adjacent `_internal` folder; do not move the executable by itself. System Python is not required. X11/OpenGL/GLib libraries and `xdg-open` / `gio` remain system dependencies.
 
@@ -145,6 +175,6 @@ Updates and removal preserve your user profile. Manually added launchers and sta
 
 ## Development and licenses
 
-Source setup and interface checks are in [linux/README.md](../linux/README.md). The packaging script `scripts/Package-Linux.sh` runs on Ubuntu 22.04 x86_64 and packages the same standalone GUI as TAR.GZ, AppImage, DEB and RPM.
+Source setup and interface checks are in [linux/README.md](../linux/README.md). The packaging script `scripts/Package-Linux.sh` builds natively on Ubuntu 22.04 x86_64 or Ubuntu 24.04 ARM64 and packages the same standalone GUI as TAR.GZ, AppImage, DEB and RPM. The architecture is detected from the build host; an x86_64 build is not converted to ARM64 by renaming files. Automated checks do not establish behavior on every physical ARM device, desktop environment or game.
 
 All rights to Yarnelo's own code and artwork are reserved. Python, PySide6/Shiboken, Qt and other components retain their own licenses. Packages contain `licenses/`, `THIRD-PARTY-NOTICES.txt`, `build-versions.txt` and `corresponding-sources.txt`. Qt libraries are dynamically loaded and may be replaced with compatible modified versions under their licenses. See [LICENSE](../LICENSE).

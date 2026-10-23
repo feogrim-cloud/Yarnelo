@@ -8,8 +8,11 @@
 | --- | --- | --- |
 | Windows 10 / 11, Intel или AMD, 64 бита | `Yarnelo-Windows-x64-Setup.exe` | `Yarnelo-Windows-x64-Portable.zip` |
 | Windows 10, 32 бита | `Yarnelo-Windows-x86-Setup.exe` | `Yarnelo-Windows-x86-Portable.zip` |
+| Windows 11, ARM64 (например Snapdragon) | `Yarnelo-Windows-arm64-Setup.exe` | `Yarnelo-Windows-arm64-Portable.zip` |
 
-Узнать разрядность: **Параметры → Система → О системе → Тип системы**. Нативной сборки Windows ARM64 нет. Windows 7 и 8.1 не входят в заявленную совместимость. Для работы нужен **Microsoft .NET Framework 4.8 или 4.8.1**. Установщик проверяет наличие компонента и при необходимости предлагает [официальную страницу Microsoft](https://dotnet.microsoft.com/download/dotnet-framework/net48).
+Узнать архитектуру: **Параметры → Система → О системе → Тип системы**. Для 64-битных Intel/AMD выбирайте x64, для ARM-процессоров вроде Snapdragon — ARM64. x86 предназначена для 32-битной Windows 10. Это отдельные нативные сборки приложения; ARM64 не является переупакованным x64-файлом для эмуляции.
+
+Для Windows x64/x86 нужен **Microsoft .NET Framework 4.8 или 4.8.1**. Для нативной ARM64 — **Windows 11 и .NET Framework 4.8.1**. Windows 10 ARM64, Windows 7 и Windows 8.1 не входят в совместимость этого выпуска. Установщик проверяет нужный компонент. Официальные загрузки: [.NET Framework 4.8](https://dotnet.microsoft.com/download/dotnet-framework/net48) · [.NET Framework 4.8.1](https://dotnet.microsoft.com/download/dotnet-framework/net481).
 
 ## Установщик .exe
 
@@ -24,7 +27,7 @@
 Get-FileHash .\Yarnelo-Windows-x64-Setup.exe -Algorithm SHA256
 ```
 
-Полученный хеш должен совпадать со строкой для этого имени файла в `SHA256SUMS`. Для x86 или ZIP подставьте соответствующее имя. Контрольная сумма подтверждает целостность загруженного файла, но не заменяет цифровую подпись разработчика.
+Полученный хеш должен совпадать со строкой для этого имени файла в `SHA256SUMS`. Для x86, arm64 или ZIP подставьте соответствующее имя. Контрольная сумма подтверждает целостность загруженного файла, но не заменяет цифровую подпись разработчика.
 
 ## Переносная версия
 
@@ -45,6 +48,8 @@ Get-FileHash .\Yarnelo-Windows-x64-Setup.exe -Algorithm SHA256
 Для установленной версии запускайте новый установщик **в ту же папку**. Он мягко закрывает только соответствующий процесс Yarnelo. Если программа не отвечает, установка остановится и предложит закрыть её вручную; принудительного завершения нет. Содержимое `Data` и существующее предпочтение автозапуска сохраняются.
 
 Для переносной версии выйдите из Yarnelo через меню в области уведомлений и распакуйте новый архив поверх файлов **в прежней папке**, сохранив `Data`. Перед обновлением полезно сделать резервную копию всей папки. Не переносите старый профиль в новую папку установки простым копированием `Data`: его абсолютные пути останутся прежними.
+
+При переходе на устройстве Windows 11 ARM с эмулируемой версии на нативную ARM64 закройте Yarnelo и сохраните резервную копию всей прежней папки. Установите или распакуйте ARM64-пакет **в ту же папку**, сохранив `Data`. Не смешивайте файлы разных архитектур. Файлы ярлыков и настройки JSON не зависят от архитектуры, но абсолютным путям нужна прежняя папка.
 
 Если Yarnelo уже работает из другой папки, закройте его перед запуском новой копии. Установка рядом с переносной версией не переносит её ярлыки автоматически.
 
@@ -68,6 +73,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\src\Build.ps1 -Architectur
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Package.ps1 -Architecture x64 -BuildInstaller
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Package.ps1 -Architecture x86 -BuildInstaller
+```
+
+Для нативной ARM64 дополнительно нужен **.NET 8 SDK**. `Build.ps1` использует его компилятор Roslyn с `PlatformTarget=ARM64` и восстанавливает пакет `Microsoft.NETFramework.ReferenceAssemblies.net481` версии **1.0.3** из NuGet. Первая сборка требует доступа к сети. Компилировать можно на Windows x64 или ARM64; запуск результата требует Windows 11 ARM64 с .NET Framework 4.8.1:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\src\Build.ps1 -Architecture arm64 -Output .\build\arm64
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Package.ps1 -Architecture arm64 -BuildInstaller
 ```
 
 Результаты появятся в `dist`: ZIP, Setup.exe и SHA-256 для каждого файла. Можно указать `-IsccPath 'C:\путь\ISCC.exe'`, если компилятор расположен нестандартно. Скрипт собирает чистый каталог и отклоняет любые данные профиля, ярлыки и посторонние файлы.

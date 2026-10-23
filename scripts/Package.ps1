@@ -2,7 +2,7 @@
 param(
     [string]$Output,
     [string]$ScratchRoot,
-    [ValidateSet('x64', 'x86')]
+    [ValidateSet('x64', 'x86', 'arm64')]
     [string]$Architecture = 'x64',
     [switch]$BuildInstaller,
     [string]$IsccPath,

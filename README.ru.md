@@ -42,13 +42,16 @@ Yarnelo — полупрозрачная панель ярлыков для **Wi
 | --- | --- | --- |
 | Windows 10/11, Intel/AMD x64 | `Yarnelo-Windows-x64-Setup.exe` | `Yarnelo-Windows-x64-Portable.zip` |
 | Windows 10, 32 бита | `Yarnelo-Windows-x86-Setup.exe` | `Yarnelo-Windows-x86-Portable.zip` |
+| Windows 11, ARM64 (например Snapdragon) | `Yarnelo-Windows-arm64-Setup.exe` | `Yarnelo-Windows-arm64-Portable.zip` |
 | Ubuntu 22.04+, Debian 12+, Mint 21+, x86_64 | `Yarnelo-Linux-amd64.deb` | `Yarnelo-Linux-x86_64.AppImage` |
 | Fedora, x86_64 | `Yarnelo-Linux-x86_64.rpm` | `Yarnelo-Linux-x86_64.AppImage` |
 | Другие Linux с glibc 2.35+, x86_64 | — | `Yarnelo-Linux-x86_64.tar.gz` |
+| Ubuntu 24.04+, Debian 13+, ARM64 | `Yarnelo-Linux-arm64.deb` | `Yarnelo-Linux-aarch64.AppImage` |
+| Fedora / другие Linux с glibc 2.39+, ARM64 | `Yarnelo-Linux-aarch64.rpm` | `Yarnelo-Linux-aarch64.AppImage` или `Yarnelo-Linux-aarch64.tar.gz` |
 
 **[Установка и контрольные суммы](docs/INSTALL.ru.md)** · [Windows](docs/WINDOWS.ru.md) · [Linux](docs/LINUX.ru.md)
 
-Для Windows нужен **.NET Framework 4.8 или 4.8.1**. EXE пока не подписаны сертификатом разработчика. Linux-пакеты включают Python и Qt, но требуют системные библиотеки, перечисленные в инструкции. Windows 7/8.1, нативная Windows ARM64, Linux ARM64, 32-битный Linux и Alpine/musl не входят в совместимость этого выпуска. Linux-версия имеет статус preview; это не утверждение о проверке каждого дистрибутива и окружения рабочего стола.
+Для Windows x64/x86 нужен **.NET Framework 4.8 или 4.8.1**; для нативной Windows ARM64 — **Windows 11 и .NET Framework 4.8.1**. Windows 10 ARM64 не поддерживается нативным ARM64-пакетом. EXE пока не подписаны сертификатом разработчика. Linux-пакеты включают Python и Qt, но требуют системные библиотеки из инструкции: **glibc 2.35+ для x86_64**, **glibc 2.39+ для ARM64**. ARM64-пакеты не поддерживают Debian 12 и Ubuntu 22.04. Windows 7/8.1, 32-битный Linux и Alpine/musl не входят в совместимость этого выпуска. Linux-версия имеет статус preview; это не утверждение о проверке каждого дистрибутива и окружения рабочего стола. [Как выбрать архитектуру](docs/INSTALL.ru.md#какой-файл-скачать).
 
 ## Начало работы
 
@@ -69,10 +72,10 @@ Yarnelo — полупрозрачная панель ярлыков для **Wi
 
 | Часть проекта | Технологии |
 | --- | --- |
-| Приложение Windows | **C#**, **WPF**, **.NET Framework 4.8**; нативная интеграция **Win32 / Windows Shell**, данные **DWM** о границах и видимости окон |
+| Приложение Windows | **C#**, **WPF**, **.NET Framework 4.8** для x64/x86 и **4.8.1** для ARM64; нативная интеграция **Win32 / Windows Shell**, данные **DWM** о границах и видимости окон |
 | Приложение Linux | **Python 3.11**, **PySide6 Essentials / Qt 6**; Qt Widgets, анимации Qt, локальные настройки JSON, `gio launch` и `xdg-open` |
-| Упаковка Windows | **PowerShell**, системный компилятор C# из .NET Framework, **Inno Setup 6**; установщики EXE и переносные ZIP для x64/x86 |
-| Упаковка Linux | **PyInstaller**, **appimagetool / AppImage**, **fpm** для DEB/RPM, переносной TAR.GZ; базовая среда сборки Ubuntu 22.04 |
+| Упаковка Windows | **PowerShell**, компилятор .NET Framework для x64/x86 и Roslyn для ARM64, **Inno Setup 6**; установщики EXE и переносные ZIP для x64/x86/ARM64 |
+| Упаковка Linux | **PyInstaller**, **appimagetool / AppImage**, **fpm** для DEB/RPM, переносной TAR.GZ; нативная сборка Ubuntu 22.04 x86_64 и Ubuntu 24.04 ARM64 |
 | Проверки и релизы | **GitHub Actions** для Windows и Linux; проверки хранилища и интерфейса C#, Python `unittest`, отрисовка Qt, проверки установщика Windows, установка DEB/RPM и списки SHA-256 |
 | Графика приложения | Собственные PNG, SVG и ICO нескольких размеров; генерация иконки Windows через PowerShell / System.Drawing |
 
@@ -80,7 +83,7 @@ Yarnelo — полупрозрачная панель ярлыков для **Wi
 
 ## Сборка из исходников
 
-В Windows используется системный компилятор .NET Framework. Visual Studio, отдельный .NET SDK и NuGet не нужны. Из корня репозитория в Windows PowerShell:
+Для Windows x64/x86 используется системный компилятор .NET Framework; Visual Studio, отдельный .NET SDK и NuGet для этих архитектур не нужны. Из корня репозитория в Windows PowerShell:
 
 ```powershell
 .\src\Build.ps1 -Architecture x64 -Output .\build
@@ -88,7 +91,7 @@ Yarnelo — полупрозрачная панель ярлыков для **Wi
 .\scripts\Test.ps1
 ```
 
-Для x86 укажите `-Architecture x86`. Генератор создаёт PNG, SVG и ICO нескольких размеров. [Упаковка Windows](docs/WINDOWS.ru.md#сборка-для-разработчиков) · [Разработка и упаковка Linux](linux/README.md).
+Для x86 укажите `-Architecture x86`. Для нативной ARM64 используются `-Architecture arm64` и дополнительные средства сборки; см. руководство Windows. Генератор создаёт PNG, SVG и ICO нескольких размеров. [Упаковка Windows](docs/WINDOWS.ru.md#сборка-для-разработчиков) · [Разработка и упаковка Linux](linux/README.md).
 
 ## Участие и права
 

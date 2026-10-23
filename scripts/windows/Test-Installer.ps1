@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$SetupPath,
     [Parameter(Mandatory = $true)]
-    [ValidateSet('x64', 'x86')]
+    [ValidateSet('x64', 'x86', 'arm64')]
     [string]$Architecture
 )
 
@@ -126,8 +126,13 @@ try {
     Assert-NoReparsePoints $installedExecutable
     $expectedMachine = 0x8664
     if($Architecture -eq 'x86') { $expectedMachine = 0x014c }
+    if($Architecture -eq 'arm64') { $expectedMachine = 0xaa64 }
     $machine = Get-PeMachine $installedExecutable
     Assert-Condition ($machine -eq $expectedMachine) ('Installed PE machine 0x{0:x4} does not match {1}.' -f $machine, $Architecture)
+    $configuration = [IO.File]::ReadAllText((Join-Path $application 'Yarnelo.exe.config'))
+    if($Architecture -eq 'arm64') {
+        Assert-Condition ($configuration.Contains('Version=v4.8.1')) 'The ARM64 payload must request Framework 4.8.1, which supplies the native ARM64 CLR.'
+    }
     $installedVersion = [Version][Diagnostics.FileVersionInfo]::GetVersionInfo($installedExecutable).FileVersion
     Assert-Condition ($installedVersion -eq $setupVersion) "Installed version $installedVersion does not match Setup version $setupVersion."
 

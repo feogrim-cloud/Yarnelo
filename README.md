@@ -42,13 +42,16 @@ Choose a ready-made package from [Releases](https://github.com/feogrim-cloud/Yar
 | --- | --- | --- |
 | Windows 10/11, Intel/AMD x64 | `Yarnelo-Windows-x64-Setup.exe` | `Yarnelo-Windows-x64-Portable.zip` |
 | Windows 10, 32-bit | `Yarnelo-Windows-x86-Setup.exe` | `Yarnelo-Windows-x86-Portable.zip` |
+| Windows 11, ARM64 (for example Snapdragon) | `Yarnelo-Windows-arm64-Setup.exe` | `Yarnelo-Windows-arm64-Portable.zip` |
 | Ubuntu 22.04+, Debian 12+, Mint 21+, x86_64 | `Yarnelo-Linux-amd64.deb` | `Yarnelo-Linux-x86_64.AppImage` |
 | Fedora, x86_64 | `Yarnelo-Linux-x86_64.rpm` | `Yarnelo-Linux-x86_64.AppImage` |
 | Other Linux distributions with glibc 2.35+, x86_64 | — | `Yarnelo-Linux-x86_64.tar.gz` |
+| Ubuntu 24.04+, Debian 13+, ARM64 | `Yarnelo-Linux-arm64.deb` | `Yarnelo-Linux-aarch64.AppImage` |
+| Fedora / other Linux with glibc 2.39+, ARM64 | `Yarnelo-Linux-aarch64.rpm` | `Yarnelo-Linux-aarch64.AppImage` or `Yarnelo-Linux-aarch64.tar.gz` |
 
 **[Installation and checksums](docs/INSTALL.md)** · [Windows guide](docs/WINDOWS.md) · [Linux guide](docs/LINUX.md)
 
-Windows requires **.NET Framework 4.8 or 4.8.1**. The EXE files are currently unsigned. Linux packages include Python and Qt, but require the system libraries listed in the installation guide. Windows 7/8.1, native Windows ARM64, Linux ARM64, 32-bit Linux and Alpine/musl are outside this release's compatibility scope. The Linux version is a preview, not a claim of testing every distribution or desktop environment.
+Windows x64/x86 requires **.NET Framework 4.8 or 4.8.1**; native Windows ARM64 requires **Windows 11 and .NET Framework 4.8.1**. Windows 10 ARM64 is not supported by the native ARM64 package. The EXE files are currently unsigned. Linux packages include Python and Qt, but require the system libraries listed in the installation guide: **glibc 2.35+ for x86_64**, **glibc 2.39+ for ARM64**. ARM64 packages do not support Debian 12 or Ubuntu 22.04. Windows 7/8.1, 32-bit Linux and Alpine/musl are outside this release's compatibility scope. The Linux version is a preview, not a claim of testing every distribution or desktop environment. [Choose your architecture](docs/INSTALL.md#choose-a-download).
 
 ## Getting started
 
@@ -69,10 +72,10 @@ On Linux, configuration is stored at `$XDG_CONFIG_HOME/yarnelo/settings.json` or
 
 | Area | Technologies |
 | --- | --- |
-| Windows application | **C#**, **WPF**, **.NET Framework 4.8**; native **Win32 / Windows Shell** integration and **DWM** window bounds / visibility information |
+| Windows application | **C#**, **WPF**, **.NET Framework 4.8** for x64/x86 and **4.8.1** for ARM64; native **Win32 / Windows Shell** integration and **DWM** window bounds / visibility information |
 | Linux application | **Python 3.11**, **PySide6 Essentials / Qt 6**; Qt Widgets, Qt animation, local JSON configuration, `gio launch` and `xdg-open` |
-| Windows packaging | **PowerShell**, system .NET Framework C# compiler, **Inno Setup 6**; x64/x86 EXE installers and portable ZIPs |
-| Linux packaging | **PyInstaller**, **appimagetool / AppImage**, **fpm** for DEB/RPM, portable TAR.GZ; Ubuntu 22.04 build baseline |
+| Windows packaging | **PowerShell**, .NET Framework compiler for x64/x86 and Roslyn for ARM64, **Inno Setup 6**; x64/x86/ARM64 EXE installers and portable ZIPs |
+| Linux packaging | **PyInstaller**, **appimagetool / AppImage**, **fpm** for DEB/RPM, portable TAR.GZ; native Ubuntu 22.04 x86_64 and Ubuntu 24.04 ARM64 builds |
 | Checks and releases | **GitHub Actions** on Windows and Linux; C# storage checks, UI checks, Python `unittest`, Qt rendering checks, Windows installer checks, DEB/RPM installation checks and SHA-256 manifests |
 | App artwork | Project-owned PNG, SVG and multi-size ICO assets; Windows icon generation with PowerShell / System.Drawing |
 
@@ -80,7 +83,7 @@ Both versions use native desktop UI toolkits; Yarnelo does not embed a web brows
 
 ## Build from source
 
-Windows uses the system .NET Framework compiler. Visual Studio, a separate .NET SDK and NuGet are not required. From the repository root in Windows PowerShell:
+Windows x64/x86 uses the system .NET Framework compiler; Visual Studio, a separate .NET SDK and NuGet are not required for these architectures. From the repository root in Windows PowerShell:
 
 ```powershell
 .\src\Build.ps1 -Architecture x64 -Output .\build
@@ -88,7 +91,7 @@ Windows uses the system .NET Framework compiler. Visual Studio, a separate .NET 
 .\scripts\Test.ps1
 ```
 
-Build x86 with `-Architecture x86`. The icon generator creates the PNG, SVG and multi-size ICO used by the build. [Windows packaging](docs/WINDOWS.md#building-for-developers) · [Linux development and packaging](linux/README.md).
+Build x86 with `-Architecture x86`. Native ARM64 uses `-Architecture arm64` and needs additional build tools; see the Windows guide. The icon generator creates the PNG, SVG and multi-size ICO used by the build. [Windows packaging](docs/WINDOWS.md#building-for-developers) · [Linux development and packaging](linux/README.md).
 
 ## Contributing and rights
 

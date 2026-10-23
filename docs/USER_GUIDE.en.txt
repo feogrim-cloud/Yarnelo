@@ -1,4 +1,10 @@
-YARNELO 1.5.1 — shortcut dock for Windows 10/11 x64 and Windows 10 x86
+YARNELO 1.6.0 — shortcut dock for Windows 10/11 x64,
+Windows 10 x86 and Windows 11 ARM64
+
+Choose the package matching Settings → System → About → System type:
+x64 for Intel/AMD x64, ARM64 for ARM processors such as Snapdragon,
+x86 for 32-bit Windows 10. Native ARM64 needs Windows 11 and
+.NET Framework 4.8.1; Windows 10 ARM64 is not supported by that package.
 
 Language: right-click the dock → Language / Язык → English or Русский.
 The choice is saved and applied without restarting. On first launch,
@@ -68,4 +74,5 @@ disable startup at sign-in and exit the app. Keep Data as a backup.
 The installer also preserves Data during update and removal.
 
 Yarnelo works locally and does not send your data to a server.
-Requires Windows .NET Framework 4.8 or 4.8.1.
+Requires .NET Framework 4.8 or 4.8.1 on x64/x86,
+or .NET Framework 4.8.1 on Windows 11 ARM64.

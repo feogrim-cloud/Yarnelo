@@ -1,21 +1,34 @@
-"""Download an official AppImage build tool and verify GitHub's asset digest."""
+"""Download an official native AppImage tool and verify GitHub's asset digest."""
+import argparse
 import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import re
+import struct
 import sys
 import urllib.request
 
 TOOLS = {
-    "appimagetool": ("AppImage/appimagetool", "appimagetool-x86_64.AppImage"),
-    "runtime": ("AppImage/type2-runtime", "runtime-x86_64"),
+    "appimagetool": ("AppImage/appimagetool", "appimagetool-{architecture}.AppImage"),
+    "runtime": ("AppImage/type2-runtime", "runtime-{architecture}"),
 }
+ELF_MACHINES = {"x86_64": 62, "aarch64": 183}
 
 
 def main():
-    name, destination = sys.argv[1:]
-    repository, asset_name = TOOLS[name]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("tool", choices=TOOLS)
+    parser.add_argument("destination", type=Path)
+    parser.add_argument("--architecture", choices=ELF_MACHINES,
+                        default={"AMD64": "x86_64", "ARM64": "aarch64"}.get(
+                            platform.machine(), platform.machine()))
+    args = parser.parse_args()
+    if args.architecture not in ELF_MACHINES:
+        parser.error("This host architecture is unsupported; specify --architecture.")
+    repository, asset_pattern = TOOLS[args.tool]
+    asset_name = asset_pattern.format(architecture=args.architecture)
     headers = {"User-Agent": "Yarnelo-build", "Accept": "application/vnd.github+json"}
     if os.environ.get("GITHUB_TOKEN"):
         headers["Authorization"] = "Bearer " + os.environ["GITHUB_TOKEN"]
@@ -38,7 +51,7 @@ def main():
     download = asset["browser_download_url"]
     if not download.startswith(f"https://github.com/{repository}/releases/download/"):
         raise RuntimeError("Unexpected tool download origin.")
-    target = Path(destination)
+    target = args.destination
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
         raise FileExistsError(target)
@@ -51,6 +64,11 @@ def main():
                 output.write(chunk)
         if checksum.hexdigest() != digest.removeprefix("sha256:"):
             raise RuntimeError("Official tool digest mismatch.")
+        with temporary.open("rb") as binary:
+            header = binary.read(20)
+        if (len(header) < 20 or header[:6] != b"\x7fELF\x02\x01"
+                or struct.unpack_from("<H", header, 18)[0] != ELF_MACHINES[args.architecture]):
+            raise RuntimeError("Official tool has the wrong ELF architecture.")
         temporary.replace(target)
         target.chmod(0o755)
     finally:
@@ -58,6 +76,7 @@ def main():
     source_record = {
         "repository": repository,
         "asset": asset_name,
+        "architecture": args.architecture,
         "digest": digest,
         "source_commit": source_object["sha"],
         "source_archive": f"https://github.com/{repository}/archive/{source_object['sha']}.tar.gz",

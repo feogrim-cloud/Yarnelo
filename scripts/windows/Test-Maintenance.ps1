@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('x64', 'x86')]
+    [ValidateSet('x64', 'x86', 'arm64')]
     [string]$Architecture = 'x64'
 )
 $ErrorActionPreference = 'Stop'
@@ -44,8 +44,12 @@ $helper = Join-Path $run 'Yarnelo.SetupMaintenance.exe'
 $fixture = Join-Path $run 'FixtureTemplate.exe'
 & $compiler /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 "/out:$helper" /reference:System.dll /reference:System.Core.dll (Join-Path $PSScriptRoot 'SetupMaintenance.cs')
 if($LASTEXITCODE -ne 0) { throw 'Maintenance helper compilation failed.' }
-& $compiler /nologo /target:winexe "/platform:$Architecture" /optimize+ /codepage:65001 "/out:$fixture" /reference:System.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'MaintenanceFixture.cs')
-if($LASTEXITCODE -ne 0) { throw 'Synthetic fixture compilation failed.' }
+if($Architecture -eq 'arm64') {
+    & (Join-Path $PSScriptRoot 'Invoke-Arm64Build.ps1') -Project (Join-Path $PSScriptRoot 'MaintenanceFixture.Arm64.csproj') -OutputDirectory $run
+} else {
+    & $compiler /nologo /target:winexe "/platform:$Architecture" /optimize+ /codepage:65001 "/out:$fixture" /reference:System.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'MaintenanceFixture.cs')
+    if($LASTEXITCODE -ne 0) { throw 'Synthetic fixture compilation failed.' }
+}
 
 $fixtures = [Collections.Generic.List[object]]::new()
 function Start-Fixture([string]$Name, [string]$Language) {
