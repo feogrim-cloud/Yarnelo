@@ -28,7 +28,7 @@ jobs:
         shell: powershell
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
       - name: Run isolated storage tests and compile UI tests
         run: |
           $compileUi = '${{ inputs.compile_ui_tests }}' -ne 'false'
@@ -36,7 +36,7 @@ jobs:
       - name: Build and package portable application
         run: ./scripts/Package.ps1
       - name: Upload portable ZIP and checksum
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: Yarnelo-Windows11-x64
           path: |
