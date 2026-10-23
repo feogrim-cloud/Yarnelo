@@ -1,0 +1,6 @@
+#!/bin/sh
+# The PyInstaller application resolves its own bundled libraries and Qt plugins.
+# Keeping the original working directory makes dropped relative paths predictable.
+set -eu
+app_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec "$app_dir/usr/lib/yarnelo/yarnelo" "$@"

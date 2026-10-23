@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Yarnelo
+Comment=A translucent desktop dock for your shortcuts
+Comment[ru]=Полупрозрачная панель ярлыков для рабочего стола
+Exec=yarnelo
+Icon=yarnelo
+Terminal=false
+Categories=Utility;
+Keywords=dock;launcher;shortcuts;desktop;
+StartupNotify=false
+StartupWMClass=yarnelo

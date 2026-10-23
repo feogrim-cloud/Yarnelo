@@ -1,7 +1,12 @@
 ﻿[CmdletBinding()]
 param(
     [string]$Output,
-    [string]$ScratchRoot
+    [string]$ScratchRoot,
+    [ValidateSet('x64', 'x86')]
+    [string]$Architecture = 'x64',
+    [switch]$BuildInstaller,
+    [string]$IsccPath,
+    [string]$InstallerOutputDirectory
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,7 +14,7 @@ Set-StrictMode -Version Latest
 $scriptDirectory = Split-Path $MyInvocation.MyCommand.Path -Parent
 $repository = Split-Path $scriptDirectory -Parent
 if([string]::IsNullOrWhiteSpace($Output)) {
-    $Output = Join-Path $repository 'dist\Yarnelo-Windows11-x64.zip'
+    $Output = Join-Path $repository ('dist\Yarnelo-Windows-' + $Architecture + '-Portable.zip')
 }
 if([string]::IsNullOrWhiteSpace($ScratchRoot)) {
     $ScratchRoot = Join-Path $repository 'work\package-runs'
@@ -28,7 +33,7 @@ foreach($candidate in @($scratch, [IO.Path]::GetDirectoryName($archive))) {
 $stage = Join-Path $scratch ('package-' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N'))
 if(Test-Path -LiteralPath $stage) { throw 'The new package directory already exists.' }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
-& (Join-Path $repository 'src\Build.ps1') -Output $stage
+& (Join-Path $repository 'src\Build.ps1') -Output $stage -Architecture $Architecture
 
 # Package only files produced by a fresh build, never a user's portable profile,
 # imported shortcuts, debug dumps, test fixtures or an installed application.
@@ -46,6 +51,9 @@ foreach($name in @('LICENSE','README.md')) {
     $document = Join-Path $repository $name
     if(Test-Path -LiteralPath $document -PathType Leaf) { Copy-Item -LiteralPath $document -Destination $stage }
 }
+$windowsGuide = Join-Path $repository 'docs\WINDOWS.ru.md'
+if(!(Test-Path -LiteralPath $windowsGuide -PathType Leaf)) { throw 'The Windows installation guide is missing.' }
+Copy-Item -LiteralPath $windowsGuide -Destination (Join-Path $stage 'INSTALL-WINDOWS.md')
 New-Item -ItemType Directory -Path ([IO.Path]::GetDirectoryName($archive)) -Force | Out-Null
 $files = @(Get-ChildItem -LiteralPath $stage -File | ForEach-Object { $_.FullName })
 Compress-Archive -LiteralPath $files -DestinationPath $archive -CompressionLevel Optimal
@@ -53,3 +61,10 @@ $hash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvar
 [IO.File]::WriteAllText($archive + '.sha256', $hash + '  ' + [IO.Path]::GetFileName($archive) + "`n", [Text.UTF8Encoding]::new($false))
 Write-Host "Portable archive: $archive"
 Write-Host "SHA256: $hash"
+
+if($BuildInstaller) {
+    if([string]::IsNullOrWhiteSpace($InstallerOutputDirectory)) {
+        $InstallerOutputDirectory = [IO.Path]::GetDirectoryName($archive)
+    }
+    & (Join-Path $PSScriptRoot 'windows\Build-Installer.ps1') -Payload $stage -Architecture $Architecture -OutputDirectory $InstallerOutputDirectory -IsccPath $IsccPath
+}

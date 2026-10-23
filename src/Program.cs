@@ -9,8 +9,8 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyDescription("Yarnelo — панель ярлыков для Windows")]
 [assembly: AssemblyCompany("Yarnelo")]
 [assembly: AssemblyProduct("Yarnelo")]
-[assembly: AssemblyVersion("1.3.1.0")]
-[assembly: AssemblyFileVersion("1.3.1.0")]
+[assembly: AssemblyVersion("1.4.0.0")]
+[assembly: AssemblyFileVersion("1.4.0.0")]
 
 namespace Polka {
     internal static class Program {

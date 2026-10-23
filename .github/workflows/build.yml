@@ -1,4 +1,4 @@
-name: Windows build
+name: Windows and Linux builds
 
 on:
   push:
@@ -7,12 +7,8 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
-      compile_ui_tests:
-        description: Compile UI tests without opening windows
-        type: boolean
-        default: true
       release_tag:
-        description: Optional release tag matching the built version, for example v1.3.1
+        description: Optional version to publish after all checks, for example v1.4.0
         type: string
         default: ''
 
@@ -20,75 +16,104 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  windows:
+    name: Windows ${{ matrix.arch }}
     runs-on: windows-2022
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+    env:
+      TARGET_ARCH: ${{ matrix.arch }}
     defaults:
       run:
         shell: powershell
     steps:
-      - name: Check out source
-        uses: actions/checkout@v7.0.1
-      - name: Run isolated storage tests and compile UI tests
+      - uses: actions/checkout@v7.0.1
+      - name: Run storage checks and compile UI tests
+        run: ./scripts/Test.ps1 -CompileUiTests
+      - name: Install official Inno Setup compiler
         run: |
-          $compileUi = '${{ inputs.compile_ui_tests }}' -ne 'false'
-          ./scripts/Test.ps1 -CompileUiTests:$compileUi
-      - name: Build and package portable application
-        run: ./scripts/Package.ps1
-      - name: Upload portable ZIP and checksum
-        uses: actions/upload-artifact@v7.0.2
+          choco install innosetup --version=6.7.3 --yes --no-progress
+          if($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+      - name: Build portable application and EXE installer
+        run: ./scripts/Package.ps1 -Architecture $env:TARGET_ARCH -BuildInstaller
+      - uses: actions/upload-artifact@v7.0.2
         with:
-          name: Yarnelo-Windows11-x64
-          path: |
-            dist/Yarnelo-Windows11-x64.zip
-            dist/Yarnelo-Windows11-x64.zip.sha256
+          name: Yarnelo-Windows-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  linux:
+    name: Linux x86_64 packages
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.11.17'
+      - name: Install Linux build and display dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-randr0 libxcb-shape0 libxcb-xfixes0 libxcb-xkb1 libdbus-1-3 libglib2.0-0 libfontconfig1 libfreetype6 libice6 libsm6 xdg-utils libglib2.0-bin patchelf squashfs-tools rpm ruby ruby-dev build-essential xvfb dbus-x11 desktop-file-utils
+          sudo gem install fpm --version 1.16.0 --no-document
+          python -m pip install -r linux/requirements.txt pyinstaller==6.22.3
+      - name: Check model, shell scripts and offscreen rendering
+        run: |
+          python -m unittest discover -s linux/tests -v
+          bash -n scripts/Package-Linux.sh linux/packaging/AppRun
+          python linux/yarnelo.py --smoke-test --smoke-output work/linux-preview.png
+      - name: Download and verify official AppImage tools
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/FetchReleaseAsset.py appimagetool work/tools/appimagetool-x86_64.AppImage
+          python scripts/FetchReleaseAsset.py runtime work/tools/runtime-x86_64
+      - name: Build and test standalone Linux packages
+        run: |
+          APPIMAGETOOL="$PWD/work/tools/appimagetool-x86_64.AppImage" APPIMAGE_RUNTIME="$PWD/work/tools/runtime-x86_64" bash scripts/Package-Linux.sh --output dist --version "$(cat VERSION)" --smoke-test
+      - name: Verify DEB installation on Ubuntu and Debian
+        run: |
+          for image in ubuntu:24.04 debian:12; do
+            docker run --rm -v "$PWD/dist:/packages:ro" "$image" sh -ec 'apt-get update -qq; apt-get install -y /packages/Yarnelo-Linux-amd64.deb; QT_QPA_PLATFORM=offscreen yarnelo --smoke-test'
+          done
+      - name: Verify RPM installation on Fedora
+        run: |
+          docker run --rm -v "$PWD/dist:/packages:ro" fedora:44 sh -ec 'dnf install -y /packages/Yarnelo-Linux-x86_64.rpm; QT_QPA_PLATFORM=offscreen yarnelo --smoke-test'
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: Yarnelo-Linux-x86_64
+          path: dist/*
           if-no-files-found: error
           retention-days: 14
 
   release:
+    name: Publish checked release
     if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
-    needs: build
-    runs-on: windows-2022
-    timeout-minutes: 5
+    needs: [windows, linux]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
     permissions:
       actions: read
       contents: write
     env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       REQUESTED_RELEASE_TAG: ${{ inputs.release_tag }}
-    defaults:
-      run:
-        shell: powershell
     steps:
-      - name: Download verified build artifact
+      - uses: actions/checkout@v7.0.1
+      - name: Collect checked artifacts and validate version
         run: |
-          gh run download $env:GITHUB_RUN_ID --name Yarnelo-Windows11-x64 --dir dist
-          if($LASTEXITCODE -ne 0) { throw 'Could not download this run artifact.' }
-          $archive = Join-Path (Get-Location).Path 'dist/Yarnelo-Windows11-x64.zip'
-          $expected = ((Get-Content -LiteralPath ($archive + '.sha256') -Raw).Trim() -split '\s+')[0]
-          if((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $expected) {
-              throw 'The portable archive checksum does not match.'
-          }
-      - name: Validate release tag against the compiled application
+          gh run download "$GITHUB_RUN_ID" --pattern 'Yarnelo-*' --dir release-input
+          tag="$REQUESTED_RELEASE_TAG"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then tag="$GITHUB_REF_NAME"; fi
+          python3 scripts/PrepareRelease.py "$tag" release-input release-assets
+          printf 'RELEASE_TAG=%s\n' "$tag" >> "$GITHUB_ENV"
+      - name: Publish installers and portable packages
         run: |
-          Expand-Archive -LiteralPath 'dist/Yarnelo-Windows11-x64.zip' -DestinationPath 'release-check'
-          $executable = Join-Path (Get-Location).Path 'release-check/Yarnelo.exe'
-          $version = [Version]([Diagnostics.FileVersionInfo]::GetVersionInfo($executable).FileVersion)
-          $expectedTag = 'v{0}.{1}.{2}' -f $version.Major, $version.Minor, $version.Build
-          $tag = if($env:GITHUB_EVENT_NAME -eq 'push') { $env:GITHUB_REF_NAME } else { $env:REQUESTED_RELEASE_TAG }
-          if($tag -notmatch '^v\d+\.\d+\.\d+$' -or $tag -ne $expectedTag) {
-              throw "Release tag must match the compiled application version: $expectedTag"
-          }
-          [IO.File]::AppendAllText($env:GITHUB_ENV, "RELEASE_TAG=$tag`n", [Text.UTF8Encoding]::new($false))
-      - name: Publish tagged release
-        run: |
-          $arguments = @('release','create',$env:RELEASE_TAG,'--title',"Yarnelo $env:RELEASE_TAG",'--generate-notes')
-          if($env:GITHUB_EVENT_NAME -eq 'push') {
-              $arguments += '--verify-tag'
-          } else {
-              $arguments += @('--target',$env:GITHUB_SHA)
-          }
-          $arguments += @('dist/Yarnelo-Windows11-x64.zip','dist/Yarnelo-Windows11-x64.zip.sha256')
-          & gh @arguments
-          if($LASTEXITCODE -ne 0) { throw 'Could not publish the tagged release.' }
+          args=(release create "$RELEASE_TAG" --title "Yarnelo $RELEASE_TAG" --notes-file docs/RELEASE_NOTES.md)
+          if [ "$GITHUB_EVENT_NAME" = push ]; then args+=(--verify-tag); else args+=(--target "$GITHUB_SHA"); fi
+          gh "${args[@]}" release-assets/*

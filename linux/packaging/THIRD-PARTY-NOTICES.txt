@@ -1,0 +1,29 @@
+Yarnelo Linux binary distribution
+===============================
+
+The Yarnelo source code and artwork remain all rights reserved; see LICENSE.
+The rights and licenses of bundled third-party components are unchanged.
+
+This executable contains Python, PySide6, Shiboken6, Qt and their dependencies.
+Their available license notices are copied into this distribution's licenses/
+directory from the build environment. Python's installed LICENSE is included
+when available. The PyInstaller bootloader exception allows bundling applications
+without changing the application's own license.
+
+PySide6 / Qt for Python: https://doc.qt.io/qtforpython-6/licenses.html
+Qt licensing: https://www.qt.io/licensing/open-source-lgpl-obligations
+PySide6 source: https://code.qt.io/pyside/pyside-setup.git/
+Qt source: https://code.qt.io/qt/qtbase.git/
+Python: https://docs.python.org/3/license.html
+PyInstaller: https://pyinstaller.org/en/stable/license.html
+
+The application is a one-directory bundle. Qt shared libraries live in
+_internal/PySide6/Qt/lib/ and are dynamically loaded. They are not statically
+linked into Yarnelo. You may replace those LGPL components with compatible
+modified versions in your own copy, subject to their respective licenses.
+Repacking an AppImage is unnecessary for this: use --appimage-extract and run
+the resulting squashfs-root/AppRun after replacing compatible libraries.
+
+The exact bundled versions are recorded in build-versions.txt. References above
+identify upstream source repositories; corresponding release tags follow those
+recorded versions. This notice does not grant a license to Yarnelo itself.

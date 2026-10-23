@@ -9,6 +9,15 @@
 *.dll
 *.pdb
 *.zip
+*.deb
+*.rpm
+*.AppImage
+*.tar.gz
+*.tar.xz
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
 
 # Personal dock data must never be committed
 **/[Dd]ata/
