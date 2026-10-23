@@ -54,7 +54,11 @@ app="$build/frozen/yarnelo"
 
 install -m 644 "$repo/LICENSE" "$app/LICENSE"
 install -m 644 "$repo/linux/packaging/THIRD-PARTY-NOTICES.txt" "$app/THIRD-PARTY-NOTICES.txt"
-mkdir -p "$app/docs"
+mkdir -p "$app/docs" "$app/licenses/bzip2"
+# bzip2 is deliberately bundled because its SONAME differs between DEB/RPM
+# distributions. Preserve the full upstream/Debian notice shipped by Ubuntu.
+[[ -f /usr/share/doc/libbz2-1.0/copyright ]] || die 'Missing copyright notice for the bundled libbz2-1.0 library.'
+install -m 644 /usr/share/doc/libbz2-1.0/copyright "$app/licenses/bzip2/copyright"
 for document in "$repo/docs/INSTALL.md" "$repo/linux/README.md"; do
     [[ ! -f $document ]] || install -m 644 "$document" "$app/docs/$(basename -- "$document")"
 done
@@ -64,6 +68,7 @@ python3 - "$app" <<'PY'
 import importlib.metadata as metadata
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import sysconfig
 
@@ -73,11 +78,14 @@ from PySide6.QtCore import qVersion
 python_version = sys.version.split()[0]
 qt_version = qVersion()
 versions = [f"Python {python_version}", f"Qt {qt_version}"]
+versions.append("bzip2 " + subprocess.check_output(
+    ["dpkg-query", "-W", "-f=${Version}", "libbz2-1.0"], text=True).strip())
 sources = [
     f"CPython {python_version}: https://github.com/python/cpython/tree/v{python_version}",
     f"Qt {qt_version}: https://code.qt.io/qt/qtbase.git/tree/?h=v{qt_version}",
     f"Qt SVG {qt_version}: https://code.qt.io/qt/qtsvg.git/tree/?h=v{qt_version}",
     f"Qt Image Formats {qt_version}: https://code.qt.io/qt/qtimageformats.git/tree/?h=v{qt_version}",
+    "bzip2 1.0.8: https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz",
 ]
 for name in ("PyInstaller", "PySide6", "PySide6-Essentials", "shiboken6"):
     try:
@@ -141,7 +149,7 @@ deb_dependencies=(
     libxcb-shape0 libxcb-randr0 libxcb-xfixes0 libxcb-shm0 libxcb-sync1 libxcb-xinerama0
     libxcb-xkb1 libxkbcommon0 libxkbcommon-x11-0 libxext6 libxrender1 libxi6
     libfontconfig1 libfreetype6 'libglib2.0-0 | libglib2.0-0t64' libdbus-1-3
-    libgl1 libegl1 libice6 libsm6 xdg-utils libglib2.0-bin
+    libgl1 libegl1 libopengl0 libx11-xcb1 libice6 libsm6 xdg-utils libglib2.0-bin
 )
 deb_args=()
 for dependency in "${deb_dependencies[@]}"; do deb_args+=(--depends "$dependency"); done

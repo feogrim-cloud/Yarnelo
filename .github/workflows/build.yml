@@ -35,10 +35,22 @@ jobs:
         run: ./scripts/Test.ps1 -CompileUiTests
       - name: Install official Inno Setup compiler
         run: |
-          choco install innosetup --version=6.7.3 --yes --no-progress
-          if($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+          Invoke-WebRequest -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $installer
+          $expected = '9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732'
+          if((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ne $expected) { throw 'Inno Setup checksum mismatch.' }
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
+          if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Pyrsys') { throw 'Invalid Inno Setup publisher.' }
+          $compilerFolder = Join-Path $env:RUNNER_TEMP 'InnoSetup6'
+          $process = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-','/NOICONS',('/DIR="' + $compilerFolder + '"')) -WindowStyle Hidden -Wait -PassThru
+          if($process.ExitCode -ne 0) { throw 'Inno Setup installation failed.' }
+          $compiler = Join-Path $compilerFolder 'ISCC.exe'
+          if(!(Test-Path -LiteralPath $compiler)) { throw 'Inno Setup compiler not found.' }
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "YARNELO_ISCC=$compiler`n", [Text.UTF8Encoding]::new($false))
       - name: Build portable application and EXE installer
-        run: ./scripts/Package.ps1 -Architecture $env:TARGET_ARCH -BuildInstaller
+        run: ./scripts/Package.ps1 -Architecture $env:TARGET_ARCH -BuildInstaller -IsccPath $env:YARNELO_ISCC
+      - name: Verify installation, uninstallation and profile retention
+        run: ./scripts/windows/Test-Installer.ps1 -SetupPath "dist/Yarnelo-Windows-$env:TARGET_ARCH-Setup.exe" -Architecture $env:TARGET_ARCH
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: Yarnelo-Windows-${{ matrix.arch }}
@@ -58,7 +70,7 @@ jobs:
       - name: Install Linux build and display dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-randr0 libxcb-shape0 libxcb-xfixes0 libxcb-xkb1 libdbus-1-3 libglib2.0-0 libfontconfig1 libfreetype6 libice6 libsm6 xdg-utils libglib2.0-bin patchelf squashfs-tools rpm ruby ruby-dev build-essential xvfb dbus-x11 desktop-file-utils
+          sudo apt-get install -y libegl1 libgl1 libopengl0 libx11-xcb1 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-randr0 libxcb-shape0 libxcb-xfixes0 libxcb-xkb1 libdbus-1-3 libglib2.0-0 libfontconfig1 libfreetype6 libice6 libsm6 xdg-utils libglib2.0-bin patchelf squashfs-tools rpm ruby ruby-dev build-essential xvfb dbus-x11 desktop-file-utils
           sudo gem install fpm --version 1.16.0 --no-document
           python -m pip install -r linux/requirements.txt pyinstaller==6.22.3
       - name: Check model, shell scripts and offscreen rendering
@@ -76,7 +88,11 @@ jobs:
         run: |
           APPIMAGETOOL="$PWD/work/tools/appimagetool-x86_64.AppImage" APPIMAGE_RUNTIME="$PWD/work/tools/runtime-x86_64" bash scripts/Package-Linux.sh --output dist --version "$(cat VERSION)" --smoke-test
       - name: Verify DEB installation on Ubuntu and Debian
+        # This also checks the actual xcb GUI plugin, beyond offscreen rendering.
         run: |
+          mkdir -p work/linux-display-check
+          tar -xzf dist/Yarnelo-Linux-x86_64.tar.gz -C work/linux-display-check
+          xvfb-run -a env QT_QPA_PLATFORM=xcb work/linux-display-check/Yarnelo/yarnelo --smoke-test
           for image in ubuntu:24.04 debian:12; do
             docker run --rm -v "$PWD/dist:/packages:ro" "$image" sh -ec 'apt-get update -qq; apt-get install -y /packages/Yarnelo-Linux-amd64.deb; QT_QPA_PLATFORM=offscreen yarnelo --smoke-test'
           done

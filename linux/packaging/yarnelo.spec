@@ -55,6 +55,9 @@ app.datas = [entry for entry in app.datas if wanted(entry)]
 # /lib and /usr/lib libraries to the documented distro package dependencies.
 app.exclude_system_libraries(list_of_exceptions=[
     "*libpython*", "*libQt6*", "*libpyside6*", "*libshiboken6*",
+    # Ubuntu's libbz2.so.1.0 SONAME differs from Fedora's libbz2.so.1.
+    # CPython's _bz2 extension must travel with the library it was linked to.
+    "*libbz2*",
 ])
 pyz = PYZ(app.pure)
 exe = EXE(

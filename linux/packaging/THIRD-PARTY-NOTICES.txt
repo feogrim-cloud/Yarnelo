@@ -4,7 +4,7 @@ Yarnelo Linux binary distribution
 The Yarnelo source code and artwork remain all rights reserved; see LICENSE.
 The rights and licenses of bundled third-party components are unchanged.
 
-This executable contains Python, PySide6, Shiboken6, Qt and their dependencies.
+This executable contains Python, PySide6, Shiboken6, Qt, bzip2 and their dependencies.
 Their available license notices are copied into this distribution's licenses/
 directory from the build environment. Python's installed LICENSE is included
 when available. The PyInstaller bootloader exception allows bundling applications
@@ -15,6 +15,7 @@ Qt licensing: https://www.qt.io/licensing/open-source-lgpl-obligations
 PySide6 source: https://code.qt.io/pyside/pyside-setup.git/
 Qt source: https://code.qt.io/qt/qtbase.git/
 Python: https://docs.python.org/3/license.html
+bzip2: https://sourceware.org/bzip2/
 PyInstaller: https://pyinstaller.org/en/stable/license.html
 
 The application is a one-directory bundle. Qt shared libraries live in
