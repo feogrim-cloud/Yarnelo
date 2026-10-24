@@ -64,7 +64,7 @@ namespace Polka {
             AddRows(appearance);
             AddPlacement(behavior);
             AddHeading(behavior,"Behavior");
-            AddCheck(behavior,"ShowLabels",dock.Store.Settings.ShowLabels,delegate(bool v) { dock.Store.Settings.ShowLabels=v; });
+            AddLabelMode(behavior);
             var floating=AddCheck(behavior,"AlwaysOnTop",dock.Store.Settings.AlwaysOnTop,delegate(bool v) { dock.Store.Settings.AlwaysOnTop=v; });
             floating.ToolTip=L10n.T("VisibilityHelp");
             bool startup=false, startupAvailable=!Program.TestMode;
@@ -78,6 +78,13 @@ namespace Polka {
             });
             startupCheck.IsEnabled=startupAvailable;
             startupCheck.ToolTip=L10n.T("StartupHelp");
+            var automatic=AddCheck(behavior,"AutoAddDesktop",dock.Store.Settings.AutoAddDesktopShortcuts,delegate(bool v) {
+                bool previous=dock.Store.Settings.AutoAddDesktopShortcuts;
+                dock.Store.Settings.AutoAddDesktopShortcuts=v;
+                try { dock.Store.Save(); }
+                catch { dock.Store.Settings.AutoAddDesktopShortcuts=previous; throw; }
+            });
+            automatic.ToolTip=L10n.T("AutoAddHelp");
             AddCheck(behavior,"MoveDesktop",dock.Store.Settings.MoveDesktopShortcuts,delegate(bool v) { dock.Store.Settings.MoveDesktopShortcuts=v; });
             behavior.Children.Add(Help("MoveHelp",new Thickness(0,0,0,12)));
             behavior.Children.Add(Help("UsageHelp",new Thickness(0,0,0,0)));
@@ -115,6 +122,29 @@ namespace Polka {
                 System.Windows.Automation.AutomationProperties.SetName(button,"Language: "+code);
                 button.Click+=delegate { dock.SetLanguage(choice); };
                 Grid.SetColumn(button,column); choices.Children.Add(button);
+            }
+            target.Children.Add(choices);
+        }
+        void AddLabelMode(Panel target) {
+            target.Children.Add(new TextBlock { Text=L10n.T("ShortcutNames"), FontSize=13, Margin=new Thickness(0,0,0,8) });
+            var choices=new Grid { Margin=new Thickness(0,0,0,14), ToolTip=L10n.T("NamesHelp") };
+            var buttons=new Button[2];
+            for(int index=0;index<2;index++) {
+                bool always=index==1;
+                choices.ColumnDefinitions.Add(new ColumnDefinition());
+                var button=Choice(L10n.T(always?"NamesAlways":"NamesOnHover"),dock.Store.Settings.ShowLabels==always);
+                button.Tag=always?"label-mode-always":"label-mode-hover";
+                button.Margin=new Thickness(index==0?0:5,0,0,0);
+                System.Windows.Automation.AutomationProperties.SetName(button,L10n.T("ShortcutNames")+": "+L10n.T(always?"NamesAlways":"NamesOnHover"));
+                button.Click+=delegate {
+                    bool previous=dock.Store.Settings.ShowLabels;
+                    dock.Store.Settings.ShowLabels=always;
+                    try { dock.Store.Save(); }
+                    catch(Exception ex) { dock.Store.Settings.ShowLabels=previous; dock.Toast(L10n.T("SaveSettingsFailed")+ex.Message); return; }
+                    dock.ApplySettings();
+                    for(int n=0;n<buttons.Length;n++) Select(buttons[n],dock.Store.Settings.ShowLabels==(n==1));
+                };
+                buttons[index]=button; Grid.SetColumn(button,index); choices.Children.Add(button);
             }
             target.Children.Add(choices);
         }

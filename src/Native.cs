@@ -88,6 +88,144 @@ namespace Polka
             return "\"" + value.Replace("\"", String.Empty) + "\"";
         }
 
+        // Automatic import must not move a shortcut while an installer is
+        // still writing it. This reads only the local shortcut, never launches
+        // it or calls IShellLink.Resolve (which could search a network target).
+        internal static bool IsDesktopShortcutReady(string path)
+        {
+            object shellLink = null;
+            try
+            {
+                string extension = Path.GetExtension(path);
+                bool link = String.Equals(extension, ".lnk", StringComparison.OrdinalIgnoreCase);
+                if (!link && !String.Equals(extension, ".url", StringComparison.OrdinalIgnoreCase)) return false;
+                if ((File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0) return false;
+                // Deny writers and renames while parsing and while COM loads
+                // this exact file. No target path is opened or resolved.
+                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    if (stream.Length <= 0 || stream.Length > 4 * 1024 * 1024) return false;
+                    if (!link) return InternetShortcutReady(stream);
+                    byte[] data = new byte[(int)stream.Length];
+                    int read = 0;
+                    while (read < data.Length)
+                    {
+                        int count = stream.Read(data, read, data.Length - read);
+                        if (count == 0) return false;
+                        read += count;
+                    }
+                    if (!CompleteShellLink(data)) return false;
+                    shellLink = Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("00021401-0000-0000-C000-000000000046"), true));
+                    ((System.Runtime.InteropServices.ComTypes.IPersistFile)shellLink).Load(path, 0x20); // STGM_READ | STGM_SHARE_DENY_WRITE
+                    return true;
+                }
+            }
+            catch (IOException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
+            catch (ArgumentException) { return false; }
+            catch (NotSupportedException) { return false; }
+            catch (COMException) { return false; }
+            catch (System.Security.SecurityException) { return false; }
+            finally { if (shellLink != null && Marshal.IsComObject(shellLink)) Marshal.FinalReleaseComObject(shellLink); }
+        }
+
+        static bool InternetShortcutReady(Stream stream)
+        {
+            bool section = false;
+            string target = null;
+            using (var reader = new StreamReader(stream, Encoding.Default, true, 4096, true))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    line = line.Trim();
+                    if (line.Length == 0 || line[0] == ';' || line[0] == '#') continue;
+                    if (line[0] == '[')
+                    {
+                        section = String.Equals(line, "[InternetShortcut]", StringComparison.OrdinalIgnoreCase);
+                        continue;
+                    }
+                    int equal = line.IndexOf('=');
+                    if (!section || equal < 0 || !String.Equals(line.Substring(0, equal).Trim(), "URL", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (target != null) return false;
+                    target = line.Substring(equal + 1).Trim();
+                }
+            }
+            if (String.IsNullOrWhiteSpace(target) || target.Length > 65536) return false;
+            foreach (char character in target) if (Char.IsControl(character)) return false;
+            Uri address;
+            return Uri.TryCreate(target, UriKind.Absolute, out address);
+        }
+
+        static bool CompleteShellLink(byte[] data)
+        {
+            // MS-SHLLINK: 76-byte header, optional IDList/LinkInfo/StringData,
+            // then size-prefixed ExtraData ending in a four-byte TerminalBlock.
+            // Bounds checks catch truncation that IPersistFile.Load can tolerate.
+            if (data.Length < 80 || BitConverter.ToUInt32(data, 0) != 76) return false;
+            byte[] clsid = new Guid("00021401-0000-0000-C000-000000000046").ToByteArray();
+            for (int index = 0; index < clsid.Length; index++) if (data[index + 4] != clsid[index]) return false;
+            uint flags = BitConverter.ToUInt32(data, 20);
+            int cursor = 76;
+            bool hasTarget = false;
+            if ((flags & 1) != 0)
+            {
+                if (cursor + 2 > data.Length) return false;
+                int bytes = BitConverter.ToUInt16(data, cursor); cursor += 2;
+                if (bytes < 2 || bytes > data.Length - cursor) return false;
+                int end = cursor + bytes;
+                while (true)
+                {
+                    if (cursor + 2 > end) return false;
+                    int item = BitConverter.ToUInt16(data, cursor);
+                    if (item == 0) { cursor += 2; if (cursor != end) return false; break; }
+                    if (item < 2 || item > end - cursor) return false;
+                    hasTarget = true; cursor += item;
+                }
+            }
+            if ((flags & 2) != 0)
+            {
+                if (cursor + 28 > data.Length) return false;
+                uint bytes = BitConverter.ToUInt32(data, cursor), header = BitConverter.ToUInt32(data, cursor + 4);
+                if (bytes < 28 || bytes > data.Length - cursor || header < 28 || header > bytes || (header > 28 && header < 36)) return false;
+                for (int offset = 12; offset <= 24; offset += 4)
+                {
+                    uint value = BitConverter.ToUInt32(data, cursor + offset);
+                    if (value != 0 && (value < header || value >= bytes)) return false;
+                }
+                if (header >= 36)
+                    for (int offset = 28; offset <= 32; offset += 4)
+                    {
+                        uint value = BitConverter.ToUInt32(data, cursor + offset);
+                        if (value != 0 && (value < header || value >= bytes)) return false;
+                    }
+                hasTarget |= (BitConverter.ToUInt32(data, cursor + 8) & 3) != 0;
+                cursor += (int)bytes;
+            }
+            for (uint mask = 4; mask <= 64; mask <<= 1)
+            {
+                if ((flags & mask) == 0) continue;
+                if (cursor + 2 > data.Length) return false;
+                int characters = BitConverter.ToUInt16(data, cursor); cursor += 2;
+                int bytes = characters * ((flags & 128) != 0 ? 2 : 1);
+                if (bytes > data.Length - cursor) return false;
+                if (mask == 8 && characters > 0) hasTarget = true;
+                cursor += bytes;
+            }
+            while (cursor + 4 <= data.Length)
+            {
+                uint bytes = BitConverter.ToUInt32(data, cursor);
+                if (bytes < 4) return cursor + 4 == data.Length && hasTarget;
+                if (bytes < 8 || bytes > data.Length - cursor) return false;
+                uint signature = BitConverter.ToUInt32(data, cursor + 4);
+                // Environment, MSI, property-store/UWP and Vista IDList targets
+                // can be valid without a filesystem path or existing target.
+                if (bytes > 8 && (signature == 0xA0000001 || signature == 0xA0000006 || signature == 0xA0000009 || signature == 0xA000000C)) hasTarget = true;
+                cursor += (int)bytes;
+            }
+            return false;
+        }
+
         public static ImageSource GetIcon(string path)
         {
             // Shell icon handlers, including Recycle Bin, can require a true

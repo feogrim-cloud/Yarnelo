@@ -1,4 +1,4 @@
-YARNELO 1.7.1 — shortcut dock for Windows 10/11 x64,
+YARNELO 1.7.2 — shortcut dock for Windows 10/11 x64,
 Windows 10 x86 and Windows 11 ARM64
 
 Choose the package matching Settings → System → About → System type:
@@ -31,7 +31,12 @@ files, folders, This PC, Recycle Bin, choosing a language and settings.
 Settings use two columns without vertical scrolling and fit the screen.
 Corner rounding runs from 0 (square corners) to 100 (capsule).
 Settings also control background opacity, icon size, hover magnification,
-labels, showing above ordinary windows, and startup at sign-in.
+shortcut names, showing above ordinary windows, and startup at sign-in.
+Settings → Shortcut names: On hover shows a full-name bubble;
+Always (two lines) adds captions under the icons. Both modes retain
+the full-name hover bubble when a long name does not fit two lines.
+Wider caption cells and extra rows keep names from overlapping.
+Your previous choice of showing icon labels is retained.
 Changing background opacity keeps icons readable.
 Hover animations do not restart with every pointer movement.
 Older icons with large transparent margins are fitted to their visible
@@ -69,10 +74,21 @@ stored in the dock's folder and removed from the desktop. Their contents
 and launch arguments are preserved. Ordinary files and folders are
 added without moving them.
 
+Settings → Automatically add new desktop shortcuts is off by default.
+Enable it to add new .lnk/.url appearing on the desktop while Yarnelo
+is running. Enabling the option or starting the app does not import
+existing icons. Ordinary files and folders are ignored, and duplicates
+are skipped. Desktop shortcut transfer follows its existing setting.
+At the 30-icon limit the original stays on the desktop; it is not queued
+for later. Make room and add it manually with + or drag-and-drop.
+Turning the option off keeps all adding manual.
+
 Shared desktop shortcuts (C:\Users\Public\Desktop) are copied first.
 Windows asks for administrator rights to change the shared desktop.
 Canceling leaves the originals in place. To retry, choose
 + → Move shared shortcuts into the dock.
+Automatic addition copies shared shortcuts without opening an
+administrator prompt. Use that explicit menu action to move them.
 
 Right-click an icon → Remove and restore shortcut to desktop restores
 a moved shortcut. Existing files are never overwritten.

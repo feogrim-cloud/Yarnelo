@@ -98,6 +98,14 @@ namespace Polka {
             Add("ColumnCount","{0} столбца","{0} columns");
             Add("ColumnsAutomation","Количество столбцов: ","Number of columns: ");
             Add("ShowLabels","Подписи под значками","Show icon labels");
+            Add("ShortcutNames","Названия ярлыков","Shortcut names");
+            Add("NamesOnHover","При наведении","On hover");
+            Add("NamesAlways","Всегда (две строки)","Always (two lines)");
+            Add("NamesHelp","Полное название доступно при наведении в обоих режимах.","The full name is available on hover in both modes.");
+            Add("AutoAddDesktop","Автоматически добавлять новые ярлыки с рабочего стола","Automatically add new desktop shortcuts");
+            Add("AutoAddHelp","Подхватывать новые .lnk и .url во время работы Yarnelo. Прежние ярлыки добавляются вручную. Перенос регулирует следующая настройка.","Pick up new .lnk and .url shortcuts while Yarnelo is running. Existing shortcuts are added manually. The next option controls moving them.");
+            Add("AutoAddLimit","Панель заполнена: новый ярлык остался на рабочем столе (максимум 30).","The dock is full: the new shortcut was left on the desktop (maximum 30).");
+            Add("AutoAdded","Новые ярлыки добавлены: {0}","New shortcuts added: {0}");
             Add("AlwaysOnTop","Показывать поверх обычных окон","Show above regular windows");
             Add("VisibilityHelp","Если выключено, панель скрывается, когда другое окно перекрывает её место, и возвращается сама, когда место освобождается. Окно над панелью или на другом мониторе её не скрывает. Полноэкранные приложения на мониторе панели всегда скрывают её.","When disabled, the dock hides while another window covers its position and returns when the space is clear. A window above the dock or on another monitor does not hide it. Fullscreen applications on the dock's monitor always hide it.");
             Add("Startup","Запускать при входе в Windows","Start when signing in to Windows");

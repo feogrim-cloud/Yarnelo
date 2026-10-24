@@ -92,7 +92,7 @@ class ModelTests(unittest.TestCase):
 
     def test_full_dock_fits_work_areas_without_losing_or_overlapping_tiles(self):
         items = [Item(str(i), "path", f"/demo/{i}") for i in range(30)]
-        for width, height in ((320, 240), (640, 480), (1280, 720), (2560, 1440)):
+        for width, height in ((320, 240), (640, 360), (640, 480), (1280, 720), (2560, 1440)):
             for placement in PLACEMENTS:
                 for preferred_rows in (1, 4):
                     for labels in (False, True):
@@ -121,6 +121,38 @@ class ModelTests(unittest.TestCase):
             save_settings(path, settings)
             self.assertEqual(2, load_settings(path).rows)
             self.assertEqual([path], list(path.parent.iterdir()))
+
+    def test_startup_preference_is_optional_boolean_and_survives_profile_roundtrip(self):
+        self.assertFalse(Settings().launch_at_login)
+        self.assertFalse(Settings.from_dict({"items": [{"id": "legacy-trash", "kind": "trash"}]}).launch_at_login)
+        for enabled in (False, True):
+            with tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "settings.json"
+                settings = Settings(launch_at_login=enabled)
+                save_settings(path, settings)
+                self.assertEqual(enabled, load_settings(path).launch_at_login)
+        for value in (0, 1, "true", None, [], {}):
+            with self.subTest(value=value), self.assertRaises(ModelError):
+                Settings.from_dict({"launch_at_login": value})
+
+    def test_desktop_auto_add_defaults_to_manual_and_requires_a_boolean(self):
+        self.assertFalse(Settings().auto_add_desktop_shortcuts)
+        self.assertFalse(Settings.from_dict({"labels": True}).auto_add_desktop_shortcuts)
+        settings = Settings(auto_add_desktop_shortcuts=True)
+        self.assertTrue(Settings.from_dict(settings.to_dict()).auto_add_desktop_shortcuts)
+        for value in (0, 1, "true", None, [], {}):
+            with self.subTest(value=value), self.assertRaises(ModelError):
+                Settings.from_dict({"auto_add_desktop_shortcuts": value})
+
+    def test_label_modes_preserve_the_legacy_preference_and_allocate_two_lines(self):
+        self.assertFalse(Settings().labels)
+        for always in (False, True):
+            settings = Settings.from_dict({"labels": always})
+            self.assertEqual(always, Settings.from_dict(settings.to_dict()).labels)
+            geometry = dock_layout(settings, 1280, 720)
+            if always:
+                self.assertGreaterEqual(geometry.cell_width, 88)
+                self.assertGreaterEqual(geometry.cell_height, 34 + settings.icon_size * settings.zoom)
 
     def test_invalid_settings_do_not_replace_existing_file(self):
         with tempfile.TemporaryDirectory() as directory:

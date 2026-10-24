@@ -1,5 +1,25 @@
 # Changelog / Изменения
 
+## 1.7.2 — 2026-10-24
+
+### English
+
+- Added **Settings → Shortcut names** with **On hover** and **Always (two lines)**. Both modes keep the full-name hover bubble; two-line captions reserve wider cells and wrap into extra rows when needed. Existing label preferences are retained.
+- Added an opt-in **Automatically add new desktop shortcuts** checkbox, off by default. Only new Windows `.lnk` / `.url` or Linux `.desktop` shortcuts appearing while Yarnelo is running are considered; enabling it does not import existing icons. Duplicates and the 30-icon limit are respected. Windows follows the desktop-transfer setting without automatic shared-desktop administrator prompts; Linux leaves originals untouched.
+- Added **Start when signing in** to Linux settings, off by default. Changes apply with **OK**; **Cancel** leaves startup registration untouched.
+- Linux uses the current user's XDG autostart folder. The launcher keeps the installed executable, source interpreter/script or permanent AppImage path, including paths with spaces.
+- Turning startup off removes Yarnelo's own registration and, where necessary, disables its system entry for the current user. Other applications' entries and system configuration are preserved; administrator access is not required.
+- Added startup registration and settings checks. Windows startup behavior from 1.7.1, existing profiles and all 14 package formats/architectures are retained. Linux sign-in timing depends on the desktop environment.
+
+### Русский
+
+- Добавлен выбор **Настройки → Названия ярлыков**: **«При наведении»** и **«Всегда (две строки)»**. Полное название во всплывающей подсказке доступно в обоих режимах; для двухстрочных подписей выделяется больше места, при необходимости добавляются ряды. Прежний выбор показа подписей сохраняется.
+- Добавлена галочка **«Автоматически добавлять новые ярлыки с рабочего стола»**, по умолчанию выключенная. Учитываются только новые `.lnk` / `.url` Windows или `.desktop` Linux, появившиеся во время работы Yarnelo; включение не импортирует прежние значки. Дубликаты и лимит 30 значков учитываются. Windows следует настройке переноса без автоматического запроса прав для общего рабочего стола; Linux оставляет оригиналы на месте.
+- В настройки Linux добавлена галочка **«Запускать при входе в систему»**, по умолчанию выключенная. Изменения применяются по **OK**; **«Отмена»** не меняет регистрацию автозапуска.
+- Linux использует папку автозапуска XDG текущего пользователя. Запись сохраняет путь установленной программы, интерпретатор и скрипт исходной версии либо постоянный путь AppImage, в том числе с пробелами.
+- Выключение убирает собственную запись Yarnelo и при необходимости отключает её системную запись для текущего пользователя. Записи других приложений и системные настройки сохраняются; права администратора не нужны.
+- Добавлены проверки регистрации и настроек. Автозапуск Windows из 1.7.1, прежние профили и все 14 вариантов пакетов и архитектур сохранены. Момент запуска Linux зависит от окружения рабочего стола.
+
 ## 1.7.1 — 2026-10-24
 
 ### English

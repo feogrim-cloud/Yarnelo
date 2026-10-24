@@ -50,6 +50,7 @@ namespace Polka
         [DataMember(Order = 13)] public string Language { get; set; }
         [DataMember(Order = 14)] public double CornerRadius { get; set; }
         [DataMember(Order = 15)] public string Placement { get; set; }
+        [DataMember(Order = 16)] public bool AutoAddDesktopShortcuts { get; set; }
 
         public DockSettings() { SetDefaults(); }
 
@@ -68,6 +69,7 @@ namespace Polka
             MoveDesktopShortcuts = true;
             ShowLabels = false;
             LaunchAtLogin = false;
+            AutoAddDesktopShortcuts = false;
             Rows = 1;
             Language = L10n.Normalize(null);
             CornerRadius = 23;
@@ -96,6 +98,10 @@ namespace Polka
         // A title deliberately entered by the user is never translated.
         [DataMember(Order = 8, EmitDefaultValue = false)]
         public bool UserNamed { get; set; }
+        // The elevated shared-desktop helper records its exact restore path so
+        // the running dock can exclude that deliberate restore from auto-add.
+        [DataMember(Name = "LastRestoredPath", Order = 9, EmitDefaultValue = false)]
+        internal string LastRestoredPath;
     }
 
     public sealed class Store
@@ -112,7 +118,10 @@ namespace Polka
         public string DataDirectory { get; private set; }
         public DockSettings Settings { get; private set; }
         public string LastNotice { get; private set; }
+        internal string LastRestoredPath { get; private set; }
         public bool IsFirstRun { get; private set; }
+        internal string DesktopDirectory { get { return desktopDirectory; } }
+        internal string PublicDesktopDirectory { get { return publicDesktopDirectory; } }
 
         public Store(string dataDir = null, string desktopOverride = null, string publicDesktopOverride = null,
             bool secureReads = false)
@@ -466,6 +475,7 @@ namespace Polka
         public void RestorePublic(DockItem item)
         {
             LastNotice = String.Empty;
+            LastRestoredPath = null;
             DockItem stored = FindStoredItem(item);
             if (stored == null || !stored.ManagedShortcut || !IsOwnedLibraryFile(stored) || !IsPublicShortcut(stored))
                 throw new IOException(L10n.T("SharedRestoreVerifyFailed"));
@@ -482,6 +492,8 @@ namespace Polka
                 byte[] importedBytes = ReadVerifiedShortcut(stored.Path);
                 ValidatePublicStorage(stored);
                 restoredPath = RestoreShortcutBytes(importedBytes, stored.OriginalPath);
+                LastRestoredPath = restoredPath;
+                stored.LastRestoredPath = restoredPath;
             }
             catch (Exception ex)
             {
@@ -510,6 +522,7 @@ namespace Polka
         public void Remove(DockItem item)
         {
             LastNotice = String.Empty;
+            LastRestoredPath = null;
             DockItem stored = FindStoredItem(item);
             if (stored == null) return;
             int index = Settings.Items.IndexOf(stored);
@@ -524,7 +537,7 @@ namespace Polka
             {
                 if (!IsUserDesktopShortcut(stored.OriginalPath))
                     throw new IOException(L10n.T("OriginalLocationFailed"));
-                try { restoredPath = RestoreShortcut(stored.Path, stored.OriginalPath); }
+                try { restoredPath = RestoreShortcut(stored.Path, stored.OriginalPath); LastRestoredPath = restoredPath; }
                 catch (Exception ex)
                 {
                     if (!IsFileError(ex)) throw;

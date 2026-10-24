@@ -67,6 +67,7 @@ internal static class StorageTests
         Store store = NewStore("move", out desktop, out data);
         Check(store.IsFirstRun, "fresh directory reported as first run");
         Check(store.Settings.Rows == 1, "new dock defaults to one row");
+        Check(!store.Settings.AutoAddDesktopShortcuts, "new dock defaults to manual desktop shortcut adding");
         Check(store.Settings.CornerRadius == 23 && store.Settings.Placement == "free", "new dock preserves the established corner radius and draggable placement");
         string original = Shortcut(desktop, "Приложение.lnk");
         byte[] originalBytes = File.ReadAllBytes(original);

@@ -36,6 +36,52 @@ namespace Polka {
             Rect bounds=Bounds(element,content); bounds.Offset(content.Margin.Left,content.Margin.Top);
             Check(bounds.Left>=-1 && bounds.Top>=-1 && bounds.Right<=dock.Width+1 && bounds.Bottom<=dock.Height+1,message+": "+bounds);
         }
+        static void CheckAutomaticDesktopAdding(string directory) {
+            string desktop=Path.Combine(directory,"watch-desktop"), shared=Path.Combine(directory,"watch-shared");
+            Directory.CreateDirectory(desktop); Directory.CreateDirectory(shared);
+            string existing=Path.Combine(desktop,"Existing.url");
+            File.WriteAllText(existing,"[InternetShortcut]\nURL=https://example.com/existing\n");
+            var store=new Store(Path.Combine(directory,"WatchData"),desktop,shared);
+            store.Settings.Items.Clear(); store.Settings.AutoAddDesktopShortcuts=true; store.Settings.MoveDesktopShortcuts=true;
+            var dock=new DockWindow(store);
+            dock.InjectDesktopWatcher(new DesktopShortcutWatcher(new[]{desktop,shared}));
+            string added=Path.Combine(desktop,"New.url");
+            File.WriteAllText(added,"[InternetShortcut]\nURL=\n");
+            dock.PollDesktopShortcuts();
+            Check(store.Settings.Items.Count==0,"auto-add waits for a stable shortcut before importing");
+            dock.PollDesktopShortcuts();
+            Check(store.Settings.Items.Count==0 && File.Exists(added),"a stable but unfinished URL remains on the desktop");
+            File.WriteAllText(added,"[InternetShortcut]\nURL=https://example.com/new\n");
+            dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(store.Settings.Items.Count==1 && store.Settings.Items[0].ManagedShortcut && !File.Exists(added),"auto-add uses the existing managed shortcut transfer transaction");
+            Check(File.Exists(existing) && new Store(store.DataDirectory,desktop,shared).Settings.Items.Count==1,"old shortcuts remain on desktop and new shortcut is persisted");
+            var imported=store.Settings.Items[0];
+            // Force a restore collision so suppression must use the real new
+            // filename, rather than guessing the original source name.
+            File.WriteAllText(added,"[InternetShortcut]\nURL=https://example.com/unrelated\n");
+            typeof(DockWindow).GetMethod("RemoveItem",Private).Invoke(dock,new object[]{imported});
+            Check(store.Settings.Items.Count==0 && File.Exists(store.LastRestoredPath) && store.LastRestoredPath!=added,"manual remove restores into a safe new filename on collision");
+            dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(store.Settings.Items.Count==0 && File.Exists(store.LastRestoredPath),"a deliberately restored shortcut is not automatically imported again");
+            string publicFile=Path.Combine(shared,"Shared.url");
+            File.WriteAllText(publicFile,"[InternetShortcut]\nURL=https://example.com/shared\n");
+            dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(store.Settings.Items.Count==1 && store.Settings.Items[0].PendingPublicMove && File.Exists(publicFile),"automatic shared shortcut adding preserves its original without requesting elevation");
+            store.Settings.MoveDesktopShortcuts=false;
+            string linked=Path.Combine(desktop,"Linked.url");
+            File.WriteAllText(linked,"[InternetShortcut]\nURL=https://example.com/linked\n");
+            dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(store.Settings.Items.Count==2 && File.Exists(linked) && store.Settings.Items.Any(item=>item.OriginalPath==linked && File.Exists(item.Path) && !item.DesktopSourceMoved),"auto-add respects the preference to preserve desktop originals");
+            store.Settings.Items.Clear();
+            for(int index=0;index<30;index++) store.Settings.Items.Add(new DockItem { Id="full-"+index, Name="Full "+index, Path="fixture:full-"+index });
+            string overflow=Path.Combine(desktop,"Overflow.url");
+            File.WriteAllText(overflow,"[InternetShortcut]\nURL=https://example.com/overflow\n");
+            dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(store.Settings.Items.Count==30 && File.Exists(overflow),"a full dock keeps new desktop shortcuts intact");
+            store.Settings.AutoAddDesktopShortcuts=false; dock.ApplySettings(new Rect(0,0,1920,1040));
+            Check(Field<DesktopShortcutWatcher>(dock,"desktopWatcher")==null && Field<object>(dock,"desktopWatcherTimer")==null,"manual mode disposes observation and has no timer");
+            Check(Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null && !dock.IsVisible,"auto-add integration uses only isolated directories and an unshown dock");
+        }
         [STAThread] public static int Main(string[] args) {
             var app=new Application { ShutdownMode=ShutdownMode.OnExplicitShutdown };
             try {
@@ -54,7 +100,7 @@ namespace Polka {
                     store.Settings.Items.Clear();
                     for(int index=0;index<count;index++) {
                         string path="fixture:"+index; cache[path]=drawing;
-                        store.Settings.Items.Add(new DockItem { Id=Guid.NewGuid().ToString("N"), Name="Shortcut "+index, Path=path });
+                        store.Settings.Items.Add(new DockItem { Id=Guid.NewGuid().ToString("N"), Name=(index%2==0?"Resident Evil Village — Long shortcut name ":"Ведьмак 3: Дикая Охота — полное название ")+index, Path=path });
                     }
                     foreach(bool labels in new[]{false,true}) foreach(string placement in new[]{"bottom","top","left","right"})
                     foreach(Rect area in new[]{new Rect(0,0,1920,1040),new Rect(-1280,40,640,400)}) {
@@ -93,10 +139,34 @@ namespace Polka {
                             }
                             foreach(var view in views) {
                                 WithinWindow(view.Image,content,dock,name+": idle icon fits window");
+                                var tooltip=(ToolTip)view.Button.ToolTip;
+                                var fullName=(TextBlock)tooltip.Content;
+                                Check(fullName.Text==L10n.DisplayName(view.Item) && fullName.TextWrapping==TextWrapping.Wrap && fullName.TextTrimming==TextTrimming.None,
+                                    name+": full hover name is retained without truncation in either mode");
+                                Check(!tooltip.Focusable && !tooltip.IsHitTestVisible && fullName.MaxWidth<=320,
+                                    name+": hover bubble wraps within its width and cannot take mouse focus");
+                                var captions=Descendants<TextBlock>(view.Button).ToArray();
+                                Check(captions.Length==(labels?1:0),name+": the chosen mode controls permanent captions");
+                                foreach(var caption in captions) {
+                                    Check(caption.TextWrapping==TextWrapping.Wrap && caption.LineHeight>0 && caption.ActualHeight>=caption.LineHeight*1.9 && caption.ActualHeight<=caption.LineHeight*2+.1,
+                                        name+": permanent caption reserves exactly two wrapped text lines");
+                                    Check(caption.ActualWidth>view.Image.ActualWidth+8,name+": caption has readable spacing beyond icon width");
+                                    WithinWindow(caption,content,dock,name+": idle caption fits window");
+                                }
                                 view.HoverScale=1.84; view.HoverLift=-18;
                                 view.SizeMotion.Reset(1.84); view.LiftMotion.Reset(-18);
                             }
                             dock.AdvanceAnimations(.001);
+                            if(vertical && labels) {
+                                foreach(var column in views.GroupBy(view=>Grid.GetColumn(view.Button))) {
+                                    var ordered=column.OrderBy(view=>Grid.GetRow(view.Button)).ToArray();
+                                    for(int index=1;index<ordered.Length;index++) {
+                                        var previousCaption=Descendants<TextBlock>(ordered[index-1].Button).Single();
+                                        Check(Bounds(previousCaption,content).Bottom<=Bounds(ordered[index].Image,content).Top+1,
+                                            name+": a hovered two-line caption does not overlap the next icon");
+                                    }
+                                }
+                            }
                             foreach(var view in views) {
                                 WithinWindow(view.Image,content,dock,name+": hover and click fit window");
                                 foreach(var label in Descendants<TextBlock>(view.Button)) WithinWindow(label,content,dock,name+": hovered label fits window");
@@ -124,6 +194,7 @@ namespace Polka {
                 dock.SetPlacement("free");
                 Check(!Field<bool>(dock,"verticalDock") && store.Settings.Placement=="free","free placement returns the dock to horizontal orientation");
                 Check(Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null && !dock.IsVisible,"visual tests never create a desktop host, tray or visible window");
+                CheckAutomaticDesktopAdding(directory);
                 Console.WriteLine("PASS: "+assertions+" dock visual assertions; own-control renders: "+directory);
                 return 0;
             } catch(Exception ex) { Console.WriteLine(ex); return 1; }

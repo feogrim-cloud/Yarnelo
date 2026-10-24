@@ -61,9 +61,17 @@ if($LASTEXITCODE -ne 0) { throw 'Startup policy test compilation failed.' }
 & $startupBinary
 if($LASTEXITCODE -ne 0) { throw 'Startup policy tests failed.' }
 
+# New desktop-shortcut detection is exercised only in isolated fixture folders.
+$watcherBinary=Join-Path $run 'DesktopShortcutWatcherTests.exe'
+$watcherArgs=@('/nologo','/target:exe','/platform:x64','/optimize+','/codepage:65001',('/out:'+$watcherBinary),'/reference:System.dll','/reference:System.Core.dll')
+& $compiler @watcherArgs (Join-Path $sources 'DesktopShortcutWatcher.cs') (Join-Path $sources 'DesktopShortcutWatcherTests.cs')
+if($LASTEXITCODE -ne 0) { throw 'Desktop shortcut watcher test compilation failed.' }
+& $watcherBinary (Join-Path $run 'desktop-watch')
+if($LASTEXITCODE -ne 0) { throw 'Desktop shortcut watcher tests failed.' }
+
 # Localization renders only its own unshown WPF visual trees. No native dock,
 # desktop integration, tray, installed profile or startup registry is used.
-$localizationSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','StartupRegistration.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','Localization.cs','LocalizationUiTests.cs') |
+$localizationSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','StartupRegistration.cs','DesktopHost.cs','DesktopShortcutWatcher.cs','SmoothMotion.cs','Store.cs','Localization.cs','LocalizationUiTests.cs') |
     ForEach-Object { Join-Path $sources $_ }
 $localizationBinary = Join-Path $run 'LocalizationUiTests.exe'
 $localizationArgs = @(
@@ -91,9 +99,19 @@ if($LASTEXITCODE -ne 0) { throw 'Dock visual test compilation failed.' }
 & $dockVisualBinary (Join-Path $run 'dock-visual')
 if($LASTEXITCODE -ne 0) { throw 'Dock visual tests failed.' }
 
+# Validate automatic imports without launching or resolving shortcut targets.
+$validationBinary=Join-Path $run 'DesktopShortcutValidationTests.exe'
+$validationSources=$dockVisualSources | Where-Object { [IO.Path]::GetFileName($_) -ne 'DockVisualTests.cs' }
+$validationSources+=Join-Path $sources 'DesktopShortcutValidationTests.cs'
+$validationArgs=$localizationArgs | ForEach-Object { $_.Replace('/main:Polka.LocalizationUiTests','/main:Polka.DesktopShortcutValidationTests').Replace('/out:'+$localizationBinary,'/out:'+$validationBinary) }
+& $compiler @validationArgs @validationSources
+if($LASTEXITCODE -ne 0) { throw 'Desktop shortcut validation test compilation failed.' }
+& $validationBinary (Join-Path $run 'desktop-validation')
+if($LASTEXITCODE -ne 0) { throw 'Desktop shortcut validation tests failed.' }
+
 if($CompileUiTests) {
     # Compile only: UI tests show and activate native WPF windows when executed.
-    $uiSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','StartupRegistration.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','Localization.cs','UiTests.cs') |
+    $uiSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','StartupRegistration.cs','DesktopHost.cs','DesktopShortcutWatcher.cs','SmoothMotion.cs','Store.cs','Localization.cs','UiTests.cs') |
         ForEach-Object { Join-Path $sources $_ }
     $uiArgs = @(
         '/nologo', '/target:exe', '/platform:x64', '/optimize+', '/codepage:65001',

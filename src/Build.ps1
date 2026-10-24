@@ -26,7 +26,7 @@ if($Architecture -eq 'arm64') {
     if(!(Test-Path -LiteralPath $compiler -PathType Leaf)) {
         throw "The .NET Framework compiler for $Architecture was not found. Build on Windows with .NET Framework 4.8."
     }
-    $sources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','StartupRegistration.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','Localization.cs') | ForEach-Object { Join-Path $PSScriptRoot $_ }
+    $sources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','StartupRegistration.cs','DesktopHost.cs','DesktopShortcutWatcher.cs','SmoothMotion.cs','Store.cs','Localization.cs') | ForEach-Object { Join-Path $PSScriptRoot $_ }
     $compilerArgs = @('/nologo','/target:winexe',('/platform:'+$Architecture),'/optimize+','/codepage:65001',('/out:'+(Join-Path $Output 'Yarnelo.exe')),('/win32manifest:'+(Join-Path $PSScriptRoot 'app.manifest')),('/win32icon:'+$iconFile),'/reference:System.dll','/reference:System.Core.dll','/reference:System.Xml.dll','/reference:System.Runtime.Serialization.dll','/reference:System.Xaml.dll','/reference:System.Windows.Forms.dll','/reference:System.Drawing.dll',('/reference:'+(Join-Path $framework 'WPF\WindowsBase.dll')),('/reference:'+(Join-Path $framework 'WPF\PresentationCore.dll')),('/reference:'+(Join-Path $framework 'WPF\PresentationFramework.dll')))
     & $compiler @compilerArgs @sources
     if($LASTEXITCODE -ne 0) { throw 'Не удалось собрать приложение' }

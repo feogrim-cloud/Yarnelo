@@ -149,11 +149,25 @@ EOF
 
 Adjust `Exec` and `Icon` if you installed elsewhere. For AppImage, use its full path in `Exec` and save the [Yarnelo icon](https://github.com/feogrim-cloud/Yarnelo/blob/main/assets/Yarnelo-Icon-256.png) to a permanent folder for `Icon`. If you need the FUSE workaround, start the launcher command with `env APPIMAGE_EXTRACT_AND_RUN=1`, followed by the AppImage path.
 
-The Linux preview has no startup-at-sign-in switch. Add the command through your desktop's startup settings, or put an adjusted `.desktop` file in `$XDG_CONFIG_HOME/autostart` (usually `~/.config/autostart`).
+## Startup at sign-in
+
+Right-click the dock → **Settings… → Start when signing in**, then choose **OK**. The option is off by default. Clearing it and choosing **OK** disables startup; **Cancel** leaves the saved registration unchanged. The checkbox reads the current registration, including a disabled entry, rather than restoring an old preference automatically.
+
+Yarnelo creates `yarnelo.desktop` in `$XDG_CONFIG_HOME/autostart`, or `~/.config/autostart` by default, for your account only. No administrator rights are needed. The entry starts this installed copy: a DEB/RPM executable, the complete TAR.GZ folder, the source interpreter and script, or the original AppImage file. An AppImage entry uses its permanent outer file, never its temporary mount/extraction folder; the extraction-without-FUSE launch mode is preserved when used.
+
+**Choose a permanent location before enabling startup for AppImage, TAR.GZ or source copies.** Before moving the app or its Python environment, turn startup off and choose **OK** from the original location. Move it, then enable startup and choose **OK** from the new location. A temporary download or extraction folder will not work after its files are removed. If you already moved the app, inspect `Exec=` in your user `autostart/yarnelo.desktop`; after confirming that it points to your old Yarnelo copy, remove that stale file and enable startup from the new copy.
+
+Turning the option off removes Yarnelo's own user entry. If its own system entry would otherwise start it, Yarnelo uses a current-user `Hidden=true` override. It does not edit `/etc` or other applications' entries. Remove any duplicate startup command you previously added manually through your desktop settings; on older Yarnelo releases, that manual method remains an option.
+
+The desktop must support XDG autostart, as GNOME, KDE Plasma and Xfce generally do. Startup happens during the next graphical sign-in; timing and any delay are controlled by the desktop environment. Windows' fixed 10-second task delay does not apply on Linux. Automated checks cover entry creation/removal and settings behavior; they do not establish sign-in behavior on every desktop environment.
 
 ## Shortcuts, language and settings
 
-Drop a `.desktop` file, ordinary file or folder on the dock. **+** and the context menu also add Computer and Trash. Computer opens the filesystem root. Drag icons to rearrange them. The two-column **Settings…** window provides background opacity, corner rounding (0 square, 100 capsule), icon size, magnification and labels without vertical scrolling.
+Drop a `.desktop` file, ordinary file or folder on the dock. **+** and the context menu also add Computer and Trash. Computer opens the filesystem root. Drag icons to rearrange them. The two-column **Settings…** window provides background opacity, corner rounding (0 square, 100 capsule), icon size, magnification and shortcut names without vertical scrolling.
+
+Under **Shortcut names**, choose **On hover** for a full-name bubble when pointing at an icon, or **Always (two lines)** for captions under the icons. The full-name bubble remains available in both modes when a long caption does not fit. Two-line mode allows wider cells and enough row spacing for captions; if the dock needs more room, it wraps to extra rows or side columns. The earlier **Show labels** preference is retained as the corresponding mode.
+
+**Automatically add new desktop shortcuts** is off by default. Enable it in Settings and choose **OK** to watch for new `.desktop` launchers on your desktop while Yarnelo is running. Existing icons are left alone when enabling or starting the app; ordinary files and folders are ignored. Launchers are allowed to settle before import, duplicates are skipped, and originals remain untouched. At the 30-icon limit, new launchers stay on the desktop and are not queued for later; make room and add them manually. Turning the option off returns to manual adding through drag-and-drop or **+**.
 
 Choose top, bottom, left or right centered placement; side docks run vertically with upright icons. Drag the handle for free positioning. One to four preferred rows become columns at the sides. Extra rows/columns are added automatically when needed before icon size is reduced, without replacing the saved preference. Positioning remains subject to the X11/XWayland compositor limitations described above.
 
@@ -173,7 +187,7 @@ Before replacing files, exit Yarnelo through the dock or notification-area menu.
 - **AppImage:** replace the file and allow execution again with `chmod +x`; remove by deleting the file.
 - **TAR.GZ:** extract the new version to the original permanent location; remove by deleting the program folder.
 
-Updates and removal preserve your user profile. Manually added launchers and startup entries are removed separately. Your own files, folders and `.desktop` originals are unaffected.
+Before removing Yarnelo, clear **Settings → Start when signing in** and choose **OK** to remove its current-user startup registration. Package removal does not clean configuration inside user home folders. Updates and removal preserve your user profile; manually added menu launchers or duplicate startup commands are removed separately. Your own files, folders and `.desktop` originals are unaffected.
 
 ## Development and licenses
 

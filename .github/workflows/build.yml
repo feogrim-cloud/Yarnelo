@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Optional version to publish after all checks, for example v1.7.1
+        description: Optional version to publish after all checks, for example v1.7.2
         type: string
         default: ''
 
@@ -107,7 +107,7 @@ jobs:
           sudo apt-get install -y libegl1 libgl1 libopengl0 libx11-xcb1 libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libxcb-randr0 libxcb-shape0 libxcb-xfixes0 libxcb-xkb1 libdbus-1-3 libglib2.0-0 libfontconfig1 libfreetype6 libice6 libsm6 xdg-utils libglib2.0-bin patchelf squashfs-tools rpm ruby ruby-dev build-essential xvfb dbus-x11 desktop-file-utils
           sudo gem install fpm --version 1.16.0 --no-document
           python -m pip install -r linux/requirements.txt pyinstaller==6.22.3
-      - name: Check model, shell scripts and offscreen rendering
+      - name: Check model, XDG autostart, shell scripts and offscreen rendering
         run: |
           python -m unittest discover -s linux/tests -v
           python -m unittest discover -s scripts/tests -v

@@ -21,22 +21,25 @@ Windows interface demonstrations rendered by Yarnelo with example shortcuts on a
 | --- | --- |
 | ![Yarnelo in a multi-row layout](assets/screenshots/yarnelo-multi-row.png) | ![Yarnelo language selection menu](assets/screenshots/yarnelo-language-menu.png) |
 
-![Yarnelo 1.7 settings in two columns with background rounding and edge placement](assets/screenshots/yarnelo-settings-en.png)
+![Yarnelo 1.7.2 settings with shortcut-name modes and optional automatic desktop-shortcut addition](assets/screenshots/yarnelo-settings-en.png)
 
 ## Features
 
 - Up to **30 shortcuts**, with one to four preferred rows and automatic wrapping when the screen fills up.
-- Adjustable background opacity and corner rounding, from square corners to a capsule; icon size, hover magnification and labels.
+- Adjustable background opacity and corner rounding, from square corners to a capsule; icon size and hover magnification.
+- **Shortcut names:** choose **On hover** or **Always (two lines)** in Settings. Both modes show the full name on hover; two-line captions get wider cells and automatic extra rows when needed.
 - Center the dock at the top, bottom, left or right. Side docks run vertically with upright icons; dragging the handle enables free positioning.
 - Wider, two-column settings with every control on one page and no vertical scrolling.
 - Smooth hover, click and rearrangement animations; neighboring icons move aside during a drag.
 - Add apps, files, folders, Computer and the Recycle Bin / Trash.
+- Optional startup at sign-in on Windows and Linux, controlled in Settings.
+- Optional **Automatically add new desktop shortcuts**, off by default. Only new `.lnk` / `.url` on Windows or `.desktop` on Linux are considered while Yarnelo is running; existing icons, ordinary files and folders are not imported automatically.
 - **English and Russian interface:** right-click the dock → **Language / Язык** → **English / Русский**. The choice is saved and applies without restarting. The first launch follows your system language: Russian for a Russian locale, English otherwise.
 - Local settings and shortcut storage; the app does not send your data to a server.
 
 On **Windows**, desktop `.lnk` and `.url` shortcuts can be moved into the dock and restored from each icon's menu. The dock supports a notification-area menu, optional startup at sign-in, automatic hiding when its space is covered, and fullscreen detection on its own monitor. It returns without taking focus. Optional “above ordinary windows” mode still yields to fullscreen and borderless apps on the dock's monitor. Startup uses a current-user Task Scheduler task with a 10-second logon delay and ordinary account permissions; manage it through the app's startup switch. [Startup details](docs/WINDOWS.md#startup-at-sign-in).
 
-The **Linux preview** supports `.desktop` launchers, files, folders, Computer and Trash. It keeps references to original files and does **not** move them off the desktop. **X11 is recommended**; ready-made packages use XWayland in Wayland sessions. Window placement and stacking depend on the compositor, and the Linux preview does not yet reproduce Windows fullscreen and overlap detection. [Linux details](docs/LINUX.md).
+The **Linux preview** supports `.desktop` launchers, files, folders, Computer and Trash. It keeps references to original files and does **not** move them off the desktop. **Settings → Start when signing in → OK** enables current-user XDG autostart, off by default; keep portable copies in a permanent location. [Startup details](docs/LINUX.md#startup-at-sign-in). **X11 is recommended**; ready-made packages use XWayland in Wayland sessions. Window placement and stacking depend on the compositor, and the Linux preview does not yet reproduce Windows fullscreen and overlap detection. [Linux details](docs/LINUX.md).
 
 ## Download
 
@@ -63,6 +66,8 @@ Windows x64/x86 requires **.NET Framework 4.8 or 4.8.1**; native Windows ARM64 r
 2. Drop shortcuts on the dock or use **+** to add them. Drag an icon within the dock to change its position.
 3. Right-click the dock for **Settings**, **Language** and **Exit**. Drag its handle to reposition it freely.
 4. In **Settings**, choose an edge, preferred rows, background opacity and corner rounding, icon size and magnification. The dock adds rows (columns at the sides) when needed to keep shortcuts on screen.
+
+Enable **Settings → Automatically add new desktop shortcuts** if you want future desktop launchers added while Yarnelo is running. Switching it on leaves existing icons alone. Duplicates are skipped; if all 30 places are occupied, the original stays on the desktop and is not queued for later. On Windows, personal shortcuts follow the desktop-transfer setting; shared shortcuts never trigger an administrator prompt automatically. Linux keeps originals in place. Manual drag-and-drop and **+** remain available in either mode.
 
 ### Windows shortcut storage
 

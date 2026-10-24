@@ -30,6 +30,6 @@
     <Reference Include="WindowsBase" />
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
-    <Compile Include="Program.cs;DockWindow.cs;DockLayout.cs;SettingsWindow.cs;Native.cs;StartupRegistration.cs;DesktopHost.cs;SmoothMotion.cs;Store.cs;Localization.cs" />
+    <Compile Include="Program.cs;DockWindow.cs;DockLayout.cs;SettingsWindow.cs;Native.cs;StartupRegistration.cs;DesktopHost.cs;DesktopShortcutWatcher.cs;SmoothMotion.cs;Store.cs;Localization.cs" />
   </ItemGroup>
 </Project>

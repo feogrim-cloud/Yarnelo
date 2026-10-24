@@ -2,7 +2,7 @@
 
 [English app overview](../README.md) · [Описание на русском](../README.ru.md) · [English installation](../docs/LINUX.md) · [Установка на русском](../docs/LINUX.ru.md)
 
-A native **Python 3.12 / PySide6 Essentials / Qt 6** dock, with no embedded browser or web server. It supports up to 30 shortcuts, one to four preferred rows with automatic overflow rows, four screen-edge positions, square-to-rounded backgrounds, adjustable opacity, icon size and magnification, animated hover/click/rearrangement, and English/Russian menus and settings.
+A native **Python 3.12 / PySide6 Essentials / Qt 6** dock, with no embedded browser or web server. It supports up to 30 shortcuts, one to four preferred rows with automatic overflow rows, four screen-edge positions, square-to-rounded backgrounds, adjustable opacity, icon size and magnification, animated hover/click/rearrangement, optional startup at sign-in, and English/Russian menus and settings.
 
 ## Ready-made packages
 
@@ -28,7 +28,10 @@ System requirements include a graphical desktop, Qt/X11 or Wayland libraries, `x
 - Drag an icon inside the dock to rearrange it. Releasing outside cancels the move. Right-click an icon to open it, reveal its folder or remove its reference.
 - **Settings → Position** or the right-click **Position** submenu places the dock at the top, bottom, left or right center. Side docks are vertical and keep icons upright. A selected edge remains centered when the screen or dock size changes. Drag the handle or unused background to switch to free positioning; the handle is at the top for a side dock and on the left for a horizontal dock. The menu can also select a monitor. Wayland window managers may restrict positioning.
 - Right-click → **Language / Язык → English / Русский** switches the interface without restarting and saves the choice. The initial default is Russian for a Russian locale, English otherwise.
-- Settings use two columns without a vertical scrollbar. They control preferred rows, background opacity (icons keep their contrast), corner rounding, size, magnification and labels. Corner rounding **0** gives square corners; **100** makes the background fully rounded.
+- Settings use two columns without a vertical scrollbar. They control preferred rows, background opacity (icons keep their contrast), corner rounding, size, magnification and shortcut names. Corner rounding **0** gives square corners; **100** makes the background fully rounded.
+- **Shortcut names → On hover / Always (two lines)** chooses a full-name hover bubble or persistent two-line captions. Both modes retain the full-name bubble. Wider caption cells and row spacing are included in automatic wrapping, and existing label preferences are retained.
+- **Settings → Start when signing in → OK** enables current-user XDG autostart; the default is off. **Cancel** does not change the entry. Keep portable/source copies in a permanent location before enabling it. [Startup and removal details](../docs/LINUX.md#startup-at-sign-in).
+- **Automatically add new desktop shortcuts** is also off by default. When enabled with **OK**, it adds references only to new `.desktop` launchers appearing while Yarnelo is running. Existing icons, ordinary files and folders are ignored; originals are unchanged. Duplicates are skipped, and launchers seen at the 30-icon limit stay on the desktop without a deferred import queue.
 - If the dock would extend beyond the available screen area, Yarnelo adds rows automatically before reducing the chosen icon size. For side docks it adds columns. Your preferred one-to-four-row setting is kept, so a larger screen restores it. On very small screens, icons shrink only if no arrangement fits at the requested size.
 - Settings are at `$XDG_CONFIG_HOME/yarnelo/settings.json` or `~/.config/yarnelo/settings.json`. Writes are atomic; corrupt original data is preserved beside a fresh profile. Windows profiles are not automatically imported.
 - One instance runs per user. Launching again shows the existing dock without taking focus. Exit through the dock or notification-area menu, where supported.
@@ -51,7 +54,7 @@ QT_QPA_PLATFORM=offscreen python linux/yarnelo.py --smoke-test
 QT_QPA_PLATFORM=offscreen python linux/yarnelo.py --smoke-test --smoke-output /tmp/yarnelo-smoke.png
 ```
 
-The smoke test creates a Qt application and renders the dock in memory. It also checks all four positions with 30 shortcuts, legacy settings, background rounding, and unclipped English/Russian settings at 1280×720, 640×480 and 640×360 logical work areas. With `--smoke-output`, settings previews are saved beside the requested dock PNG. It does not verify a particular window manager, real app launches, games or system Trash.
+The smoke test creates a Qt application and renders the dock in memory. It also checks all four positions with 30 shortcuts, legacy settings, background rounding, and unclipped English/Russian settings at 1280×720, 640×480 and 640×360 logical work areas. With `--smoke-output`, settings previews are saved beside the requested dock PNG. Startup tests use isolated XDG folders to check registration, command quoting, persistent AppImage/source launch paths, disabling and ownership; they do not alter the developer's own startup entries. These checks do not verify a particular window manager, actual sign-in, real app launches, games or system Trash.
 
 Новые настройки: **скругление углов** от 0 (прямые) до 100 (полное), положение **сверху / снизу / слева / справа по центру** и свободное перемещение за ручку. По бокам панель становится вертикальной, а значки остаются прямыми. Если ярлыки не помещаются, панель сначала добавляет ряды или боковые столбцы; выбранные 1–4 ряда сохраняются как предпочтение. Окно настроек состоит из двух столбцов без вертикальной прокрутки. Ограничения X11/XWayland, описанные выше, продолжают действовать.
 

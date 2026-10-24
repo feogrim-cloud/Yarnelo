@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import argparse
+import html
 import os
 from pathlib import Path
 import shutil
 import sys
 
 from yarnelo_i18n import LANGUAGES, error_text, resolve_language, text
+from yarnelo_autostart import AutostartManager, resolve_startup_command
+from yarnelo_desktop_watch import DesktopShortcutTracker
 
 from yarnelo_model import (
     VERSION, PLACEMENTS, Item, ModelError, Settings, config_path, desktop_metadata, dock_layout,
@@ -26,6 +29,7 @@ def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=text("app_description", requested.language))
     parser.add_argument("--version", action="version", version=f"Yarnelo {VERSION}", help=text("help_version", requested.language))
     parser.add_argument("--language", choices=LANGUAGES, default=None, help=text("help_language", requested.language))
+    parser.add_argument("--startup", action="store_true", help=text("help_startup", requested.language))
     parser.add_argument("--smoke-test", action="store_true", help=text("help_smoke", requested.language))
     parser.add_argument("--smoke-output", type=Path, help=text("help_smoke_output", requested.language))
     return parser.parse_args()
@@ -66,17 +70,17 @@ def main() -> int:
 
     from PySide6.QtCore import (
         QCoreApplication, QEvent, QEasingCurve, QFileInfo, QLibraryInfo, QLocale, QLockFile, QPoint, QPointF, QProcess, QProcessEnvironment, Property,
-        QRect, QRectF, QSize, Qt, QTimer, QPropertyAnimation, QTranslator,
+        QRect, QRectF, QSize, QStandardPaths, Qt, QTimer, QPropertyAnimation, QTranslator,
     )
     from PySide6.QtGui import (
-        QActionGroup, QColor, QFont, QFontDatabase, QIcon, QImage, QLinearGradient, QPainter, QPen, QPixmap,
+        QActionGroup, QColor, QFont, QFontDatabase, QHelpEvent, QIcon, QImage, QLinearGradient, QPainter, QPen, QPixmap, QTextLayout, QTextOption,
     )
     from PySide6.QtNetwork import QLocalServer, QLocalSocket
     from shiboken6 import isValid
     from PySide6.QtWidgets import (
         QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
         QFileIconProvider, QHBoxLayout, QLabel, QMenu, QMessageBox,
-        QSlider, QSpinBox, QDoubleSpinBox, QSystemTrayIcon, QVBoxLayout, QWidget,
+        QSlider, QSpinBox, QDoubleSpinBox, QSystemTrayIcon, QToolTip, QVBoxLayout, QWidget,
     )
 
     app = QApplication(sys.argv[:1])
@@ -85,6 +89,7 @@ def main() -> int:
     app.setOrganizationName("Yarnelo")
     app.setQuitOnLastWindowClosed(False)
     app.setStyle("Fusion")
+    app.setEffectEnabled(Qt.UIEffect.UI_FadeTooltip, True)
     if args.smoke_test:
         # CPython before 3.12 has a mortal None singleton. A broken abi3 Qt
         # wheel can silently decrement it on wrapped void calls, then crash at
@@ -152,6 +157,34 @@ def main() -> int:
 
     set_qt_language(settings.language)
 
+    def wrapped_lines(value, font, width, limit=None):
+        """Use Qt's Unicode/word wrapping for captions and full-name bubbles."""
+        layout = QTextLayout(value, font)
+        option = QTextOption()
+        option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        layout.setTextOption(option)
+        lines, starts = [], []
+        # QTextLine offsets count UTF-16 units; Python indices count Unicode
+        # code points. Keep emoji/non-BMP names intact across wrapped lines.
+        encoded = value.encode("utf-16-le", "surrogatepass")
+        layout.beginLayout()
+        while True:
+            line = layout.createLine()
+            if not line.isValid():
+                break
+            line.setLineWidth(max(1, width))
+            starts.append(line.textStart())
+            lines.append(encoded[line.textStart() * 2:(line.textStart() + line.textLength()) * 2].decode("utf-16-le", "surrogatepass").strip())
+            if limit and len(lines) > limit:
+                break
+        layout.endLayout()
+        if limit and len(lines) > limit:
+            from PySide6.QtGui import QFontMetrics
+            remainder = encoded[starts[limit - 1] * 2:].decode("utf-16-le", "surrogatepass")
+            lines[limit - 1] = QFontMetrics(font).elidedText(remainder, Qt.TextElideMode.ElideRight, max(1, width))
+            lines = lines[:limit]
+        return lines
+
     class Tile(QWidget):
         def __init__(self, dock: "Dock", item: Item | None):
             super().__init__(dock)
@@ -162,6 +195,7 @@ def main() -> int:
             self.dragging = False
             self.pixmap = QPixmap()
             self.label = dock.t("add_shortcuts")
+            self.caption_cache = (None, [])
             self.setMouseTracking(True)
             self.setCursor(Qt.CursorShape.PointingHandCursor)
             self.hover_animation = QPropertyAnimation(self, b"hover", self)
@@ -251,6 +285,26 @@ def main() -> int:
             self.animate(self.hover_animation, 0.0)
             super().leaveEvent(event)
 
+        def event(self, event):
+            if event.type() == QEvent.Type.ToolTip:
+                if self.dragging or self.press_origin or self.dock.visible_menus or self.dock.settings_dialog or not self.dock.isVisible():
+                    QToolTip.hideText()
+                    return True
+                bounds = self.dock.current_screen().availableGeometry()
+                width = max(40, min(300, bounds.width() - 28))
+                lines = wrapped_lines(self.label, QToolTip.font(), width)
+                bubble = "<p>" + "<br>".join(html.escape(line) for line in lines) + "</p>"
+                # QToolTip is a passive native popup: no focus or activation.
+                # Position above the tile where possible; Qt keeps it onscreen.
+                from PySide6.QtGui import QFontMetrics
+                height = len(lines) * QFontMetrics(QToolTip.font()).lineSpacing() + 16
+                point = self.mapToGlobal(QPoint(self.width() // 2 - width // 2, -height - 10))
+                point.setX(max(bounds.left() + 4, min(point.x(), bounds.right() - width - 16)))
+                point.setY(max(bounds.top() + 4, point.y()))
+                QToolTip.showText(point, bubble, self, self.rect())
+                return True
+            return super().event(event)
+
         def paintEvent(self, event):
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -258,7 +312,7 @@ def main() -> int:
             base = self.dock.effective_icon_size
             scale = (1 + (self.dock.settings.zoom - 1) * self.progress) * (1 - 0.13 * self.pressed_progress)
             size = base * scale
-            label_height = 17 if self.dock.settings.labels and self.width() >= 42 else 0
+            label_height = 34 if self.dock.settings.labels else 0
             center = QPointF(self.width() / 2, (self.height() - label_height) / 2 - 2 * self.progress)
             target = QRectF(center.x() - size / 2, center.y() - size / 2, size, size)
             if self.item:
@@ -278,10 +332,16 @@ def main() -> int:
             if label_height:
                 painter.setPen(QColor(242, 244, 255))
                 painter.setFont(QFont("", 8))
-                text = painter.fontMetrics().elidedText(self.label, Qt.TextElideMode.ElideRight, self.width() - 5)
-                painter.drawText(QRect(2, self.height() - 18, self.width() - 4, 16), Qt.AlignmentFlag.AlignCenter, text)
+                cache_key = (self.label, painter.font().toString(), self.width())
+                if cache_key != self.caption_cache[0]:
+                    self.caption_cache = (cache_key, wrapped_lines(self.label, painter.font(), self.width() - 8, 2))
+                lines = self.caption_cache[1]
+                line_height = min(16, painter.fontMetrics().lineSpacing())
+                for index, caption in enumerate(lines):
+                    painter.drawText(QRect(4, self.height() - 33 + index * line_height, self.width() - 8, line_height), Qt.AlignmentFlag.AlignCenter, caption)
 
         def mousePressEvent(self, event):
+            QToolTip.hideText()
             if event.button() == Qt.MouseButton.LeftButton:
                 self.press_origin = event.globalPosition().toPoint()
                 self.animate(self.press_animation, 1.0)
@@ -364,8 +424,22 @@ def main() -> int:
             for value in PLACEMENTS:
                 self.placement.addItem("", value)
             self.placement.setCurrentIndex(PLACEMENTS.index(dock.settings.placement))
-            self.labels = QCheckBox()
-            self.labels.setChecked(dock.settings.labels)
+            self.labels = QComboBox()
+            self.labels.addItem("", False)
+            self.labels.addItem("", True)
+            self.labels.setCurrentIndex(int(dock.settings.labels))
+            self.startup = QCheckBox()
+            self.startup_error = dock.startup_error
+            self.startup_initial = False
+            if dock.autostart is not None:
+                try:
+                    self.startup_initial = dock.autostart.enabled
+                except (OSError, ModelError) as error:
+                    self.startup_error = error
+            self.startup.setChecked(self.startup_initial)
+            self.startup.setEnabled(dock.autostart is not None and self.startup_error is None)
+            self.auto_add_desktop = QCheckBox()
+            self.auto_add_desktop.setChecked(dock.settings.auto_add_desktop_shortcuts)
 
             def add_field(column, key, widget, value_format=None):
                 group = QVBoxLayout()
@@ -399,7 +473,9 @@ def main() -> int:
             self.rows_note.setWordWrap(True)
             self.rows_note.setStyleSheet("color: #b8c6e2;")
             self.columns[1].addWidget(self.rows_note)
-            self.columns[1].addWidget(self.labels)
+            add_field(1, "shortcut_names", self.labels)
+            self.columns[1].addWidget(self.startup)
+            self.columns[1].addWidget(self.auto_add_desktop)
             for column in self.columns:
                 column.addStretch(1)
             self.note = QLabel()
@@ -412,6 +488,12 @@ def main() -> int:
             layout.addWidget(self.buttons)
             self.retranslate()
 
+        def accept(self):
+            # Applying before accepting keeps a failed change visible and lets
+            # the user retry or cancel without losing the previous settings.
+            if self.dock.apply_settings_dialog(self):
+                super().accept()
+
         def fit_available_screen(self):
             screen = self.dock.current_screen()
             if not screen:
@@ -421,17 +503,18 @@ def main() -> int:
             # both columns visible, reducing spacing/font only on small areas.
             small = bounds.width() < 720 or bounds.height() < 500
             compact = bounds.height() < 380
+            self.setStyleSheet("QLabel, QCheckBox, QSpinBox, QDoubleSpinBox, QComboBox, QPushButton { font-size: 10px; } QSpinBox, QDoubleSpinBox, QComboBox { padding: 2px; } QPushButton { padding: 3px 10px; }" if compact else "")
             font = QFont(self.base_font)
             if small:
                 font.setPointSizeF(7.0 if compact else max(7.0, min(9.0, font.pointSizeF())))
             self.setFont(font)
-            self.layout().setContentsMargins(14 if small else 24, 8 if compact else 12 if small else 22,
-                                            14 if small else 24, 8 if compact else 12 if small else 20)
-            self.layout().setSpacing(5 if compact else 8 if small else 16)
+            self.layout().setContentsMargins(14 if small else 24, 6 if compact else 12 if small else 22,
+                                            14 if small else 24, 6 if compact else 12 if small else 20)
+            self.layout().setSpacing(3 if compact else 8 if small else 16)
             for column in self.columns:
-                column.setSpacing(4 if compact else 7 if small else 12)
+                column.setSpacing(2 if compact else 7 if small else 12)
             for group in self.fields:
-                group.setSpacing(3 if compact else 6)
+                group.setSpacing(2 if compact else 6)
             for heading in self.headings.values():
                 heading.setStyleSheet("font-size: 14px; font-weight: 600;" if compact else "font-size: 16px; font-weight: 600;")
             self.ensurePolished()
@@ -446,7 +529,12 @@ def main() -> int:
             self.setWindowTitle(self.dock.t("settings_title"))
             self.setLocale(QLocale(resolve_language(self.dock.settings.language)))
             self.zoom.setLocale(self.locale())
-            self.labels.setText(self.dock.t("show_labels"))
+            self.labels.setItemText(0, self.dock.t("names_hover"))
+            self.labels.setItemText(1, self.dock.t("names_always"))
+            self.startup.setText(self.dock.t("start_at_login"))
+            self.startup.setToolTip(self.dock.describe_error(self.startup_error) if self.startup_error else self.dock.t("startup_help"))
+            self.auto_add_desktop.setText(self.dock.t("auto_add_desktop"))
+            self.auto_add_desktop.setToolTip(self.dock.t("auto_add_desktop_help"))
             for key, label in self.headings.items():
                 label.setText(self.dock.t(key))
             for key, label in self.field_labels.items():
@@ -461,9 +549,20 @@ def main() -> int:
             self.fit_available_screen()
 
     class Dock(QWidget):
-        def __init__(self, settings: Settings, store: Path | None, invalid: bool = False):
+        def __init__(self, settings: Settings, store: Path | None, invalid: bool = False, autostart=None, startup_error=None, desktop_directory=None):
             super().__init__()
             self.settings, self.store, self.invalid_settings = settings, store, invalid
+            self.autostart, self.startup_error = autostart, startup_error
+            # Tests supply their own directory and poll manually. A smoke test
+            # must never inspect the real Desktop or start a real monitor.
+            if desktop_directory is None and not args.smoke_test:
+                desktop_directory = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DesktopLocation)
+            self.desktop_directory = Path(desktop_directory) if desktop_directory else None
+            self.desktop_tracker = None
+            self.desktop_notices = set()
+            self.desktop_timer = QTimer(self)
+            self.desktop_timer.setInterval(1000)
+            self.desktop_timer.timeout.connect(self.poll_desktop_shortcuts)
             self.settings_dialog = None
             self.visible_menus = []
             self.icon_provider = QFileIconProvider()
@@ -512,8 +611,11 @@ def main() -> int:
             app.screenAdded.connect(self.relayout)
             app.screenRemoved.connect(self.relayout)
             app.aboutToQuit.connect(self.shutdown)
+            self.configure_desktop_tracking()
 
         def shutdown(self):
+            QToolTip.hideText()
+            self.stop_desktop_tracking()
             if self.shutting_down:
                 return
             self.shutting_down = True
@@ -711,6 +813,7 @@ def main() -> int:
                     painter.drawRoundedRect(placeholder, 12, 12)
 
         def begin_drag(self, tile):
+            QToolTip.hideText()
             self.drag_order = list(self.settings.items)
             tile.position_animation.stop()
             tile.raise_()
@@ -735,7 +838,7 @@ def main() -> int:
             self.relayout(True)
             self.persist()
 
-        def persist(self):
+        def persist(self, notify=True):
             if self.store is None:
                 return True
             try:
@@ -745,8 +848,64 @@ def main() -> int:
                 save_settings(self.store, self.settings)
                 return True
             except (OSError, ModelError) as error:
-                QMessageBox.warning(self, "Yarnelo", self.t("save_failed", error=self.describe_error(error)))
+                if notify:
+                    QMessageBox.warning(self, "Yarnelo", self.t("save_failed", error=self.describe_error(error)))
+                else:
+                    self.desktop_notice("save_failed", error=self.describe_error(error))
                 return False
+
+        def desktop_notice(self, key, **values):
+            message = self.t(key, **values)
+            if key in self.desktop_notices:
+                return
+            self.desktop_notices.add(key)
+            if self.tray:
+                self.tray.showMessage("Yarnelo", message, QSystemTrayIcon.MessageIcon.Warning)
+            else:
+                print(f"Yarnelo: {message}", file=sys.stderr)
+
+        def stop_desktop_tracking(self):
+            self.desktop_timer.stop()
+            if self.desktop_tracker is not None:
+                self.desktop_tracker.close()
+                self.desktop_tracker = None
+
+        def configure_desktop_tracking(self):
+            self.stop_desktop_tracking()
+            if self.settings.auto_add_desktop_shortcuts and self.desktop_directory is not None:
+                self.desktop_notices.clear()
+                self.desktop_tracker = DesktopShortcutTracker(self.desktop_directory)
+                if not args.smoke_test:
+                    self.desktop_timer.start()
+
+        def poll_desktop_shortcuts(self):
+            if self.desktop_tracker is None or self.shutting_down:
+                return
+            added = []
+            for path in self.desktop_tracker.scan():
+                try:
+                    # Files still being written stay pending for the tracker's
+                    # bounded retry period. Only valid application entries add.
+                    desktop_metadata(path, resolve_language(self.settings.language))
+                    item = Item.create("path", str(path))
+                    if any(existing.kind == "path" and existing.path == item.path for existing in self.settings.items):
+                        self.desktop_tracker.acknowledge(path)
+                    elif len(self.settings.items) >= 30:
+                        self.desktop_tracker.acknowledge(path)
+                        self.desktop_notice("auto_add_desktop_full")
+                    else:
+                        self.settings.add(item)
+                        added.append((path, item))
+                except (OSError, ModelError):
+                    continue
+            if added:
+                if self.persist(False):
+                    for path, _ in added:
+                        self.desktop_tracker.acknowledge(path)
+                    self.rebuild()
+                else:
+                    failed_ids = {item.id for _, item in added}
+                    self.settings.items[:] = [item for item in self.settings.items if item.id not in failed_ids]
 
         def add_paths(self, paths):
             errors = []
@@ -879,6 +1038,7 @@ def main() -> int:
             return menu
 
         def show_menu(self, point, item=None):
+            QToolTip.hideText()
             menu = self.build_menu(item)
             self.visible_menus.append(menu)
             try:
@@ -888,25 +1048,60 @@ def main() -> int:
                 menu.deleteLater()
 
         def open_settings(self):
+            QToolTip.hideText()
             if self.settings_dialog:
                 self.settings_dialog.raise_()
                 self.settings_dialog.activateWindow()
                 return
             dialog = SettingsDialog(self)
             self.settings_dialog = dialog
-            if dialog.exec() == QDialog.DialogCode.Accepted:
+            dialog.exec()
+            self.settings_dialog = None
+            if isValid(dialog):
+                dialog.deleteLater()
+
+        def settings_error(self, key, error):
+            QMessageBox.warning(self, "Yarnelo", self.t(key, error=self.describe_error(error)))
+
+        def apply_settings_dialog(self, dialog):
+            previous = Settings.from_dict(self.settings.to_dict())
+            previous_enabled = None
+            try:
+                if dialog.startup.isEnabled():
+                    previous_enabled = self.autostart.enabled
+                    # A profile preference never repairs or re-enables an
+                    # entry disabled externally. Only a changed checkbox does.
+                    if dialog.startup.isChecked() != dialog.startup_initial:
+                        self.autostart.set_enabled(dialog.startup.isChecked())
+                    self.settings.launch_at_login = self.autostart.enabled
                 self.settings.rows = dialog.rows.value()
                 self.settings.opacity = dialog.opacity.value() / 100
                 self.settings.icon_size = dialog.icon_size.value()
                 self.settings.zoom = dialog.zoom.value()
-                self.settings.labels = dialog.labels.isChecked()
+                self.settings.labels = dialog.labels.currentData()
+                self.settings.auto_add_desktop_shortcuts = dialog.auto_add_desktop.isChecked()
                 self.settings.corner_radius = dialog.corners.value()
                 self.settings.placement = dialog.placement.currentData()
-                self.relayout(True)
-                self.persist()
-            self.settings_dialog = None
-            if isValid(dialog):
-                dialog.deleteLater()
+                if self.persist():
+                    dialog.startup_initial = self.settings.launch_at_login
+                    self.relayout(True)
+                    if previous.auto_add_desktop_shortcuts != self.settings.auto_add_desktop_shortcuts:
+                        self.configure_desktop_tracking()
+                    return True
+            except (OSError, ModelError) as error:
+                self.settings_error("startup_failed", error)
+            # Preserve the same Settings object: tiles and live menus refer to
+            # it, and a failed disk write must not change the running dock.
+            self.settings.__dict__.update(previous.__dict__)
+            if previous_enabled is not None:
+                try:
+                    if self.autostart.enabled != previous_enabled:
+                        self.autostart.set_enabled(previous_enabled)
+                    dialog.startup_initial = self.autostart.enabled
+                    dialog.startup.setChecked(dialog.startup_initial)
+                except (OSError, ModelError) as error:
+                    self.settings_error("startup_restore_failed", error)
+            return False
 
         def reset_position(self):
             self.settings.placement = "bottom"
@@ -931,6 +1126,10 @@ def main() -> int:
             self.show()
             if app.platformName().lower() == "xcb":
                 self.lower()
+
+        def hideEvent(self, event):
+            QToolTip.hideText()
+            super().hideEvent(event)
 
         def mousePressEvent(self, event):
             if event.button() == Qt.MouseButton.LeftButton:
@@ -992,14 +1191,79 @@ def main() -> int:
             else:
                 event.ignore()
 
+    def receive_instance_requests(server, show_dock):
+        while server.hasPendingConnections():
+            socket = server.nextPendingConnection()
+            pending = bytearray()
+
+            def receive(socket=socket, pending=pending):
+                pending.extend(bytes(socket.readAll()))
+                if pending == b"show":
+                    show_dock()
+                elif len(pending) < 4:
+                    return
+                socket.disconnectFromServer()
+
+            socket.readyRead.connect(receive)
+            socket.disconnected.connect(socket.deleteLater)
+            if socket.bytesAvailable():
+                receive()
+
     if args.smoke_test:
+        import tempfile
+        import subprocess
+        startup_fixture = tempfile.TemporaryDirectory(prefix="yarnelo-startup-")
+        startup_root = Path(startup_fixture.name)
+        startup_command = resolve_startup_command()
+        if getattr(sys, "frozen", False):
+            expected_command = [os.environ.get("APPIMAGE", sys.executable)]
+            if os.environ.get("APPIMAGE") and ("APPIMAGE_EXTRACT_AND_RUN" in os.environ
+                    or Path(os.environ.get("APPDIR", "")).name.startswith("appimage_extracted_")):
+                expected_command.append("--appimage-extract-and-run")
+            expected_command.append("--startup")
+        else:
+            expected_command = [sys.executable, str(Path(__file__).resolve()), "--startup"]
+        if startup_command != expected_command:
+            raise RuntimeError("The packaged startup command does not refer to the persistent launcher")
+        startup_manager = AutostartManager(startup_command, startup_root / "config", environ={}, home=startup_root, config_dirs=[])
+        desktop_fixture = startup_root / "Desktop"
+        desktop_fixture.mkdir()
+        desktop_entry_text = "[Desktop Entry]\nType=Application\nName=Counter-Strike 2\nExec=true\n"
+        old_shortcut = desktop_fixture / "old.desktop"
+        old_shortcut.write_text(desktop_entry_text, encoding="utf-8")
+        if startup_manager.enabled or startup_manager.path.parent.exists() or Settings().launch_at_login:
+            raise RuntimeError("A fresh profile enabled startup or created an autostart directory")
         settings = Settings(rows=2, labels=True, language=args.language or "auto", items=[Item("smoke-computer", "computer"), Item("smoke-trash", "trash"), Item("smoke-home", "path", str(Path.home()))])
-        dock = Dock(settings, None)
+        dock = Dock(settings, None, autostart=startup_manager, desktop_directory=desktop_fixture)
         dock.show_passive()
         app.processEvents()
+        # Exercise the actual local IPC reader. Login startup must never raise
+        # an already running dock; a deliberate manual launch still shows it.
+        ipc_server = QLocalServer(app)
+        if not ipc_server.listen(f"yarnelo-smoke-{startup_root.name}"):
+            raise RuntimeError("Could not create the isolated single-instance test server")
+        activations = []
+        ipc_server.newConnection.connect(lambda: receive_instance_requests(ipc_server, lambda: activations.append(True)))
+        for command, expected_shows in ((b"startup", 0), (b"show", 1)):
+            client = QLocalSocket()
+            client.connectToServer(ipc_server.serverName())
+            if not client.waitForConnected(1000):
+                raise RuntimeError("Could not connect to the isolated single-instance server")
+            client.write(command)
+            client.waitForBytesWritten(500)
+            for _ in range(20):
+                app.processEvents()
+                if client.state() == QLocalSocket.LocalSocketState.UnconnectedState:
+                    break
+                client.waitForDisconnected(10)
+            if len(activations) != expected_shows:
+                raise RuntimeError("A startup instance activated the dock or a manual launch failed to show it")
+            client.disconnectFromServer()
+            client.deleteLater()
+        ipc_server.close()
+        ipc_server.deleteLater()
         # Verify actual UI switches, menu checks and .desktop display names in
         # both directions without ever reading or writing a real profile.
-        import tempfile
         with tempfile.TemporaryDirectory(prefix="yarnelo-i18n-") as directory:
             entry = Path(directory) / "localized.desktop"
             entry.write_text("[Desktop Entry]\nType=Application\nName=English demo\nName[ru]=Русский пример\nExec=true\n", encoding="utf-8")
@@ -1027,6 +1291,10 @@ def main() -> int:
                 cancel = dialog.buttons.button(QDialogButtonBox.StandardButton.Cancel).text()
                 if cancel != text("cancel", language):
                     raise RuntimeError("Dialog buttons did not change language")
+                if dialog.startup.text() != text("start_at_login", language) or not dialog.startup.isEnabled():
+                    raise RuntimeError("The startup checkbox did not change language")
+                if dialog.auto_add_desktop.text() != text("auto_add_desktop", language) or [dialog.labels.itemText(index) for index in range(2)] != [text("names_hover", language), text("names_always", language)]:
+                    raise RuntimeError("The shortcut behavior controls did not change language")
                 # Standard Qt dialogs share the bundled official Qt translation.
                 expected_cancel = "Отмена" if language == "ru" else "Cancel"
                 if app.translate("QPlatformTheme", "Cancel") != expected_cancel:
@@ -1041,8 +1309,203 @@ def main() -> int:
             checked = [action.property("language_value") for action in language_menu.actions() if action.isChecked()]
             if settings.language != "en" or checked != ["en"] or dock.store.read_bytes() != saved_bytes or dialog.windowTitle() != text("settings_title", "en"):
                 raise RuntimeError("A failed language save did not restore the previous language")
+            dialog.startup.setChecked(True)
+            dialog.auto_add_desktop.setChecked(True)
+            dialog.reject()
+            if startup_manager.enabled or startup_manager.path.exists() or settings.launch_at_login or settings.auto_add_desktop_shortcuts or dock.desktop_tracker is not None or dock.store.read_bytes() != saved_bytes:
+                raise RuntimeError("Cancel changed the startup record or saved profile")
             dock.settings_dialog = None
             dialog.deleteLater()
+
+            def startup_dialog():
+                current = SettingsDialog(dock)
+                dock.settings_dialog = current
+                return current
+
+            def discard_dialog(current):
+                dock.settings_dialog = None
+                current.deleteLater()
+
+            # Enable via OK, then read both the actual XDG file and its saved
+            # mirror. No user directories or real session startup are involved.
+            dialog = startup_dialog()
+            dialog.startup.setChecked(True)
+            dialog.labels.setCurrentIndex(0)
+            dialog.accept()
+            if dialog.result() != QDialog.DialogCode.Accepted or not startup_manager.enabled or not load_settings(dock.store).launch_at_login or load_settings(dock.store).labels:
+                raise RuntimeError("The startup checkbox did not enable and persist the actual registration")
+            validator = shutil.which("desktop-file-validate")
+            if validator:
+                validated = subprocess.run([validator, str(startup_manager.path)], capture_output=True, text=True, timeout=10,
+                                           env=external_environment(dict(os.environ), Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))))
+                if validated.returncode:
+                    raise RuntimeError(f"The generated startup entry failed desktop-file-validate: {validated.stdout}{validated.stderr}")
+            discard_dialog(dialog)
+
+            # A new dialog reads external changes even if the old saved mirror
+            # is true. An unrelated OK must not silently re-enable startup.
+            enabled_content = startup_manager.path.read_text(encoding="utf-8")
+            for disabled_text in (enabled_content.replace("Hidden=false", "Hidden=true"),
+                                  enabled_content + "X-GNOME-Autostart-enabled=false\n"):
+                startup_manager.path.write_text(disabled_text, encoding="utf-8")
+                before = startup_manager.path.read_bytes()
+                dialog = startup_dialog()
+                if dialog.startup.isChecked():
+                    raise RuntimeError("The startup checkbox ignored an externally disabled entry")
+                dialog.accept()
+                if startup_manager.enabled or startup_manager.path.read_bytes() != before or load_settings(dock.store).launch_at_login:
+                    raise RuntimeError("Saving unrelated settings re-enabled externally disabled startup")
+                discard_dialog(dialog)
+
+            # Explicit enable followed by disable must survive a reopened dialog.
+            dialog = startup_dialog()
+            dialog.startup.setChecked(True)
+            dialog.accept()
+            discard_dialog(dialog)
+            dialog = startup_dialog()
+            if not dialog.startup.isChecked():
+                raise RuntimeError("The startup checkbox did not read back the enabled entry")
+            dialog.startup.setChecked(False)
+            dialog.labels.setCurrentIndex(1)
+            dialog.accept()
+            if startup_manager.enabled or load_settings(dock.store).launch_at_login or not load_settings(dock.store).labels:
+                raise RuntimeError("The startup checkbox did not disable the actual registration")
+            discard_dialog(dialog)
+
+            # Simulated startup write failure and profile write failure both
+            # keep the dialog open and restore the running settings and entry.
+            original_settings_error = dock.settings_error
+            errors = []
+            dock.settings_error = lambda key, error: errors.append((key, dock.t(key, error=dock.describe_error(error))))
+            try:
+                for language in ("en", "ru"):
+                    dock.change_language(language)
+                    saved_bytes = dock.store.read_bytes()
+                    before_settings = settings.to_dict()
+                    original_set_enabled = startup_manager.set_enabled
+
+                    def fail_startup_write(enabled):
+                        raise ModelError("startup_entry_unsafe")
+
+                    startup_manager.set_enabled = fail_startup_write
+                    dialog = startup_dialog()
+                    dialog.startup.setChecked(True)
+                    dialog.rows.setValue(4)
+                    try:
+                        dialog.accept()
+                    finally:
+                        startup_manager.set_enabled = original_set_enabled
+                    if dialog.result() == QDialog.DialogCode.Accepted or dialog.startup.isChecked() or startup_manager.enabled or settings.to_dict() != before_settings or dock.store.read_bytes() != saved_bytes:
+                        raise RuntimeError("A startup write failure did not restore the previous settings")
+                    if not errors or errors[-1][1] != text("startup_failed", language, error=text("startup_entry_unsafe", language)):
+                        raise RuntimeError("The startup failure was not displayed in the selected language")
+                    discard_dialog(dialog)
+                    dialog = startup_dialog()
+                    dialog.startup.setChecked(True)
+                    dialog.rows.setValue(4)
+                    dock.persist = lambda: False
+                    try:
+                        dialog.accept()
+                    finally:
+                        dock.persist = original_persist
+                    if dialog.result() == QDialog.DialogCode.Accepted or dialog.startup.isChecked() or startup_manager.enabled or settings.to_dict() != before_settings or dock.store.read_bytes() != saved_bytes:
+                        raise RuntimeError("A profile write failure did not roll back the startup registration")
+                    discard_dialog(dialog)
+            finally:
+                dock.settings_error = original_settings_error
+
+            # Desktop auto-add is opt-in, starts from a snapshot, and references
+            # only new valid .desktop entries without moving their originals.
+            original_items = list(settings.items)
+            dialog = startup_dialog()
+            dialog.auto_add_desktop.setChecked(True)
+            dialog.accept()
+            discard_dialog(dialog)
+            if not settings.auto_add_desktop_shortcuts or not load_settings(dock.store).auto_add_desktop_shortcuts or dock.desktop_tracker is None or dock.desktop_timer.isActive():
+                raise RuntimeError("The isolated desktop monitor did not enable without a real timer")
+            for _ in range(3):
+                dock.poll_desktop_shortcuts()
+            if len(settings.items) != len(original_items):
+                raise RuntimeError("Enabling desktop auto-add imported old shortcuts")
+            partial_shortcut = desktop_fixture / "new-game.desktop"
+            partial_shortcut.write_text("[Desktop Entry]\nType=Application\nName=Unfinished\n", encoding="utf-8")
+            for _ in range(3):
+                dock.poll_desktop_shortcuts()
+            if len(settings.items) != len(original_items):
+                raise RuntimeError("An unfinished desktop shortcut was added")
+            partial_shortcut.write_text(desktop_entry_text, encoding="utf-8")
+            for _ in range(3):
+                dock.poll_desktop_shortcuts()
+            if len(settings.items) != len(original_items) + 1 or partial_shortcut.read_text(encoding="utf-8") != desktop_entry_text:
+                raise RuntimeError("A completed new shortcut was not added, or its source changed")
+            if not any(item.path == str(partial_shortcut) for item in load_settings(dock.store).items):
+                raise RuntimeError("The new desktop shortcut was not saved")
+
+            duplicate_shortcut = desktop_fixture / "already-added.desktop"
+            duplicate_shortcut.write_text(desktop_entry_text, encoding="utf-8")
+            settings.add(Item.create("path", str(duplicate_shortcut)))
+            count = len(settings.items)
+            for _ in range(3):
+                dock.poll_desktop_shortcuts()
+            if len(settings.items) != count:
+                raise RuntimeError("Desktop auto-add created a duplicate shortcut")
+            dock.persist()
+            unsaved_shortcut = desktop_fixture / "retry-save.desktop"
+            unsaved_shortcut.write_text(desktop_entry_text, encoding="utf-8")
+            saved_bytes = dock.store.read_bytes()
+            dock.persist = lambda notify=True: False
+            try:
+                for _ in range(3):
+                    dock.poll_desktop_shortcuts()
+            finally:
+                dock.persist = original_persist
+            if len(settings.items) != count or dock.store.read_bytes() != saved_bytes:
+                raise RuntimeError("Desktop auto-add did not roll back a failed profile save")
+            for _ in range(3):
+                dock.poll_desktop_shortcuts()
+            if len(settings.items) != count + 1:
+                raise RuntimeError("Desktop auto-add did not retry a failed profile save")
+
+            added_items = list(settings.items)
+            settings.items += [Item(f"full-{index}", "path", str(startup_root / f"missing-{index}")) for index in range(30 - len(settings.items))]
+            import contextlib
+            import io
+            notices = io.StringIO()
+            with contextlib.redirect_stderr(notices):
+                for index in range(2):
+                    (desktop_fixture / f"full-{index}.desktop").write_text(desktop_entry_text, encoding="utf-8")
+                for _ in range(3):
+                    dock.poll_desktop_shortcuts()
+            if len(settings.items) != 30 or notices.getvalue().count(dock.t("auto_add_desktop_full")) != 1:
+                raise RuntimeError("Desktop capacity handling duplicated warnings or exceeded 30 shortcuts")
+            settings.items = added_items
+            dialog = startup_dialog()
+            dialog.auto_add_desktop.setChecked(False)
+            dialog.accept()
+            discard_dialog(dialog)
+            if dock.desktop_tracker is not None or load_settings(dock.store).auto_add_desktop_shortcuts:
+                raise RuntimeError("Disabling desktop auto-add left a monitor running")
+            while_disabled = desktop_fixture / "while-disabled.desktop"
+            while_disabled.write_text(desktop_entry_text, encoding="utf-8")
+            for _ in range(3):
+                dock.poll_desktop_shortcuts()
+            dialog = startup_dialog()
+            dialog.auto_add_desktop.setChecked(True)
+            dialog.accept()
+            discard_dialog(dialog)
+            for _ in range(3):
+                dock.poll_desktop_shortcuts()
+            if any(item.path == str(while_disabled) for item in settings.items):
+                raise RuntimeError("Re-enabling desktop auto-add imported an old disabled-period shortcut")
+            monitor = dock.desktop_tracker
+            dialog = startup_dialog()
+            dialog.auto_add_desktop.setChecked(False)
+            dialog.reject()
+            discard_dialog(dialog)
+            if dock.desktop_tracker is not monitor or not settings.auto_add_desktop_shortcuts:
+                raise RuntimeError("Cancel changed the active desktop monitor")
+            settings.items = original_items
+            dock.rebuild()
             dock.visible_menus.remove(menu)
             menu.deleteLater()
             settings.items.remove(localized_item)
@@ -1051,6 +1514,26 @@ def main() -> int:
             dock.rebuild()
         # Exercise real Qt animation properties and the drag/neighbor path.
         first = dock.tiles[settings.items[0].id]
+        long_name = "🎮 Counter-Strike 2 — 👩‍🚀 Очень длинное название приложения & Friends <Preview>"
+        lines = wrapped_lines(long_name, QFont("", 8), 95)
+        if len(lines) < 3 or "".join("".join(lines).split()) != "".join(long_name.split()):
+            raise RuntimeError("Full shortcut name wrapping lost Unicode characters")
+        captions = wrapped_lines(long_name, QFont("", 8), 80, 2)
+        if len(captions) != 2 or not captions[-1].endswith("…"):
+            raise RuntimeError("A long caption did not wrap and elide only after two lines")
+        original_label = first.label
+        first.label = long_name
+        focused = app.focusWidget()
+        app.sendEvent(first, QHelpEvent(QEvent.Type.ToolTip, first.rect().center(), first.mapToGlobal(first.rect().center())))
+        app.processEvents()
+        tooltip = next((widget for widget in app.topLevelWidgets() if widget.objectName() == "qtooltip_label"), None)
+        if tooltip is None or tooltip.width() > 330 or app.focusWidget() is not focused:
+            raise RuntimeError("The full-name hover bubble exceeded its width or took focus")
+        tooltip_screen = app.screenAt(tooltip.frameGeometry().center()) or app.primaryScreen()
+        if not tooltip_screen.availableGeometry().contains(tooltip.frameGeometry()):
+            raise RuntimeError("The full-name hover bubble extended beyond the screen")
+        QToolTip.hideText()
+        first.label = original_label
         first.animate(first.hover_animation, 1.0)
         first.hover_animation.setCurrentTime(95)
         first.hover_animation.stop()
@@ -1090,6 +1573,21 @@ def main() -> int:
         settings.items = [Item(f"layout-{index}", "computer") for index in range(30)]
         settings.rows, settings.labels = 1, True
         dock.rebuild()
+        for always in (False, True):
+            settings.labels = always
+            for width, height in ((1280, 720), (640, 360)):
+                fixture.bounds = QRect(-width, 50, width, height)
+                for placement in ("top", "bottom", "left", "right"):
+                    settings.placement = placement
+                    dock.relayout()
+                    app.processEvents()
+                    if len(dock.positions) != 31 or not fixture.bounds.contains(dock.geometry()):
+                        raise RuntimeError("A caption mode lost icons or exceeded the 30-shortcut work area")
+                    for tile in [*dock.tiles.values(), dock.add_tile]:
+                        if not dock.rect().contains(tile.geometry()):
+                            raise RuntimeError("A caption mode clipped an icon on a small work area")
+        settings.labels = True
+        fixture.bounds = QRect(-1280, 50, 1280, 720)
         for placement in ("top", "bottom", "left", "right"):
             settings.placement = placement
             dock.relayout()
@@ -1138,19 +1636,20 @@ def main() -> int:
                 app.processEvents()
                 if not fixture.bounds.contains(dialog.frameGeometry()):
                     raise RuntimeError(f"Settings did not fit the {width}x{height} work area ({language})")
-                widgets = [dialog.rows, dialog.opacity, dialog.corners, dialog.icon_size, dialog.zoom, dialog.placement, dialog.labels, dialog.buttons, dialog.note, dialog.rows_note, dialog.corner_note, *dialog.field_labels.values(), *dialog.headings.values()]
+                widgets = [dialog.rows, dialog.opacity, dialog.corners, dialog.icon_size, dialog.zoom, dialog.placement, dialog.labels, dialog.startup, dialog.auto_add_desktop, dialog.buttons, dialog.note, dialog.rows_note, dialog.corner_note, *dialog.field_labels.values(), *dialog.headings.values()]
                 for widget in widgets:
                     rect = QRect(widget.mapTo(dialog, QPoint()), widget.size())
                     if not dialog.rect().contains(rect):
                         raise RuntimeError(f"A settings control was clipped ({width}x{height}, {language})")
                     if isinstance(widget, QLabel) and widget.wordWrap() and widget.heightForWidth(widget.width()) > widget.height():
-                        raise RuntimeError(f"Settings text was clipped ({width}x{height}, {language}: {widget.text()})")
-                if args.smoke_output and width == 1280:
+                        raise RuntimeError(f"Settings text was clipped ({width}x{height}, {language}, actual={widget.height()}, required={widget.heightForWidth(widget.width())}, dialog={dialog.size()}, hint={dialog.sizeHint()}: {widget.text()})")
+                if args.smoke_output and (width == 1280 or (width, height) == (640, 360)):
                     preview = QImage(dialog.size(), QImage.Format.Format_ARGB32)
                     preview.fill(Qt.GlobalColor.transparent)
                     dialog.render(preview)
                     args.smoke_output.parent.mkdir(parents=True, exist_ok=True)
-                    preview.save(str(args.smoke_output.with_name(f"{args.smoke_output.stem}-settings-{language}.png")), "PNG")
+                    suffix = "-compact" if width == 640 else ""
+                    preview.save(str(args.smoke_output.with_name(f"{args.smoke_output.stem}-settings{suffix}-{language}.png")), "PNG")
                 dialog.close()
                 dialog.deleteLater()
         dock.current_screen = original_screen
@@ -1180,8 +1679,11 @@ def main() -> int:
         app.processEvents()
         if exit_code != 0 or any(isValid(widget) for widget in shutdown_widgets):
             raise RuntimeError("Qt did not destroy the dock and tiles during normal shutdown")
+        if dock.desktop_tracker is not None:
+            raise RuntimeError("Qt did not stop desktop monitoring during normal shutdown")
         import gc
         gc.collect()
+        startup_fixture.cleanup()
         print(f"Qt smoke after shutdown: None={sys.getrefcount(None)}; widgets destroyed", flush=True)
         print(f"Yarnelo {VERSION}: Qt offscreen smoke test passed ({image.width()}x{image.height()})")
         return 0
@@ -1195,6 +1697,8 @@ def main() -> int:
     server_name = str(runtime / f"yarnelo-{uid}.sock")
     instance_lock = QLockFile(str(runtime / f"yarnelo-{uid}.lock"))
     if not instance_lock.tryLock(0):
+        if args.startup:
+            return 0
         existing = QLocalSocket()
         existing.connectToServer(server_name)
         if existing.waitForConnected(1500):
@@ -1207,7 +1711,7 @@ def main() -> int:
     existing = QLocalSocket()
     existing.connectToServer(server_name)
     if existing.waitForConnected(500):
-        existing.write(b"show")
+        existing.write(b"startup" if args.startup else b"show")
         existing.waitForBytesWritten(500)
         existing.disconnectFromServer()
         return 0
@@ -1219,14 +1723,15 @@ def main() -> int:
     if not server.listen(server_name):
         QMessageBox.critical(None, "Yarnelo", text("instance_failed", settings.language, error=server.errorString()))
         return 1
-    dock = Dock(settings, store, bool(load_error))
+    autostart, startup_error = None, None
+    try:
+        autostart = AutostartManager(resolve_startup_command())
+    except (OSError, ModelError) as error:
+        startup_error = error
+    dock = Dock(settings, store, bool(load_error), autostart, startup_error)
 
     def incoming():
-        while server.hasPendingConnections():
-            socket = server.nextPendingConnection()
-            socket.disconnectFromServer()
-            socket.deleteLater()
-        dock.show_passive()
+        receive_instance_requests(server, dock.show_passive)
 
     server.newConnection.connect(incoming)
     app.aboutToQuit.connect(server.close)

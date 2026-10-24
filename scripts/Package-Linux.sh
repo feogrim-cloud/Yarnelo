@@ -19,7 +19,7 @@ while (($#)); do
         --version) (($# >= 2)) || die '--version needs a version'; version=$2; shift 2 ;;
         --smoke-test) smoke_test=true; shift ;;
         -h|--help)
-            printf '%s\n' 'Usage: bash scripts/Package-Linux.sh [--output DIRECTORY] [--version 1.7.0] [--smoke-test]' \
+            printf '%s\n' 'Usage: bash scripts/Package-Linux.sh [--output DIRECTORY] [--version 1.7.2] [--smoke-test]' \
               'Requires Python + PyInstaller + linux/requirements.txt, fpm, dpkg-deb, rpmbuild,' \
               'desktop-file-validate, APPIMAGETOOL and APPIMAGE_RUNTIME (verified local files).'
             exit 0 ;;
@@ -207,6 +207,10 @@ rpm -qpi "$output/Yarnelo-Linux-$architecture.rpm"
 if $smoke_test; then
     APPIMAGE_EXTRACT_AND_RUN=1 QT_QPA_PLATFORM=offscreen \
         "$output/Yarnelo-Linux-$architecture.AppImage" --smoke-test
+    # The runtime removes this CLI flag without setting the environment switch.
+    # Its generated login command must nevertheless retain no-FUSE operation.
+    env -u APPIMAGE_EXTRACT_AND_RUN QT_QPA_PLATFORM=offscreen \
+        "$output/Yarnelo-Linux-$architecture.AppImage" --appimage-extract-and-run --smoke-test
     mkdir -p "$build/check-tar" "$build/check-deb"
     tar -xzf "$output/Yarnelo-Linux-$architecture.tar.gz" -C "$build/check-tar"
     python3 "$repo/linux/packaging/verify-native.py" "$architecture" "$build/check-tar/Yarnelo"

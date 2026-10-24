@@ -1,19 +1,33 @@
-# Yarnelo 1.7.1
+# Yarnelo 1.7.2 — Startup, names and new shortcuts / Автозапуск, названия и новые ярлыки
 
 ## English
 
-This release fixes **Windows startup at sign-in**. Existing shortcut profiles and dock settings are preserved; all 14 Intel/AMD and native ARM64 packages remain available. Linux behavior is unchanged.
+This release adds a **Linux startup-at-sign-in checkbox**, a **shortcut-name display choice**, and **optional automatic addition of new desktop shortcuts on Windows and Linux**. Existing shortcut profiles, label preferences and the Windows startup fix from 1.7.1 are preserved; all 14 Intel/AMD and native ARM64 packages remain available.
+
+### Linux startup
+
+- Right-click the dock → **Settings → Start when signing in → OK**. The option is off by default. Clearing it and choosing **OK** disables startup; **Cancel** leaves the registration unchanged.
+- Yarnelo uses `yarnelo.desktop` in your XDG autostart folder: `$XDG_CONFIG_HOME/autostart`, or `~/.config/autostart` by default. No administrator rights are needed, and system configuration and other applications' entries are preserved.
+- The entry starts this copy of Yarnelo. AppImage uses its permanent outer file, not a temporary mount. Keep AppImage, TAR.GZ and source copies in a permanent location before enabling startup. Before moving a copy, turn the option off and choose **OK** from the original location; then move it, enable the option from the new location and choose **OK**.
+- XDG-compliant desktops such as GNOME, KDE Plasma and Xfce generally support this mechanism. Timing depends on the desktop; Linux has no fixed 10-second delay. Automated registration and interface checks do not establish actual sign-in behavior on every desktop environment.
+
+Before removing a Linux portable copy or package, turn the checkbox off and choose **OK**. Package removal preserves user configuration. Remove any duplicate startup commands you previously added manually. [Linux startup instructions](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/LINUX.md#startup-at-sign-in).
+
+### Shortcut names
+
+In **Settings → Shortcut names**, choose **On hover** for the full-name bubble when pointing at an icon, or **Always (two lines)** for captions under each icon. The full-name hover bubble remains available in both modes, including when a long name does not fit two lines. Caption widths and row spacing account for the text; the dock adds rows or side columns when it needs more room. Existing **Show icon labels** preferences migrate to the corresponding mode.
+
+### New desktop shortcuts
+
+**Settings → Automatically add new desktop shortcuts** is off by default, so adding stays manual unless you opt in. It watches only new Windows `.lnk` / `.url` or Linux `.desktop` launchers appearing while Yarnelo is running; switching it on does not import existing desktop icons. Ordinary files and folders are ignored. Files being written are allowed to settle before import, and existing dock items are not duplicated.
+
+The dock still holds at most 30 icons. A shortcut found when it is full stays on the desktop and is not queued for later; add it manually after making space. Windows follows **Move desktop shortcuts into the dock** for personal shortcuts. Shared desktop shortcuts are copied without an automatic administrator prompt; use the explicit menu action for moving them. Linux adds references and leaves originals untouched.
 
 ### Windows startup
 
-- **Start when signing in to Windows** now creates a Task Scheduler task for the current user, with a **10-second delay**, the exact `Yarnelo.exe` path and its working directory.
-- The task runs with your ordinary permissions, is allowed on battery power and has no execution time limit. Turning the option off removes this installation's startup registration.
-- On the first normal launch after updating, an enabled legacy startup entry for this installation is migrated only after the new task has been verified. Entries disabled in Windows and registrations belonging to other installations are preserved.
-- The startup switch checks the saved registration and restores its previous state if changing it fails. Startup launch checks supplement the existing installer and profile-preservation checks.
+Windows retains the 1.7.1 current-user Task Scheduler registration: a **10-second logon delay**, the exact executable path and working directory, ordinary account permissions, battery support and no execution time limit. Manage it through **Settings → Start when signing in to Windows**. Enabled legacy registrations belonging to this installation migrate after the new task is verified; disabled choices and other installations are preserved.
 
-Manage startup through **right-click the dock → Settings → Start when signing in to Windows**. The task is named `Yarnelo.Logon.<SID>` in **Task Scheduler Library**, where `<SID>` identifies your Windows account. Scheduled tasks do not normally appear in **Task Manager → Startup apps**; an old “Polka” row there is not the status of the new task.
-
-The saved task and a manual task launch can be checked without signing you out. Automatic triggering is observed at the next Windows sign-in. Corner rounding, two-column settings, edge placement and automatic shortcut wrapping from 1.7.0 remain available.
+The task is named `Yarnelo.Logon.<SID>` in **Task Scheduler Library**. Scheduled tasks do not normally appear in **Task Manager → Startup apps**. [Windows startup instructions](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/WINDOWS.md#startup-at-sign-in). Corner rounding, two-column settings, edge placement and automatic shortcut wrapping remain available on both platforms.
 
 ### Downloads
 
@@ -55,18 +69,32 @@ Windows installers run per user and retain `Data` on update/removal. Update a po
 
 ## Русский
 
-Исправлен **автозапуск Windows при входе в систему**. Прежние профили ярлыков и настройки панели сохранены; доступны все 14 пакетов Intel/AMD и нативных ARM64. Поведение Linux не изменено.
+Добавлены **галочка автозапуска Linux при входе в систему**, **выбор показа названий ярлыков** и **необязательное автоматическое добавление новых ярлыков рабочего стола в Windows и Linux**. Прежние профили ярлыков, выбор показа подписей и исправление автозапуска Windows из 1.7.1 сохранены; доступны все 14 пакетов Intel/AMD и нативных ARM64.
+
+### Автозапуск Linux
+
+- Правая кнопка по панели → **Настройки → Запускать при входе в систему → OK**. По умолчанию галочка выключена. Чтобы отключить автозапуск, снимите её и нажмите **OK**; **«Отмена»** оставляет регистрацию без изменений.
+- Yarnelo использует `yarnelo.desktop` в вашей папке автозапуска XDG: `$XDG_CONFIG_HOME/autostart` или по умолчанию `~/.config/autostart`. Права администратора не нужны; системные настройки и записи других приложений сохраняются.
+- Запись запускает именно эту копию Yarnelo. Для AppImage используется постоянный внешний файл, а не временная папка монтирования. Перед включением разместите AppImage, TAR.GZ или исходную версию в постоянной папке. Перед переносом снимите галочку и нажмите **OK** из прежнего места; затем переместите программу, включите галочку из нового места и нажмите **OK**.
+- Механизм обычно поддерживается окружениями с автозапуском XDG, в том числе GNOME, KDE Plasma и Xfce. Момент запуска зависит от окружения; фиксированной задержки 10 секунд в Linux нет. Автоматические проверки регистрации и интерфейса не подтверждают вход в систему во всех окружениях рабочего стола.
+
+Перед удалением переносной версии или пакета Linux снимите галочку и нажмите **OK**. Удаление пакета сохраняет пользовательские настройки. Если ранее вы вручную добавляли отдельные команды автозапуска, удалите дубликаты. [Инструкция автозапуска Linux](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/LINUX.ru.md#автозапуск-при-входе).
+
+### Названия ярлыков
+
+В **Настройки → Названия ярлыков** выберите **«При наведении»**, чтобы видеть полное название во всплывающей подсказке, либо **«Всегда (две строки)»**, чтобы показывать подпись под каждым значком. Полная подсказка доступна в обоих режимах, в том числе если длинное название не помещается в две строки. Ширина ячеек и расстояние между рядами учитывают текст; при нехватке места панель добавляет ряды или боковые столбцы. Прежний выбор **«Подписи под значками»** переносится в соответствующий режим.
+
+### Новые ярлыки рабочего стола
+
+Галочка **Настройки → Автоматически добавлять новые ярлыки с рабочего стола** по умолчанию выключена: добавление остаётся ручным, пока вы не включите её. Учитываются только новые `.lnk` / `.url` Windows или `.desktop` Linux, появившиеся во время работы Yarnelo; включение не импортирует прежние значки. Обычные файлы и папки игнорируются. Программа дожидается окончания записи ярлыка и не создаёт дубликаты уже добавленных значков.
+
+Лимит остаётся прежним — 30 значков. Если панель заполнена, новый ярлык остаётся на рабочем столе и не откладывается в очередь; после освобождения места добавьте его вручную. Для личных ярлыков Windows действует настройка **«Переносить ярлыки с рабочего стола в панель»**. Общие ярлыки копируются без автоматического запроса прав администратора; для их переноса используйте отдельную команду меню. Linux добавляет ссылки и оставляет оригиналы на месте.
 
 ### Автозапуск Windows
 
-- **«Запускать при входе в Windows»** теперь создаёт задачу планировщика для текущего пользователя с **задержкой 10 секунд**, точным путём к `Yarnelo.exe` и её рабочей папкой.
-- Задача использует обычные права пользователя, разрешена при работе от батареи и не ограничена по времени выполнения. Выключение опции убирает регистрацию автозапуска этой установки.
-- При первом обычном запуске после обновления включённая прежняя запись этой установки переносится только после проверки новой задачи. Отключённые в Windows записи и регистрации других установок сохраняются.
-- Переключатель проверяет сохранённую регистрацию и возвращает прежнее состояние при ошибке изменения. Проверки запуска дополняют существующие проверки установщика и сохранности профиля.
+В Windows сохранён механизм 1.7.1: задача планировщика текущего пользователя с **задержкой входа 10 секунд**, точным путём к программе и рабочей папкой, обычными правами, работой от батареи и без ограничения времени выполнения. Управление — **Настройки → Запускать при входе в Windows**. Включённые прежние записи этой установки переносятся после проверки новой задачи; отключённый выбор и другие установки сохраняются.
 
-Управление: **правая кнопка по панели → Настройки → Запускать при входе в Windows**. В **Библиотеке планировщика заданий** задача называется `Yarnelo.Logon.<SID>`, где `<SID>` — идентификатор вашей учётной записи Windows. Задачи планировщика обычно не отображаются в **Диспетчере задач → Автозагрузка приложений**; старая строка «Polka» там не отражает состояние новой задачи.
-
-Регистрацию и запуск задачи вручную можно проверить без выхода из сеанса. Автоматическое срабатывание наблюдается при следующем входе в Windows. Скругление фона, настройки в два столбца, положения у краёв и автоматический перенос ярлыков из 1.7.0 сохранены.
+В **Библиотеке планировщика заданий** задача называется `Yarnelo.Logon.<SID>`. Задачи планировщика обычно не отображаются в **Диспетчере задач → Автозагрузка приложений**. [Инструкция автозапуска Windows](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/WINDOWS.ru.md#автозапуск-при-входе). Скругление фона, настройки в два столбца, положения у краёв и автоматический перенос ярлыков сохранены на обеих платформах.
 
 ### Что скачать
 

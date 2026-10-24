@@ -15,7 +15,7 @@ from typing import Any
 
 from yarnelo_i18n import LANGUAGES, text
 
-VERSION = "1.7.1"
+VERSION = "1.7.2"
 MAX_ITEMS = 30
 PLACEMENTS = ("free", "bottom", "top", "left", "right")
 
@@ -60,6 +60,8 @@ class Settings:
     icon_size: int = 48
     zoom: float = 1.35
     labels: bool = False
+    launch_at_login: bool = False
+    auto_add_desktop_shortcuts: bool = False
     corner_radius: float = 23.0
     placement: str = "free"
     language: str = "auto"
@@ -86,9 +88,10 @@ class Settings:
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
                 raise ModelError("invalid_value", name=name)
             setattr(result, name, numeric_type(min(high, max(low, value))))
-        if not isinstance(data.get("labels", False), bool):
-            raise ModelError("invalid_value", name="labels")
-        result.labels = data.get("labels", False)
+        for name in ("labels", "launch_at_login", "auto_add_desktop_shortcuts"):
+            if not isinstance(data.get(name, False), bool):
+                raise ModelError("invalid_value", name=name)
+            setattr(result, name, data.get(name, False))
         placement = data.get("placement", "free")
         if not isinstance(placement, str) or placement not in PLACEMENTS:
             raise ModelError("invalid_value", name="placement")
@@ -244,8 +247,12 @@ def dock_layout(settings: Settings, available_width: int, available_height: int)
         slots = slot_indices(len(settings.items), rows)
         columns = max(column for _, column in slots) + 1
         used_rows = max(row for row, _ in slots) + 1
-        cell_width = math.ceil(size * settings.zoom + 14)
-        cell_height = cell_width + (18 if settings.labels else 0)
+        icon_space = math.ceil(size * settings.zoom + 14)
+        # Captions need room for two words/lines at the normal icon size.
+        # On a small work area the existing fit algorithm may reduce icons,
+        # while keeping the caption's two-line height readable.
+        cell_width = max(icon_space, math.ceil(size * 88 / 48)) if settings.labels else icon_space
+        cell_height = icon_space + (34 if settings.labels else 0)
         width, height = ((20 + used_rows * cell_width, 38 + columns * cell_height) if vertical
                          else (38 + columns * cell_width, 20 + used_rows * cell_height))
         counts = {row: sum(r == row for r, _ in slots) for row in range(used_rows)}
