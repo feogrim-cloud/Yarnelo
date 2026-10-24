@@ -1,5 +1,21 @@
 # Changelog / Изменения
 
+## 1.7.1 — 2026-10-24
+
+### English
+
+- Windows startup now uses a current-user Task Scheduler logon task with a 10-second delay, the exact executable path and its working directory.
+- The task runs with the user's ordinary permissions, works on battery power, and has no execution time limit. The startup switch verifies the saved registration and restores its previous state if a change fails.
+- Enabled legacy startup entries belonging to this installation migrate after the new task has been verified. Disabled startup choices and other installations are preserved; uninstall removes only its own registration.
+- Added startup registration and launch checks. Existing shortcut profiles, dock appearance settings and Linux behavior are unchanged.
+
+### Русский
+
+- Автозапуск Windows переведён на задачу входа текущего пользователя в планировщике с задержкой 10 секунд, точным путём к программе и её рабочей папкой.
+- Задача использует обычные права пользователя, работает от батареи и не ограничена по времени выполнения. Переключатель проверяет сохранённую регистрацию и возвращает прежнее состояние при ошибке изменения.
+- Включённые прежние записи автозапуска этой установки переносятся после проверки новой задачи. Отключённый автозапуск и другие установки сохраняются; удаление убирает только собственную регистрацию.
+- Добавлены проверки регистрации и запуска. Профили ярлыков, настройки внешнего вида панели и поведение Linux не изменены.
+
 ## 1.7.0 — 2026-10-23
 
 ### English

@@ -67,12 +67,17 @@ namespace Polka {
             AddCheck(behavior,"ShowLabels",dock.Store.Settings.ShowLabels,delegate(bool v) { dock.Store.Settings.ShowLabels=v; });
             var floating=AddCheck(behavior,"AlwaysOnTop",dock.Store.Settings.AlwaysOnTop,delegate(bool v) { dock.Store.Settings.AlwaysOnTop=v; });
             floating.ToolTip=L10n.T("VisibilityHelp");
-            bool startup=!Program.TestMode && Native.GetStartupEnabled();
+            bool startup=false, startupAvailable=!Program.TestMode;
+            if(startupAvailable) {
+                try { startup=Native.GetStartupEnabled(); }
+                catch(Exception ex) { startupAvailable=false; dock.Toast(L10n.T("StartupReadFailed")+ex.Message); }
+            }
             var startupCheck=AddCheck(behavior,"Startup",startup,delegate(bool v) {
                 if(Program.TestMode) return;
                 Native.SetStartup(v); dock.Store.Settings.LaunchAtLogin=v;
             });
-            startupCheck.IsEnabled=!Program.TestMode;
+            startupCheck.IsEnabled=startupAvailable;
+            startupCheck.ToolTip=L10n.T("StartupHelp");
             AddCheck(behavior,"MoveDesktop",dock.Store.Settings.MoveDesktopShortcuts,delegate(bool v) { dock.Store.Settings.MoveDesktopShortcuts=v; });
             behavior.Children.Add(Help("MoveHelp",new Thickness(0,0,0,12)));
             behavior.Children.Add(Help("UsageHelp",new Thickness(0,0,0,0)));
@@ -180,9 +185,15 @@ namespace Polka {
             var box=new CheckBox { Content=new TextBlock { Text=L10n.T(key), TextWrapping=TextWrapping.Wrap }, IsChecked=value,
                 FontSize=12, Foreground=Brushes.White, Margin=new Thickness(0,0,0,12), Cursor=Cursors.Hand, Tag="setting-"+key };
             System.Windows.Automation.AutomationProperties.SetName(box,L10n.T(key));
+            bool updating=false, accepted=value;
             RoutedEventHandler change=delegate {
-                try { set(box.IsChecked==true); dock.ApplySettings(); dock.SaveQuietly(); }
-                catch(Exception ex) { dock.Toast(ex.Message); }
+                if(updating) return;
+                bool requested=box.IsChecked==true;
+                try { set(requested); dock.ApplySettings(); dock.SaveQuietly(); accepted=requested; }
+                catch(Exception ex) {
+                    updating=true; box.IsChecked=accepted; updating=false;
+                    dock.Toast(ex.Message);
+                }
             };
             box.Checked+=change; box.Unchecked+=change; target.Children.Add(box); return box;
         }

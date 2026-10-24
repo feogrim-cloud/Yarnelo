@@ -76,24 +76,7 @@ internal static class SetupMaintenance
 
     private static void RemoveOwnStartup(string executable)
     {
-        RegistryView[] views = Environment.Is64BitOperatingSystem
-            ? new[] { RegistryView.Registry32, RegistryView.Registry64 }
-            : new[] { RegistryView.Registry32 };
-        foreach (RegistryView view in views)
-        using (RegistryKey user = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view))
-        using (RegistryKey key = user.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true))
-        {
-            if (key == null) continue;
-            foreach (string name in new[] { "Yarnelo", "Polka Desktop Dock" })
-            {
-                string command = key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames) as string;
-                if (command == null) continue;
-                command = command.Trim();
-                if (string.Equals(command, executable, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(command, "\"" + executable + "\"", StringComparison.OrdinalIgnoreCase))
-                    key.DeleteValue(name, false);
-            }
-        }
+        Polka.StartupRegistration.RemoveOwned(executable);
     }
 
     [STAThread]

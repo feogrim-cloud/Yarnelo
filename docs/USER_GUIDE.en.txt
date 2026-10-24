@@ -1,4 +1,4 @@
-YARNELO 1.7.0 — shortcut dock for Windows 10/11 x64,
+YARNELO 1.7.1 — shortcut dock for Windows 10/11 x64,
 Windows 10 x86 and Windows 11 ARM64
 
 Choose the package matching Settings → System → About → System type:
@@ -36,6 +36,22 @@ Changing background opacity keeps icons readable.
 Hover animations do not restart with every pointer movement.
 Older icons with large transparent margins are fitted to their visible
 image area while retaining their proportions.
+
+Startup: Settings → Start when signing in to Windows creates a task
+for your account with a 10-second logon delay, the exact program path
+and its working directory. It uses ordinary account permissions,
+runs on battery power and has no execution time limit.
+Task Scheduler → Task Scheduler Library lists it as Yarnelo.Logon.<SID>.
+It does not normally appear under Task Manager → Startup apps;
+an old Polka row there is not the new task's status.
+An enabled legacy entry for this installation migrates on the first
+normal launch after updating to 1.7.1. The old Run entry is removed
+only after the new task has been verified. Windows-disabled startup
+is not enabled automatically; use the switch to enable it explicitly.
+Turning the switch off, or uninstalling, removes only this installation's
+task and matching legacy entry. A failed change restores the switch.
+A manual task launch checks the command; automatic triggering is observed
+at the next Windows sign-in. No forced sign-out or restart is needed.
 
 By default the dock is visible while no other window covers its space.
 A launcher or window above its space does not hide it. After a covering

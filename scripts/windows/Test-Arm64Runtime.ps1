@@ -43,6 +43,14 @@ public static class YarneloArm64RuntimeNative {
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr window, StringBuilder text, int capacity);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr window, StringBuilder text, int capacity);
     [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
+    [DllImport("kernel32.dll")] private static extern void SetLastError(uint error);
+    public static long[] SendWithDiagnostics(IntPtr window, uint message, uint timeout) {
+        SetLastError(0);
+        IntPtr result;
+        IntPtr sent = SendMessageTimeout(window, message, IntPtr.Zero, IntPtr.Zero, 0x0002, timeout, out result);
+        int error = sent == IntPtr.Zero ? Marshal.GetLastWin32Error() : 0;
+        return new long[] { sent.ToInt64(), result.ToInt64(), error };
+    }
 }
 '@
 
@@ -67,9 +75,21 @@ $settings = '{"MoveDesktopShortcuts":false,"LaunchAtLogin":false,"Items":[],"Row
 $report = [ordered]@{ Result='Started'; Executable=$executable; Profile=$profile; PeMachine='0xaa64' }
 $process = $null
 $script:runtimeWindow = [IntPtr]::Zero
+$primaryFailure = $null
+$cleanupFailure = $null
+function Invoke-DockMessage([uint32]$Message, [string]$Stage) {
+    $response = [YarneloArm64RuntimeNative]::SendWithDiagnostics($script:runtimeWindow,$Message,3000)
+    $details = [ordered]@{ Message=('0x{0:x4}' -f $Message); SendReturn=$response[0]; WindowResult=$response[1]; Win32Error=$response[2] }
+    $report[$Stage] = $details
+    Write-Host ("$Stage SendMessageTimeout: return={0}, result={1}, Win32Error={2}" -f $response[0],$response[1],$response[2])
+    return $response[0] -ne 0
+}
 try {
+    $report['Stage'] = 'Start'
     $process = Start-Process -FilePath $executable -ArgumentList @('--data-dir',('"' + $profile + '"')) -WorkingDirectory $payload -WindowStyle Hidden -PassThru
+    $report['ProcessId'] = $process.Id
     $targetId = [uint32]$process.Id
+    $report['Stage'] = 'FindWindow'
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
     while(!$process.HasExited -and [DateTime]::UtcNow -lt $deadline) {
         [YarneloArm64RuntimeNative]::EnumWindows({
@@ -92,38 +112,75 @@ try {
         Start-Sleep -Milliseconds 100
     }
     Assert-Condition (!$process.HasExited -and $script:runtimeWindow -ne [IntPtr]::Zero) 'The real ARM64 dock did not create its WPF window.'
+    # An HWND exists before WPF has finished Loaded and initialized its tray and
+    # desktop host. Wait for the dispatcher to become idle, then require an
+    # actual reply before checking native modules or requesting WM_CLOSE.
+    $report['Stage'] = 'WaitForInputIdle'
+    $inputIdle = $process.WaitForInputIdle(30000)
+    $report['InputIdle'] = $inputIdle
+    Assert-Condition $inputIdle 'The ARM64 dock did not finish initializing its input queue.'
+    $report['Stage'] = 'ReadyProbe'
+    Assert-Condition (Invoke-DockMessage 0x0000 'ReadyProbe') 'The ARM64 WPF window did not respond to WM_NULL after initialization.'
+    $report['Stage'] = 'NativeChecks'
     $processMachine = [uint16]0
     $nativeMachine = [uint16]0
     Assert-Condition ([YarneloArm64RuntimeNative]::IsWow64Process2($process.Handle,[ref]$processMachine,[ref]$nativeMachine)) 'IsWow64Process2 failed for the actual dock process.'
     Assert-Condition ($nativeMachine -eq 0xaa64 -and $processMachine -eq 0) ('The dock must execute natively: process machine=0x{0:x4}, OS machine=0x{1:x4}.' -f $processMachine,$nativeMachine)
     $report['ProcessMachine'] = ('0x{0:x4}' -f $processMachine)
     $report['NativeMachine'] = ('0x{0:x4}' -f $nativeMachine)
-    $report['ProcessId'] = $process.Id
     $report['WindowClass'] = 'HwndWrapper'
     $clr = @($process.Modules | Where-Object { $_.ModuleName -ieq 'clr.dll' })
     Assert-Condition ($clr.Count -eq 1) 'The native .NET Framework CLR was not loaded.'
     Assert-Condition ((Get-PeMachine $clr[0].FileName) -eq 0xaa64) 'The loaded .NET Framework CLR must itself be ARM64.'
     $report['ClrPath'] = $clr[0].FileName
     Assert-Condition (!(Test-Path -LiteralPath (Join-Path $profile 'error.log'))) 'The ARM64 dock reported an exception in its isolated profile.'
-    $report['Result'] = 'Passed'
 }
 catch {
+    $primaryFailure = $_
     $report['Result'] = 'Failed'
     $report['Error'] = $_.Exception.Message
-    throw
 }
 finally {
-    if($null -ne $process) {
-        try {
-            if(!$process.HasExited -and $script:runtimeWindow -ne [IntPtr]::Zero) {
-                $ignored = [IntPtr]::Zero
-                [void][YarneloArm64RuntimeNative]::SendMessageTimeout($script:runtimeWindow,0x0010,[IntPtr]::Zero,[IntPtr]::Zero,0x0002,3000,[ref]$ignored)
-                Assert-Condition ($process.WaitForExit(15000) -and $process.ExitCode -eq 0) 'The isolated dock did not close gracefully.'
+    try {
+        if($null -ne $process) {
+            if($script:runtimeWindow -ne [IntPtr]::Zero) {
+                if($process.HasExited) { $report['ExitedBeforeClose']=$true; $report['ExitCode']=$process.ExitCode }
+                Assert-Condition (!$process.HasExited) 'The isolated dock exited before its required WM_CLOSE check.'
+                # Record a second readiness check, but still attempt WM_CLOSE if
+                # the UI became unresponsive so the original failure is retained.
+                $closeReady = Invoke-DockMessage 0x0000 'BeforeCloseProbe'
+                $closeSent = Invoke-DockMessage 0x0010 'CloseMessage'
+                $closed = $process.WaitForExit(15000)
+                $report['ClosedAfterMessage'] = $closed
+                if($closed) { $report['ExitCode'] = $process.ExitCode }
+                Assert-Condition ($closeReady -and $closeSent) 'The isolated dock did not acknowledge its readiness/WM_CLOSE messages; see the recorded Win32 diagnostics.'
+                Assert-Condition ($closed -and $process.ExitCode -eq 0) 'The isolated dock did not close gracefully with exit code zero.'
+                $report['GracefulClose'] = $true
+            } elseif(!$process.HasExited) {
+                throw 'The isolated process has no verified dock HWND for a safe WM_CLOSE request.'
             }
         }
-        finally { $process.Dispose() }
     }
-    [IO.File]::WriteAllText((Join-Path $run 'test-result.json'),(ConvertTo-Json -InputObject $report -Depth 5),[Text.UTF8Encoding]::new($false))
-    Write-Host "ARM64 runtime diagnostics preserved: $run"
+    catch {
+        $cleanupFailure = $_
+        $report['Result'] = 'Failed'
+        $report['CleanupError'] = $_.Exception.Message
+    }
+    finally {
+        try { if($null -ne $process) { $process.Dispose() } }
+        catch {
+            if(!$cleanupFailure) { $cleanupFailure=$_ }
+            $report['DisposeError']=$_.Exception.Message
+            $report['Result']='Failed'
+        }
+        if(!$primaryFailure -and !$cleanupFailure) { $report['Result']='Passed'; $report['Stage']='Complete' }
+        [IO.File]::WriteAllText((Join-Path $run 'test-result.json'),(ConvertTo-Json -InputObject $report -Depth 6),[Text.UTF8Encoding]::new($false))
+        Write-Host "ARM64 runtime diagnostics preserved: $run"
+    }
 }
+if($primaryFailure) {
+    if($cleanupFailure) { Write-Warning ('Cleanup also failed: '+$cleanupFailure.Exception.Message) }
+    throw $primaryFailure
+}
+if($cleanupFailure) { throw $cleanupFailure }
 Write-Host 'PASS: The real ARM64 WPF dock launched with an isolated profile; native ARM64 PE, process and CLR verified; graceful close completed.'

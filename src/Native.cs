@@ -10,14 +10,11 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using Microsoft.Win32;
 
 namespace Polka
 {
     internal static class Native
     {
-        private const string StartupKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        private const string StartupName = "Yarnelo";
         private static readonly object iconQueueLock = new object();
         private static readonly Queue<IconRequest> iconQueue = new Queue<IconRequest>();
         private static readonly AutoResetEvent iconWake = new AutoResetEvent(false);
@@ -37,25 +34,20 @@ namespace Polka
 
         public static bool GetStartupEnabled()
         {
-            try
-            {
-                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(StartupKey, false))
-                {
-                    string command = key == null ? null : key.GetValue(StartupName) as string;
-                    return String.Equals(command, Quote(ExePath), StringComparison.OrdinalIgnoreCase);
-                }
-            }
-            catch { return false; }
+            try { return new StartupRegistration(ExePath).Enabled; }
+            catch(Exception ex) { throw new IOException(StartupError(ex),ex); }
         }
 
         public static void SetStartup(bool enabled)
         {
-            using (RegistryKey key = Registry.CurrentUser.CreateSubKey(StartupKey))
-            {
-                if (key == null) throw new IOException(L10n.T("StartupOpenFailed"));
-                if (enabled) key.SetValue(StartupName, Quote(ExePath), RegistryValueKind.String);
-                else key.DeleteValue(StartupName, false);
-            }
+            try { new StartupRegistration(ExePath).SetEnabled(enabled); }
+            catch(Exception ex) { throw new IOException(StartupError(ex),ex); }
+        }
+
+        internal static string StartupError(Exception error)
+        {
+            var startup=error as StartupRegistrationException;
+            return startup==null ? error.Message : L10n.T(startup.MessageKey);
         }
 
         public static void Launch(DockItem item)

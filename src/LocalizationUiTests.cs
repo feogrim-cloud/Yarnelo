@@ -81,6 +81,15 @@ namespace Polka {
                 store.Add("shell:MyComputerFolder"); store.Add("shell:RecycleBinFolder");
                 var dock=new DockWindow(store); dock.ApplySettings();
                 var settings=new SettingsWindow(dock);
+                // A failed Windows startup update must never leave a success
+                // checkmark behind. Inject the failing action, not a real task.
+                byte[] beforeStartupFailure=File.ReadAllBytes(Path.Combine(store.DataDirectory,"settings.json"));
+                var checkPanel=new StackPanel();
+                var addCheck=typeof(SettingsWindow).GetMethod("AddCheck",PrivateInstance);
+                var failedStartup=(CheckBox)addCheck.Invoke(settings,new object[]{checkPanel,"Startup",true,new Action<bool>(delegate { throw new IOException("Isolated startup write failure"); })});
+                failedStartup.IsChecked=false;
+                Check(failedStartup.IsChecked==true,"failed startup update restores the previous checkbox state");
+                Check(beforeStartupFailure.SequenceEqual(File.ReadAllBytes(Path.Combine(store.DataDirectory,"settings.json"))),"failed startup update preserves the persisted profile");
                 typeof(DockWindow).GetField("settingsWindow",PrivateInstance).SetValue(dock,settings);
                 Check(dock.Title=="Yarnelo — панель ярлыков" && settings.Title=="Настройки — Yarnelo","Russian dock and settings strings");
                 var language=dock.ContextMenu.Items.OfType<MenuItem>().Single(item=>Object.Equals(item.Header,"Язык"));

@@ -15,7 +15,7 @@ from typing import Any
 
 from yarnelo_i18n import LANGUAGES, text
 
-VERSION = "1.7.0"
+VERSION = "1.7.1"
 MAX_ITEMS = 30
 PLACEMENTS = ("free", "bottom", "top", "left", "right")
 

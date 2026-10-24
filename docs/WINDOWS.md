@@ -51,6 +51,16 @@ Use **+** to add files, folders, This PC or Recycle Bin. Drag icons to rearrange
 
 By default the dock hides when another window covers its space and returns automatically when the space is free. A window above the dock, or activity on another monitor, does not hide it. Fullscreen and borderless apps on the dock's monitor hide it even with the “above ordinary windows” option enabled. Returning the dock does not take focus.
 
+## Startup at sign-in
+
+Enable **Settings → Start when signing in to Windows**. Yarnelo creates a logon task for your Windows account with a 10-second delay, using the exact executable path and its folder as the working directory. The task runs with your ordinary account permissions, is allowed on battery power and has no execution time limit.
+
+The task appears in **Task Scheduler → Task Scheduler Library** as `Yarnelo.Logon.<SID>`, where `<SID>` is your account identifier. Manage it with the app's startup switch, or inspect its **Triggers**, **Actions** and **Last Run Result** in Task Scheduler. Scheduled tasks do not normally appear in **Task Manager → Startup apps**. A legacy “Polka” row there does not show the new task's status.
+
+On the first normal launch after updating to 1.7.1, an enabled legacy startup entry that points to this installation is migrated. The old Run entry is removed only after the new task has been saved and verified. A task or legacy startup entry disabled in Windows is not automatically enabled again. To enable startup explicitly, use the switch in Yarnelo; if needed, turn it off and on again. Changes that fail are reported, and the switch returns to its previous state.
+
+Turning startup off removes only this installation's task and matching legacy registration. Other programs and other Yarnelo installation paths are left alone. Checking a saved task or running it manually verifies its command; automatic logon triggering is confirmed at the next Windows sign-in. Yarnelo does not sign you out or restart Windows for this check.
+
 ## Shortcuts and storage
 
 With desktop shortcut transfer enabled, desktop `.lnk` / `.url` files are stored in `Data/Library` and removed from the desktop. Their contents and launch arguments are retained. Ordinary files and folders stay in place. Right-click an icon → **Remove and restore shortcut to desktop** to restore an imported shortcut. Existing files are never overwritten.
@@ -71,7 +81,7 @@ If Yarnelo is running from another folder, close it before launching the new cop
 
 ## Uninstall
 
-Restore any moved shortcuts through each icon's menu first. For the installed version, use **Settings → Apps → Installed apps → Yarnelo → Uninstall**. Uninstall removes only its own installation's startup entry and leaves `Data` in place. For a portable version, disable startup in the app, exit, then remove the program files yourself.
+Restore any moved shortcuts through each icon's menu first. For the installed version, use **Settings → Apps → Installed apps → Yarnelo → Uninstall**. Uninstall removes only its own installation's startup task and matching legacy entry, and leaves `Data` in place. For a portable version, disable startup in the app, exit, then remove the program files yourself.
 
 Keep `Data` until your required shortcuts have been restored: it contains the imported `.lnk` and `.url` files.
 

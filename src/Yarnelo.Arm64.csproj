@@ -22,6 +22,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net481" Version="1.0.3" PrivateAssets="all" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Xml" />
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.Xaml" />
     <Reference Include="System.Windows.Forms" />
@@ -29,6 +30,6 @@
     <Reference Include="WindowsBase" />
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
-    <Compile Include="Program.cs;DockWindow.cs;DockLayout.cs;SettingsWindow.cs;Native.cs;DesktopHost.cs;SmoothMotion.cs;Store.cs;Localization.cs" />
+    <Compile Include="Program.cs;DockWindow.cs;DockLayout.cs;SettingsWindow.cs;Native.cs;StartupRegistration.cs;DesktopHost.cs;SmoothMotion.cs;Store.cs;Localization.cs" />
   </ItemGroup>
 </Project>

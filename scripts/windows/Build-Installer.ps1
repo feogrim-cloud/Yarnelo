@@ -66,7 +66,7 @@ if(!$IsccPath -or !(Test-Path -LiteralPath $IsccPath -PathType Leaf)) {
 $framework = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319'
 $maintenancePath = Join-Path ([IO.Path]::GetDirectoryName($payloadPath)) ('Yarnelo.SetupMaintenance-' + [Guid]::NewGuid().ToString('N') + '.exe')
 $compilerArgs = @('/nologo','/target:winexe','/platform:anycpu','/optimize+','/codepage:65001',('/out:'+$maintenancePath),'/reference:System.dll','/reference:System.Core.dll')
-& (Join-Path $framework 'csc.exe') @compilerArgs (Join-Path $PSScriptRoot 'SetupMaintenance.cs')
+& (Join-Path $framework 'csc.exe') @compilerArgs /reference:System.Xml.dll (Join-Path $PSScriptRoot 'SetupMaintenance.cs') (Join-Path $PSScriptRoot '..\..\src\StartupRegistration.cs')
 if($LASTEXITCODE -ne 0) { throw 'Installer maintenance helper compilation failed.' }
 New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
 $innoArgs = @(('/DPayload='+$payloadPath),('/DOutputDirectory='+$outputPath),('/DAppArchitecture='+$Architecture),('/DMaintenance='+$maintenancePath),(Join-Path $PSScriptRoot 'Yarnelo.iss'))

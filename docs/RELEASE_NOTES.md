@@ -1,20 +1,19 @@
-# Yarnelo 1.7.0
+# Yarnelo 1.7.1
 
 ## English
 
-This release adds **background corner rounding, four edge positions and automatic wrapping** on Windows and Linux. Existing shortcut profiles are preserved; all 14 Intel/AMD and native ARM64 packages remain available.
+This release fixes **Windows startup at sign-in**. Existing shortcut profiles and dock settings are preserved; all 14 Intel/AMD and native ARM64 packages remain available. Linux behavior is unchanged.
 
-### New dock settings
+### Windows startup
 
-- Set **Corner rounding** from **0** (square corners) to **100** (capsule), with intermediate values for softer corners.
-- Settings now use **two columns without vertical scrolling** and fit the available screen space.
-- Choose **Top, Bottom, Left or Right** centered placement. Side docks are vertical with upright icons. Drag the handle for free positioning.
-- Choose one to four preferred rows. If the dock would exceed the screen, it automatically adds rows, or columns at a side edge, before reducing icon size. It returns to the preferred layout when there is room.
-- Linux packages now include Python 3.12.15 for compatibility with the official Qt binaries; normal shutdown and widget cleanup are checked before release. No separate Python installation is needed.
+- **Start when signing in to Windows** now creates a Task Scheduler task for the current user, with a **10-second delay**, the exact `Yarnelo.exe` path and its working directory.
+- The task runs with your ordinary permissions, is allowed on battery power and has no execution time limit. Turning the option off removes this installation's startup registration.
+- On the first normal launch after updating, an enabled legacy startup entry for this installation is migrated only after the new task has been verified. Entries disabled in Windows and registrations belonging to other installations are preserved.
+- The startup switch checks the saved registration and restores its previous state if changing it fails. Startup launch checks supplement the existing installer and profile-preservation checks.
 
-Right-click the dock → **Settings** to use these controls. Changes are saved immediately and are available in English and Russian.
+Manage startup through **right-click the dock → Settings → Start when signing in to Windows**. The task is named `Yarnelo.Logon.<SID>` in **Task Scheduler Library**, where `<SID>` identifies your Windows account. Scheduled tasks do not normally appear in **Task Manager → Startup apps**; an old “Polka” row there is not the status of the new task.
 
-![Yarnelo 1.7 settings](https://raw.githubusercontent.com/feogrim-cloud/Yarnelo/v1.7.0/assets/screenshots/yarnelo-settings-en.png)
+The saved task and a manual task launch can be checked without signing you out. Automatic triggering is observed at the next Windows sign-in. Corner rounding, two-column settings, edge placement and automatic shortcut wrapping from 1.7.0 remain available.
 
 ### Downloads
 
@@ -56,17 +55,18 @@ Windows installers run per user and retain `Data` on update/removal. Update a po
 
 ## Русский
 
-Добавлены **скругление фона, четыре положения у края экрана и автоматический перенос ярлыков** в Windows и Linux. Прежние профили сохранены; доступны все 14 пакетов Intel/AMD и нативных ARM64.
+Исправлен **автозапуск Windows при входе в систему**. Прежние профили ярлыков и настройки панели сохранены; доступны все 14 пакетов Intel/AMD и нативных ARM64. Поведение Linux не изменено.
 
-### Новые настройки панели
+### Автозапуск Windows
 
-- **Скругление углов** от **0** (прямые углы) до **100** (капсула), с промежуточными значениями.
-- Настройки размещены **в два столбца без вертикальной прокрутки**; окно подстраивается под доступное место на экране.
-- Выберите расположение по центру **сверху, снизу, слева или справа**. Боковые панели вертикальные, значки остаются обычной ориентации. Перетаскивайте ручку для свободного размещения.
-- Выберите от одного до четырёх предпочтительных рядов. При выходе за пределы экрана панель сначала добавит ряды, либо столбцы у бокового края, и только затем уменьшит значки. Когда место появится, вернётся выбранная раскладка.
-- Linux-пакеты включают Python 3.12.15 для совместимости с официальными файлами Qt; перед выпуском проверяется обычное завершение и очистка виджетов. Отдельно устанавливать Python не нужно.
+- **«Запускать при входе в Windows»** теперь создаёт задачу планировщика для текущего пользователя с **задержкой 10 секунд**, точным путём к `Yarnelo.exe` и её рабочей папкой.
+- Задача использует обычные права пользователя, разрешена при работе от батареи и не ограничена по времени выполнения. Выключение опции убирает регистрацию автозапуска этой установки.
+- При первом обычном запуске после обновления включённая прежняя запись этой установки переносится только после проверки новой задачи. Отключённые в Windows записи и регистрации других установок сохраняются.
+- Переключатель проверяет сохранённую регистрацию и возвращает прежнее состояние при ошибке изменения. Проверки запуска дополняют существующие проверки установщика и сохранности профиля.
 
-Откройте правой кнопкой меню панели → **Настройки**. Изменения сохраняются сразу; все новые пункты доступны на русском и английском.
+Управление: **правая кнопка по панели → Настройки → Запускать при входе в Windows**. В **Библиотеке планировщика заданий** задача называется `Yarnelo.Logon.<SID>`, где `<SID>` — идентификатор вашей учётной записи Windows. Задачи планировщика обычно не отображаются в **Диспетчере задач → Автозагрузка приложений**; старая строка «Polka» там не отражает состояние новой задачи.
+
+Регистрацию и запуск задачи вручную можно проверить без выхода из сеанса. Автоматическое срабатывание наблюдается при следующем входе в Windows. Скругление фона, настройки в два столбца, положения у краёв и автоматический перенос ярлыков из 1.7.0 сохранены.
 
 ### Что скачать
 

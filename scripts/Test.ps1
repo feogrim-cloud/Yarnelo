@@ -34,7 +34,7 @@ $binary = Join-Path $run 'StorageTests.exe'
 $compilerArgs = @(
     '/nologo', '/target:exe', '/platform:x64', '/optimize+', '/codepage:65001',
     ('/out:' + $binary),
-    '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Runtime.Serialization.dll'
+    '/reference:System.dll', '/reference:System.Core.dll','/reference:System.Xml.dll', '/reference:System.Runtime.Serialization.dll'
 )
 & $compiler @compilerArgs (Join-Path $sources 'Store.cs') (Join-Path $sources 'Localization.cs') (Join-Path $sources 'StorageTests.cs')
 if($LASTEXITCODE -ne 0) { throw 'Storage test compilation failed.' }
@@ -47,21 +47,29 @@ if($LASTEXITCODE -ne 0) { throw "Storage tests failed. Fixtures are preserved at
 
 # Geometry checks use only synthetic monitor bounds and never show a window.
 $layoutBinary = Join-Path $run 'DockLayoutTests.exe'
-$layoutArgs = @('/nologo','/target:exe','/platform:x64','/optimize+','/codepage:65001',('/out:'+$layoutBinary),'/reference:System.dll','/reference:System.Core.dll',('/reference:'+(Join-Path $framework 'WPF\WindowsBase.dll')))
+$layoutArgs = @('/nologo','/target:exe','/platform:x64','/optimize+','/codepage:65001',('/out:'+$layoutBinary),'/reference:System.dll','/reference:System.Core.dll','/reference:System.Xml.dll',('/reference:'+(Join-Path $framework 'WPF\WindowsBase.dll')))
 & $compiler @layoutArgs (Join-Path $sources 'DockLayout.cs') (Join-Path $sources 'DockLayoutTests.cs')
 if($LASTEXITCODE -ne 0) { throw 'Dock geometry test compilation failed.' }
 & $layoutBinary
 if($LASTEXITCODE -ne 0) { throw 'Dock geometry tests failed.' }
 
+# Startup policy/XML checks never register tasks or touch Windows startup keys.
+$startupBinary=Join-Path $run 'StartupRegistrationTests.exe'
+$startupArgs=@('/nologo','/target:exe','/platform:x64','/optimize+','/codepage:65001',('/out:'+$startupBinary),'/reference:System.dll','/reference:System.Core.dll','/reference:System.Xml.dll')
+& $compiler @startupArgs (Join-Path $sources 'StartupRegistration.cs') (Join-Path $sources 'StartupRegistrationTests.cs')
+if($LASTEXITCODE -ne 0) { throw 'Startup policy test compilation failed.' }
+& $startupBinary
+if($LASTEXITCODE -ne 0) { throw 'Startup policy tests failed.' }
+
 # Localization renders only its own unshown WPF visual trees. No native dock,
 # desktop integration, tray, installed profile or startup registry is used.
-$localizationSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','Localization.cs','LocalizationUiTests.cs') |
+$localizationSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','StartupRegistration.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','Localization.cs','LocalizationUiTests.cs') |
     ForEach-Object { Join-Path $sources $_ }
 $localizationBinary = Join-Path $run 'LocalizationUiTests.exe'
 $localizationArgs = @(
     '/nologo', '/target:exe', '/platform:x64', '/optimize+', '/codepage:65001',
     '/main:Polka.LocalizationUiTests', ('/out:' + $localizationBinary),
-    '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Runtime.Serialization.dll',
+    '/reference:System.dll', '/reference:System.Core.dll','/reference:System.Xml.dll', '/reference:System.Runtime.Serialization.dll',
     '/reference:System.Xaml.dll', '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll',
     ('/reference:' + (Join-Path $framework 'WPF\WindowsBase.dll')),
     ('/reference:' + (Join-Path $framework 'WPF\PresentationCore.dll')),
@@ -85,12 +93,12 @@ if($LASTEXITCODE -ne 0) { throw 'Dock visual tests failed.' }
 
 if($CompileUiTests) {
     # Compile only: UI tests show and activate native WPF windows when executed.
-    $uiSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','Localization.cs','UiTests.cs') |
+    $uiSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','StartupRegistration.cs','DesktopHost.cs','SmoothMotion.cs','Store.cs','Localization.cs','UiTests.cs') |
         ForEach-Object { Join-Path $sources $_ }
     $uiArgs = @(
         '/nologo', '/target:exe', '/platform:x64', '/optimize+', '/codepage:65001',
         '/main:Polka.UiTests', ('/out:' + (Join-Path $run 'UiTests.exe')),
-        '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Runtime.Serialization.dll',
+        '/reference:System.dll', '/reference:System.Core.dll','/reference:System.Xml.dll', '/reference:System.Runtime.Serialization.dll',
         '/reference:System.Xaml.dll', '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll',
         ('/reference:' + (Join-Path $framework 'WPF\WindowsBase.dll')),
         ('/reference:' + (Join-Path $framework 'WPF\PresentationCore.dll')),

@@ -101,6 +101,13 @@ namespace Polka {
             Add("AlwaysOnTop","Показывать поверх обычных окон","Show above regular windows");
             Add("VisibilityHelp","Если выключено, панель скрывается, когда другое окно перекрывает её место, и возвращается сама, когда место освобождается. Окно над панелью или на другом мониторе её не скрывает. Полноэкранные приложения на мониторе панели всегда скрывают её.","When disabled, the dock hides while another window covers its position and returns when the space is clear. A window above the dock or on another monitor does not hide it. Fullscreen applications on the dock's monitor always hide it.");
             Add("Startup","Запускать при входе в Windows","Start when signing in to Windows");
+            Add("StartupHelp","Запуск через планировщик Windows через 10 секунд после вашего входа, с обычными правами. Управляйте автозапуском здесь или в планировщике заданий.","Starts through Windows Task Scheduler 10 seconds after your sign-in, with ordinary permissions. Manage startup here or in Task Scheduler.");
+            Add("StartupReadFailed","Не удалось проверить автозапуск: ","Could not check startup: ");
+            Add("StartupMigrationFailed","Не удалось обновить автозапуск. Откройте настройки и включите его повторно. ","Could not update startup. Open settings and enable it again. ");
+            Add("StartupTaskUnavailable","Планировщик заданий Windows недоступен.","Windows Task Scheduler is unavailable.");
+            Add("StartupTaskForeign","Задача с таким именем принадлежит другой программе или другой копии Yarnelo. Она не изменена.","A task at this name belongs to another program or another Yarnelo installation. It was not changed.");
+            Add("StartupTaskVerifyFailed","Не удалось подтвердить сохранение настроек автозапуска.","Could not verify the saved startup settings.");
+            Add("StartupExecutableMissing","Исполняемый файл Yarnelo не найден.","The Yarnelo executable could not be found.");
             Add("MoveDesktop","Переносить ярлыки с рабочего стола в панель","Move desktop shortcuts into the dock");
             Add("MoveHelp","Ярлыки .lnk и .url возвращаются на рабочий стол при удалении из панели. Для общих ярлыков нажмите + → Перенести общие ярлыки и подтвердите запрос Windows. Программы, файлы и папки остаются на месте.","Removing a .lnk or .url shortcut restores it to the desktop. For shared shortcuts, choose + → Move shared shortcuts and confirm the Windows prompt. Applications, files and folders stay in place.");
             Add("CenterBottom","Расположить внизу по центру","Place at bottom center");

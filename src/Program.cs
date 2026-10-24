@@ -9,8 +9,8 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyDescription("Yarnelo — shortcut dock for Windows")]
 [assembly: AssemblyCompany("Yarnelo")]
 [assembly: AssemblyProduct("Yarnelo")]
-[assembly: AssemblyVersion("1.7.0.0")]
-[assembly: AssemblyFileVersion("1.7.0.0")]
+[assembly: AssemblyVersion("1.7.1.0")]
+[assembly: AssemblyFileVersion("1.7.1.0")]
 
 namespace Polka {
     internal static class Program {
@@ -33,10 +33,12 @@ namespace Polka {
         [STAThread] public static int Main(string[] args) {
             if(File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"portable.mode"))) DataDir=DefaultDataDirectory;
             string helper=null, helperId=null;
+            bool startupLaunch=false;
             for (int i=0;i<args.Length;i++) {
                 if(args[i]=="--data-dir" && i+1<args.Length) { DataDir=Path.GetFullPath(args[++i]); TestMode=true; }
                 else if(args[i]=="--public-move") helper=args[i];
                 else if(args[i]=="--public-restore" && i+1<args.Length) { helper=args[i]; helperId=args[++i]; }
+                else if(args[i]=="--startup") startupLaunch=true;
             }
             if(helper!=null) {
                 try {
@@ -59,9 +61,14 @@ namespace Polka {
                     MessageBox.Show(L10n.T("ActionFinishFailed")+ex.Message,"Yarnelo",MessageBoxButton.OK,MessageBoxImage.Warning); return 2;
                 }
             }
+            StartupTrace("launch source="+(startupLaunch?"sign-in":"manual"));
             bool first;
             using(var mutex=new Mutex(true, TestMode ? "Local\\Polka.Test."+DataDir.GetHashCode() : "Local\\Polka.DesktopDock.v1",out first)) {
-                if(!first) { PostMessage(new IntPtr(0xffff), ShowMessage, IntPtr.Zero,IntPtr.Zero); return 0; }
+                if(!first) {
+                    StartupTrace("already-running");
+                    if(!startupLaunch) PostMessage(new IntPtr(0xffff), ShowMessage, IntPtr.Zero,IntPtr.Zero);
+                    return 0;
+                }
                 var app=new Application { ShutdownMode=ShutdownMode.OnExplicitShutdown };
                 app.DispatcherUnhandledException += delegate(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e) {
                     try { File.AppendAllText(Path.Combine(DataDir ?? DefaultDataDirectory,"error.log"), DateTime.Now.ToString("s")+" "+e.Exception+Environment.NewLine); } catch {}
@@ -71,15 +78,41 @@ namespace Polka {
                 try {
                     var store=new Store(DataDir);
                     string recoveryNotice=store.LastNotice;
+                    string startupNotice=null;
+                    if(!TestMode) {
+                        try {
+                            var registration=new StartupRegistration(Native.ExePath);
+                            if(registration.MigrateEnabledLegacy()) StartupTrace("enabled legacy startup migrated");
+                            bool enabled=registration.Enabled;
+                            if(store.Settings.LaunchAtLogin!=enabled) { store.Settings.LaunchAtLogin=enabled; store.Save(); }
+                        } catch(Exception ex) {
+                            startupNotice=L10n.T("StartupMigrationFailed")+Native.StartupError(ex);
+                            StartupTrace("startup-registration-error: "+ex.Message);
+                        }
+                    }
                     store.PreparePublicCopies();
                     if(store.IsFirstRun) { store.Add("shell:MyComputerFolder"); store.Add("shell:RecycleBinFolder"); }
-                    var dock=new DockWindow(store); app.MainWindow=dock; dock.Show();
+                    var dock=new DockWindow(store); app.MainWindow=dock;
+                    dock.Loaded+=delegate { StartupTrace("ready"); };
+                    dock.Show();
                     if(!String.IsNullOrEmpty(recoveryNotice)) dock.Toast(recoveryNotice);
+                    if(!String.IsNullOrEmpty(startupNotice)) dock.Toast(startupNotice);
                     app.Run(); return 0;
                 } catch(Exception ex) {
+                    StartupTrace("failed: "+ex.Message);
                     MessageBox.Show(L10n.T("StartFailed")+ex.Message,"Yarnelo",MessageBoxButton.OK,MessageBoxImage.Error); return 1;
                 }
             }
+        }
+        static void StartupTrace(string message) {
+            if(TestMode) return;
+            try {
+                string directory=DataDir ?? DefaultDataDirectory;
+                Directory.CreateDirectory(directory);
+                string path=Path.Combine(directory,"startup.log");
+                if(File.Exists(path) && new FileInfo(path).Length>65536) File.WriteAllText(path,String.Empty);
+                File.AppendAllText(path,DateTime.UtcNow.ToString("o")+" pid="+System.Diagnostics.Process.GetCurrentProcess().Id+" "+message+Environment.NewLine);
+            } catch { /* Diagnostics must never prevent the dock from starting. */ }
         }
     }
 }

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Optional version to publish after all checks, for example v1.7.0
+        description: Optional version to publish after all checks, for example v1.7.1
         type: string
         default: ''
 
@@ -64,6 +64,8 @@ jobs:
         run: ./scripts/windows/Test-Installer.ps1 -SetupPath "dist/Yarnelo-Windows-$env:TARGET_ARCH-Setup.exe" -Architecture $env:TARGET_ARCH
       - name: Verify graceful maintenance close in both interface languages
         run: ./scripts/windows/Test-Maintenance.ps1 -Architecture $env:TARGET_ARCH
+      - name: Verify current-user logon task and its actual startup command
+        run: ./scripts/windows/Test-Startup.ps1 -Architecture $env:TARGET_ARCH
       - name: Verify actual WPF application runs natively on Windows ARM64
         if: matrix.arch == 'arm64'
         run: ./scripts/windows/Test-Arm64Runtime.ps1 -PortableArchive dist/Yarnelo-Windows-arm64-Portable.zip
