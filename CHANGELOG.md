@@ -1,5 +1,19 @@
 # Changelog / Изменения
 
+## 1.7.3 — 2026-10-24
+
+### English
+
+- Restored the compact one-line icon captions and the original **Show icon labels** / **Show labels** checkbox on Windows and Linux. Removed the two-mode name selector and wider two-line caption layout introduced in 1.7.2.
+- Restored the original name-hover behavior and compact spacing. Existing label preferences and shortcut profiles are preserved.
+- Linux startup at sign-in and optional automatic addition of new desktop shortcuts from 1.7.2 remain available; their behavior is unchanged.
+
+### Русский
+
+- В Windows и Linux возвращены компактные однострочные подписи и прежняя галочка **«Подписи под значками»** / **«Показывать подписи»**. Убраны переключатель двух режимов названий и расширенная двухстрочная раскладка из 1.7.2.
+- Возвращены прежнее поведение подсказок и компактные отступы. Выбор показа подписей и профили ярлыков сохраняются.
+- Автозапуск Linux и необязательное автоматическое добавление новых ярлыков из 1.7.2 сохранены без изменения поведения.
+
 ## 1.7.2 — 2026-10-24
 
 ### English

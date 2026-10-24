@@ -1,8 +1,12 @@
-# Yarnelo 1.7.2 — Startup, names and new shortcuts / Автозапуск, названия и новые ярлыки
+# Yarnelo 1.7.3 — Compact labels restored / Возвращены компактные подписи
 
 ## English
 
-This release adds a **Linux startup-at-sign-in checkbox**, a **shortcut-name display choice**, and **optional automatic addition of new desktop shortcuts on Windows and Linux**. Existing shortcut profiles, label preferences and the Windows startup fix from 1.7.1 are preserved; all 14 Intel/AMD and native ARM64 packages remain available.
+This release **restores the compact one-line labels and original checkbox** on Windows and Linux. The Linux startup-at-sign-in option, automatic addition of new desktop shortcuts and Windows startup fix are retained. Existing shortcut profiles and label preferences are preserved; all 14 Intel/AMD and native ARM64 packages remain available.
+
+### Compact labels
+
+The wider two-line caption layout and two-mode name selector from 1.7.2 have been removed. Use **Settings → Show icon labels** on Windows or **Show labels** on Linux to show compact one-line captions. Long captions are shortened to fit; hovering an icon shows its name with the original tooltip behavior. The original icon spacing and label animations are restored.
 
 ### Linux startup
 
@@ -12,10 +16,6 @@ This release adds a **Linux startup-at-sign-in checkbox**, a **shortcut-name dis
 - XDG-compliant desktops such as GNOME, KDE Plasma and Xfce generally support this mechanism. Timing depends on the desktop; Linux has no fixed 10-second delay. Automated registration and interface checks do not establish actual sign-in behavior on every desktop environment.
 
 Before removing a Linux portable copy or package, turn the checkbox off and choose **OK**. Package removal preserves user configuration. Remove any duplicate startup commands you previously added manually. [Linux startup instructions](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/LINUX.md#startup-at-sign-in).
-
-### Shortcut names
-
-In **Settings → Shortcut names**, choose **On hover** for the full-name bubble when pointing at an icon, or **Always (two lines)** for captions under each icon. The full-name hover bubble remains available in both modes, including when a long name does not fit two lines. Caption widths and row spacing account for the text; the dock adds rows or side columns when it needs more room. Existing **Show icon labels** preferences migrate to the corresponding mode.
 
 ### New desktop shortcuts
 
@@ -69,7 +69,11 @@ Windows installers run per user and retain `Data` on update/removal. Update a po
 
 ## Русский
 
-Добавлены **галочка автозапуска Linux при входе в систему**, **выбор показа названий ярлыков** и **необязательное автоматическое добавление новых ярлыков рабочего стола в Windows и Linux**. Прежние профили ярлыков, выбор показа подписей и исправление автозапуска Windows из 1.7.1 сохранены; доступны все 14 пакетов Intel/AMD и нативных ARM64.
+В Windows и Linux **возвращены компактные однострочные подписи и прежняя галочка**. Автозапуск Linux, автоматическое добавление новых ярлыков и исправление автозапуска Windows сохранены. Профили ярлыков и выбор показа подписей не теряются; доступны все 14 пакетов Intel/AMD и нативных ARM64.
+
+### Компактные подписи
+
+Расширенная двухстрочная раскладка и переключатель двух режимов из 1.7.2 убраны. Для компактных однострочных подписей используйте **Настройки → Подписи под значками** в Windows или **«Показывать подписи»** в Linux. Длинные подписи сокращаются по ширине; при наведении на значок его название отображается с прежним поведением подсказки. Возвращены исходные отступы и анимации подписей.
 
 ### Автозапуск Linux
 
@@ -79,10 +83,6 @@ Windows installers run per user and retain `Data` on update/removal. Update a po
 - Механизм обычно поддерживается окружениями с автозапуском XDG, в том числе GNOME, KDE Plasma и Xfce. Момент запуска зависит от окружения; фиксированной задержки 10 секунд в Linux нет. Автоматические проверки регистрации и интерфейса не подтверждают вход в систему во всех окружениях рабочего стола.
 
 Перед удалением переносной версии или пакета Linux снимите галочку и нажмите **OK**. Удаление пакета сохраняет пользовательские настройки. Если ранее вы вручную добавляли отдельные команды автозапуска, удалите дубликаты. [Инструкция автозапуска Linux](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/LINUX.ru.md#автозапуск-при-входе).
-
-### Названия ярлыков
-
-В **Настройки → Названия ярлыков** выберите **«При наведении»**, чтобы видеть полное название во всплывающей подсказке, либо **«Всегда (две строки)»**, чтобы показывать подпись под каждым значком. Полная подсказка доступна в обоих режимах, в том числе если длинное название не помещается в две строки. Ширина ячеек и расстояние между рядами учитывают текст; при нехватке места панель добавляет ряды или боковые столбцы. Прежний выбор **«Подписи под значками»** переносится в соответствующий режим.
 
 ### Новые ярлыки рабочего стола
 

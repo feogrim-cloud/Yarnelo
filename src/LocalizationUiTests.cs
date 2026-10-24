@@ -113,18 +113,8 @@ namespace Polka {
                 Check(new Store(store.DataDirectory,desktop,desktop).Settings.Language=="en","menu selection persists to isolated profile");
                 Check(store.Settings.Items.Select(L10n.DisplayName).SequenceEqual(new[]{"This PC","Recycle Bin"}),"both built-in dock labels translate");
                 var views=Field<List<DockWindow.IconView>>(dock,"views");
-                Check(((TextBlock)((ToolTip)views[0].Button.ToolTip).Content).Text=="This PC","existing full-name tooltip translates immediately");
-                Tagged<Button>(settings,"label-mode-hover").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Check(!store.Settings.ShowLabels && !new Store(store.DataDirectory,desktop,desktop).Settings.ShowLabels,"hover-only names persist through the real settings choice");
-                Tagged<Button>(settings,"label-mode-always").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Check(store.Settings.ShowLabels && new Store(store.DataDirectory,desktop,desktop).Settings.ShowLabels,"two-line names preserve the existing saved label preference");
+                Check(((ToolTip)views[0].Button.ToolTip).Content.ToString()=="This PC","existing icon tooltip translates immediately");
                 string namesPath=Path.Combine(store.DataDirectory,"settings.json");
-                byte[] beforeNamesFailure=File.ReadAllBytes(namesPath);
-                using(var locked=new FileStream(namesPath,FileMode.Open,FileAccess.Read,FileShare.Read)) {
-                    Tagged<Button>(settings,"label-mode-hover").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                    Check(store.Settings.ShowLabels,"failed name-mode save restores the previous mode");
-                }
-                Check(beforeNamesFailure.SequenceEqual(File.ReadAllBytes(namesPath)),"failed name-mode save preserves the persisted profile");
                 var autoAdd=Tagged<CheckBox>(settings,"setting-AutoAddDesktop");
                 Check(autoAdd.IsChecked==false,"desktop auto-add remains opt-in for an existing profile");
                 autoAdd.IsChecked=true;

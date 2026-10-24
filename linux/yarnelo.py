@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import html
 import os
 from pathlib import Path
 import shutil
@@ -73,14 +72,14 @@ def main() -> int:
         QRect, QRectF, QSize, QStandardPaths, Qt, QTimer, QPropertyAnimation, QTranslator,
     )
     from PySide6.QtGui import (
-        QActionGroup, QColor, QFont, QFontDatabase, QHelpEvent, QIcon, QImage, QLinearGradient, QPainter, QPen, QPixmap, QTextLayout, QTextOption,
+        QActionGroup, QColor, QFont, QFontDatabase, QIcon, QImage, QLinearGradient, QPainter, QPen, QPixmap,
     )
     from PySide6.QtNetwork import QLocalServer, QLocalSocket
     from shiboken6 import isValid
     from PySide6.QtWidgets import (
         QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
         QFileIconProvider, QHBoxLayout, QLabel, QMenu, QMessageBox,
-        QSlider, QSpinBox, QDoubleSpinBox, QSystemTrayIcon, QToolTip, QVBoxLayout, QWidget,
+        QSlider, QSpinBox, QDoubleSpinBox, QSystemTrayIcon, QVBoxLayout, QWidget,
     )
 
     app = QApplication(sys.argv[:1])
@@ -89,7 +88,6 @@ def main() -> int:
     app.setOrganizationName("Yarnelo")
     app.setQuitOnLastWindowClosed(False)
     app.setStyle("Fusion")
-    app.setEffectEnabled(Qt.UIEffect.UI_FadeTooltip, True)
     if args.smoke_test:
         # CPython before 3.12 has a mortal None singleton. A broken abi3 Qt
         # wheel can silently decrement it on wrapped void calls, then crash at
@@ -157,34 +155,6 @@ def main() -> int:
 
     set_qt_language(settings.language)
 
-    def wrapped_lines(value, font, width, limit=None):
-        """Use Qt's Unicode/word wrapping for captions and full-name bubbles."""
-        layout = QTextLayout(value, font)
-        option = QTextOption()
-        option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
-        layout.setTextOption(option)
-        lines, starts = [], []
-        # QTextLine offsets count UTF-16 units; Python indices count Unicode
-        # code points. Keep emoji/non-BMP names intact across wrapped lines.
-        encoded = value.encode("utf-16-le", "surrogatepass")
-        layout.beginLayout()
-        while True:
-            line = layout.createLine()
-            if not line.isValid():
-                break
-            line.setLineWidth(max(1, width))
-            starts.append(line.textStart())
-            lines.append(encoded[line.textStart() * 2:(line.textStart() + line.textLength()) * 2].decode("utf-16-le", "surrogatepass").strip())
-            if limit and len(lines) > limit:
-                break
-        layout.endLayout()
-        if limit and len(lines) > limit:
-            from PySide6.QtGui import QFontMetrics
-            remainder = encoded[starts[limit - 1] * 2:].decode("utf-16-le", "surrogatepass")
-            lines[limit - 1] = QFontMetrics(font).elidedText(remainder, Qt.TextElideMode.ElideRight, max(1, width))
-            lines = lines[:limit]
-        return lines
-
     class Tile(QWidget):
         def __init__(self, dock: "Dock", item: Item | None):
             super().__init__(dock)
@@ -195,7 +165,6 @@ def main() -> int:
             self.dragging = False
             self.pixmap = QPixmap()
             self.label = dock.t("add_shortcuts")
-            self.caption_cache = (None, [])
             self.setMouseTracking(True)
             self.setCursor(Qt.CursorShape.PointingHandCursor)
             self.hover_animation = QPropertyAnimation(self, b"hover", self)
@@ -285,26 +254,6 @@ def main() -> int:
             self.animate(self.hover_animation, 0.0)
             super().leaveEvent(event)
 
-        def event(self, event):
-            if event.type() == QEvent.Type.ToolTip:
-                if self.dragging or self.press_origin or self.dock.visible_menus or self.dock.settings_dialog or not self.dock.isVisible():
-                    QToolTip.hideText()
-                    return True
-                bounds = self.dock.current_screen().availableGeometry()
-                width = max(40, min(300, bounds.width() - 28))
-                lines = wrapped_lines(self.label, QToolTip.font(), width)
-                bubble = "<p>" + "<br>".join(html.escape(line) for line in lines) + "</p>"
-                # QToolTip is a passive native popup: no focus or activation.
-                # Position above the tile where possible; Qt keeps it onscreen.
-                from PySide6.QtGui import QFontMetrics
-                height = len(lines) * QFontMetrics(QToolTip.font()).lineSpacing() + 16
-                point = self.mapToGlobal(QPoint(self.width() // 2 - width // 2, -height - 10))
-                point.setX(max(bounds.left() + 4, min(point.x(), bounds.right() - width - 16)))
-                point.setY(max(bounds.top() + 4, point.y()))
-                QToolTip.showText(point, bubble, self, self.rect())
-                return True
-            return super().event(event)
-
         def paintEvent(self, event):
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -312,7 +261,7 @@ def main() -> int:
             base = self.dock.effective_icon_size
             scale = (1 + (self.dock.settings.zoom - 1) * self.progress) * (1 - 0.13 * self.pressed_progress)
             size = base * scale
-            label_height = 34 if self.dock.settings.labels else 0
+            label_height = 17 if self.dock.settings.labels and self.width() >= 42 else 0
             center = QPointF(self.width() / 2, (self.height() - label_height) / 2 - 2 * self.progress)
             target = QRectF(center.x() - size / 2, center.y() - size / 2, size, size)
             if self.item:
@@ -332,16 +281,10 @@ def main() -> int:
             if label_height:
                 painter.setPen(QColor(242, 244, 255))
                 painter.setFont(QFont("", 8))
-                cache_key = (self.label, painter.font().toString(), self.width())
-                if cache_key != self.caption_cache[0]:
-                    self.caption_cache = (cache_key, wrapped_lines(self.label, painter.font(), self.width() - 8, 2))
-                lines = self.caption_cache[1]
-                line_height = min(16, painter.fontMetrics().lineSpacing())
-                for index, caption in enumerate(lines):
-                    painter.drawText(QRect(4, self.height() - 33 + index * line_height, self.width() - 8, line_height), Qt.AlignmentFlag.AlignCenter, caption)
+                text = painter.fontMetrics().elidedText(self.label, Qt.TextElideMode.ElideRight, self.width() - 5)
+                painter.drawText(QRect(2, self.height() - 18, self.width() - 4, 16), Qt.AlignmentFlag.AlignCenter, text)
 
         def mousePressEvent(self, event):
-            QToolTip.hideText()
             if event.button() == Qt.MouseButton.LeftButton:
                 self.press_origin = event.globalPosition().toPoint()
                 self.animate(self.press_animation, 1.0)
@@ -424,10 +367,8 @@ def main() -> int:
             for value in PLACEMENTS:
                 self.placement.addItem("", value)
             self.placement.setCurrentIndex(PLACEMENTS.index(dock.settings.placement))
-            self.labels = QComboBox()
-            self.labels.addItem("", False)
-            self.labels.addItem("", True)
-            self.labels.setCurrentIndex(int(dock.settings.labels))
+            self.labels = QCheckBox()
+            self.labels.setChecked(dock.settings.labels)
             self.startup = QCheckBox()
             self.startup_error = dock.startup_error
             self.startup_initial = False
@@ -473,7 +414,7 @@ def main() -> int:
             self.rows_note.setWordWrap(True)
             self.rows_note.setStyleSheet("color: #b8c6e2;")
             self.columns[1].addWidget(self.rows_note)
-            add_field(1, "shortcut_names", self.labels)
+            self.columns[1].addWidget(self.labels)
             self.columns[1].addWidget(self.startup)
             self.columns[1].addWidget(self.auto_add_desktop)
             for column in self.columns:
@@ -529,8 +470,7 @@ def main() -> int:
             self.setWindowTitle(self.dock.t("settings_title"))
             self.setLocale(QLocale(resolve_language(self.dock.settings.language)))
             self.zoom.setLocale(self.locale())
-            self.labels.setItemText(0, self.dock.t("names_hover"))
-            self.labels.setItemText(1, self.dock.t("names_always"))
+            self.labels.setText(self.dock.t("show_labels"))
             self.startup.setText(self.dock.t("start_at_login"))
             self.startup.setToolTip(self.dock.describe_error(self.startup_error) if self.startup_error else self.dock.t("startup_help"))
             self.auto_add_desktop.setText(self.dock.t("auto_add_desktop"))
@@ -614,7 +554,6 @@ def main() -> int:
             self.configure_desktop_tracking()
 
         def shutdown(self):
-            QToolTip.hideText()
             self.stop_desktop_tracking()
             if self.shutting_down:
                 return
@@ -813,7 +752,6 @@ def main() -> int:
                     painter.drawRoundedRect(placeholder, 12, 12)
 
         def begin_drag(self, tile):
-            QToolTip.hideText()
             self.drag_order = list(self.settings.items)
             tile.position_animation.stop()
             tile.raise_()
@@ -1038,7 +976,6 @@ def main() -> int:
             return menu
 
         def show_menu(self, point, item=None):
-            QToolTip.hideText()
             menu = self.build_menu(item)
             self.visible_menus.append(menu)
             try:
@@ -1048,7 +985,6 @@ def main() -> int:
                 menu.deleteLater()
 
         def open_settings(self):
-            QToolTip.hideText()
             if self.settings_dialog:
                 self.settings_dialog.raise_()
                 self.settings_dialog.activateWindow()
@@ -1078,7 +1014,7 @@ def main() -> int:
                 self.settings.opacity = dialog.opacity.value() / 100
                 self.settings.icon_size = dialog.icon_size.value()
                 self.settings.zoom = dialog.zoom.value()
-                self.settings.labels = dialog.labels.currentData()
+                self.settings.labels = dialog.labels.isChecked()
                 self.settings.auto_add_desktop_shortcuts = dialog.auto_add_desktop.isChecked()
                 self.settings.corner_radius = dialog.corners.value()
                 self.settings.placement = dialog.placement.currentData()
@@ -1126,10 +1062,6 @@ def main() -> int:
             self.show()
             if app.platformName().lower() == "xcb":
                 self.lower()
-
-        def hideEvent(self, event):
-            QToolTip.hideText()
-            super().hideEvent(event)
 
         def mousePressEvent(self, event):
             if event.button() == Qt.MouseButton.LeftButton:
@@ -1293,7 +1225,7 @@ def main() -> int:
                     raise RuntimeError("Dialog buttons did not change language")
                 if dialog.startup.text() != text("start_at_login", language) or not dialog.startup.isEnabled():
                     raise RuntimeError("The startup checkbox did not change language")
-                if dialog.auto_add_desktop.text() != text("auto_add_desktop", language) or [dialog.labels.itemText(index) for index in range(2)] != [text("names_hover", language), text("names_always", language)]:
+                if dialog.auto_add_desktop.text() != text("auto_add_desktop", language) or dialog.labels.text() != text("show_labels", language):
                     raise RuntimeError("The shortcut behavior controls did not change language")
                 # Standard Qt dialogs share the bundled official Qt translation.
                 expected_cancel = "Отмена" if language == "ru" else "Cancel"
@@ -1330,7 +1262,7 @@ def main() -> int:
             # mirror. No user directories or real session startup are involved.
             dialog = startup_dialog()
             dialog.startup.setChecked(True)
-            dialog.labels.setCurrentIndex(0)
+            dialog.labels.setChecked(False)
             dialog.accept()
             if dialog.result() != QDialog.DialogCode.Accepted or not startup_manager.enabled or not load_settings(dock.store).launch_at_login or load_settings(dock.store).labels:
                 raise RuntimeError("The startup checkbox did not enable and persist the actual registration")
@@ -1366,7 +1298,7 @@ def main() -> int:
             if not dialog.startup.isChecked():
                 raise RuntimeError("The startup checkbox did not read back the enabled entry")
             dialog.startup.setChecked(False)
-            dialog.labels.setCurrentIndex(1)
+            dialog.labels.setChecked(True)
             dialog.accept()
             if startup_manager.enabled or load_settings(dock.store).launch_at_login or not load_settings(dock.store).labels:
                 raise RuntimeError("The startup checkbox did not disable the actual registration")
@@ -1514,26 +1446,6 @@ def main() -> int:
             dock.rebuild()
         # Exercise real Qt animation properties and the drag/neighbor path.
         first = dock.tiles[settings.items[0].id]
-        long_name = "🎮 Counter-Strike 2 — 👩‍🚀 Очень длинное название приложения & Friends <Preview>"
-        lines = wrapped_lines(long_name, QFont("", 8), 95)
-        if len(lines) < 3 or "".join("".join(lines).split()) != "".join(long_name.split()):
-            raise RuntimeError("Full shortcut name wrapping lost Unicode characters")
-        captions = wrapped_lines(long_name, QFont("", 8), 80, 2)
-        if len(captions) != 2 or not captions[-1].endswith("…"):
-            raise RuntimeError("A long caption did not wrap and elide only after two lines")
-        original_label = first.label
-        first.label = long_name
-        focused = app.focusWidget()
-        app.sendEvent(first, QHelpEvent(QEvent.Type.ToolTip, first.rect().center(), first.mapToGlobal(first.rect().center())))
-        app.processEvents()
-        tooltip = next((widget for widget in app.topLevelWidgets() if widget.objectName() == "qtooltip_label"), None)
-        if tooltip is None or tooltip.width() > 330 or app.focusWidget() is not focused:
-            raise RuntimeError("The full-name hover bubble exceeded its width or took focus")
-        tooltip_screen = app.screenAt(tooltip.frameGeometry().center()) or app.primaryScreen()
-        if not tooltip_screen.availableGeometry().contains(tooltip.frameGeometry()):
-            raise RuntimeError("The full-name hover bubble extended beyond the screen")
-        QToolTip.hideText()
-        first.label = original_label
         first.animate(first.hover_animation, 1.0)
         first.hover_animation.setCurrentTime(95)
         first.hover_animation.stop()
@@ -1573,8 +1485,8 @@ def main() -> int:
         settings.items = [Item(f"layout-{index}", "computer") for index in range(30)]
         settings.rows, settings.labels = 1, True
         dock.rebuild()
-        for always in (False, True):
-            settings.labels = always
+        for labels in (False, True):
+            settings.labels = labels
             for width, height in ((1280, 720), (640, 360)):
                 fixture.bounds = QRect(-width, 50, width, height)
                 for placement in ("top", "bottom", "left", "right"):
@@ -1582,10 +1494,10 @@ def main() -> int:
                     dock.relayout()
                     app.processEvents()
                     if len(dock.positions) != 31 or not fixture.bounds.contains(dock.geometry()):
-                        raise RuntimeError("A caption mode lost icons or exceeded the 30-shortcut work area")
+                        raise RuntimeError("Label visibility lost icons or exceeded the 30-shortcut work area")
                     for tile in [*dock.tiles.values(), dock.add_tile]:
                         if not dock.rect().contains(tile.geometry()):
-                            raise RuntimeError("A caption mode clipped an icon on a small work area")
+                            raise RuntimeError("Label visibility clipped an icon on a small work area")
         settings.labels = True
         fixture.bounds = QRect(-1280, 50, 1280, 720)
         for placement in ("top", "bottom", "left", "right"):

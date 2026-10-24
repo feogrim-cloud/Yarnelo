@@ -15,7 +15,7 @@ from typing import Any
 
 from yarnelo_i18n import LANGUAGES, text
 
-VERSION = "1.7.2"
+VERSION = "1.7.3"
 MAX_ITEMS = 30
 PLACEMENTS = ("free", "bottom", "top", "left", "right")
 
@@ -247,12 +247,8 @@ def dock_layout(settings: Settings, available_width: int, available_height: int)
         slots = slot_indices(len(settings.items), rows)
         columns = max(column for _, column in slots) + 1
         used_rows = max(row for row, _ in slots) + 1
-        icon_space = math.ceil(size * settings.zoom + 14)
-        # Captions need room for two words/lines at the normal icon size.
-        # On a small work area the existing fit algorithm may reduce icons,
-        # while keeping the caption's two-line height readable.
-        cell_width = max(icon_space, math.ceil(size * 88 / 48)) if settings.labels else icon_space
-        cell_height = icon_space + (34 if settings.labels else 0)
+        cell_width = math.ceil(size * settings.zoom + 14)
+        cell_height = cell_width + (18 if settings.labels else 0)
         width, height = ((20 + used_rows * cell_width, 38 + columns * cell_height) if vertical
                          else (38 + columns * cell_width, 20 + used_rows * cell_height))
         counts = {row: sum(r == row for r, _ in slots) for row in range(used_rows)}

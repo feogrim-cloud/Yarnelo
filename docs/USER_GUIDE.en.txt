@@ -1,4 +1,4 @@
-YARNELO 1.7.2 — shortcut dock for Windows 10/11 x64,
+YARNELO 1.7.3 — shortcut dock for Windows 10/11 x64,
 Windows 10 x86 and Windows 11 ARM64
 
 Choose the package matching Settings → System → About → System type:
@@ -31,12 +31,10 @@ files, folders, This PC, Recycle Bin, choosing a language and settings.
 Settings use two columns without vertical scrolling and fit the screen.
 Corner rounding runs from 0 (square corners) to 100 (capsule).
 Settings also control background opacity, icon size, hover magnification,
-shortcut names, showing above ordinary windows, and startup at sign-in.
-Settings → Shortcut names: On hover shows a full-name bubble;
-Always (two lines) adds captions under the icons. Both modes retain
-the full-name hover bubble when a long name does not fit two lines.
-Wider caption cells and extra rows keep names from overlapping.
-Your previous choice of showing icon labels is retained.
+labels, showing above ordinary windows, and startup at sign-in.
+Settings → Show icon labels enables compact one-line captions.
+Long captions are shortened to fit; hovering an icon shows its name.
+Your previous choice of showing labels is retained.
 Changing background opacity keeps icons readable.
 Hover animations do not restart with every pointer movement.
 Older icons with large transparent margins are fitted to their visible

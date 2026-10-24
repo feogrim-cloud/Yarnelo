@@ -98,10 +98,6 @@ namespace Polka {
             Add("ColumnCount","{0} столбца","{0} columns");
             Add("ColumnsAutomation","Количество столбцов: ","Number of columns: ");
             Add("ShowLabels","Подписи под значками","Show icon labels");
-            Add("ShortcutNames","Названия ярлыков","Shortcut names");
-            Add("NamesOnHover","При наведении","On hover");
-            Add("NamesAlways","Всегда (две строки)","Always (two lines)");
-            Add("NamesHelp","Полное название доступно при наведении в обоих режимах.","The full name is available on hover in both modes.");
             Add("AutoAddDesktop","Автоматически добавлять новые ярлыки с рабочего стола","Automatically add new desktop shortcuts");
             Add("AutoAddHelp","Подхватывать новые .lnk и .url во время работы Yarnelo. Прежние ярлыки добавляются вручную. Перенос регулирует следующая настройка.","Pick up new .lnk and .url shortcuts while Yarnelo is running. Existing shortcuts are added manually. The next option controls moving them.");
             Add("AutoAddLimit","Панель заполнена: новый ярлык остался на рабочем столе (максимум 30).","The dock is full: the new shortcut was left on the desktop (maximum 30).");

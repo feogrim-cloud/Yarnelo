@@ -5,7 +5,7 @@ namespace Polka {
     // work areas and the full shortcut capacity can be checked without a UI.
     internal sealed class DockLayout {
         internal int Rows, Columns, Lines;
-        internal double IconSize, TileWidth, LabelHeight, CellWidth, CellHeight, GridWidth, GridHeight, Width, Height;
+        internal double IconSize, CellWidth, CellHeight, GridWidth, GridHeight, Width, Height;
         internal bool Vertical;
 
         internal static DockLayout Create(int count,int preferredLines,double iconSize,double zoom,bool labels,bool vertical,double availableWidth,double availableHeight) {
@@ -41,23 +41,20 @@ namespace Polka {
         }
 
         static DockLayout Measure(int count,int lines,double size,double zoom,bool labels,bool vertical) {
-            double labelHeight=labels?34:0;
-            double tileWidth=labels?CaptionWidth(size):size+10;
+            double labelHeight=labels?21:0;
             int along=Math.Max(1,(count+lines-1)/lines);
-            var result=new DockLayout { IconSize=size, TileWidth=tileWidth, LabelHeight=labelHeight, Vertical=vertical, Lines=lines };
+            var result=new DockLayout { IconSize=size, Vertical=vertical, Lines=lines };
             if(vertical) {
                 result.Rows=along; result.Columns=lines;
-                result.CellWidth=Math.Max(size*zoom+14,tileWidth);
-                // The caption follows the expanded image downwards. Reserve
-                // hover plus click growth so it cannot meet the next row's icon.
-                result.CellHeight=labels?size*Math.Min(1.85,zoom+.2)+labelHeight+14:size+10;
-                result.GridWidth=tileWidth+(lines-1)*result.CellWidth;
+                result.CellWidth=size*zoom+14;
+                result.CellHeight=size+labelHeight+10;
+                result.GridWidth=size+10+(lines-1)*result.CellWidth;
                 result.GridHeight=along*result.CellHeight;
-                result.Width=result.GridWidth+size*(zoom-1)+56;
+                result.Width=size*zoom+66+(lines-1)*result.CellWidth;
                 result.Height=Math.Max(210,result.GridHeight+122);
             } else {
                 result.Rows=lines; result.Columns=along;
-                result.CellWidth=tileWidth;
+                result.CellWidth=size+10;
                 result.CellHeight=size*zoom+labelHeight+14;
                 result.GridWidth=along*result.CellWidth;
                 result.GridHeight=size+8+labelHeight+(lines-1)*result.CellHeight;
@@ -65,13 +62,6 @@ namespace Polka {
                 result.Height=size*zoom+66+labelHeight+(lines-1)*result.CellHeight;
             }
             return result;
-        }
-
-        internal static double CaptionWidth(double size) {
-            double width=Math.Max(size+10,Math.Min(128,size*1.8+24));
-            // Caption columns must shrink with the icon on unusually small
-            // work areas instead of enforcing a wide fixed minimum.
-            return size<24?Math.Max(size+2,width*size/24):width;
         }
 
         internal void Cell(int count,int index,out int row,out int column) {

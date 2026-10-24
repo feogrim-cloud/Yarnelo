@@ -25,7 +25,6 @@ namespace Polka {
         TextBlock notice;
         DispatcherTimer noticeTimer, recycleTimer;
         readonly List<IconView> views = new List<IconView>();
-        readonly List<Button> tooltipButtons = new List<Button>();
         readonly HashSet<ContextMenu> openMenus = new HashSet<ContextMenu>();
         readonly Dictionary<string,ImageSource> iconCache = new Dictionary<string,ImageSource>(StringComparer.OrdinalIgnoreCase);
         Forms.NotifyIcon tray;
@@ -38,7 +37,7 @@ namespace Polka {
         int layoutRows, layoutColumns;
         DockLayout layout;
         bool verticalDock;
-        bool ready, moving, exiting, helperRunning, surfaceHidden;
+        bool ready, moving, exiting, helperRunning;
         Point pressPoint;
         IconView pressed;
         readonly Stopwatch animationClock=Stopwatch.StartNew();
@@ -57,12 +56,6 @@ namespace Polka {
         // light icon/checkmark gutter even when its background is changed.
         static readonly ResourceDictionary MenuTheme=(ResourceDictionary)System.Windows.Markup.XamlReader.Parse(@"
             <ResourceDictionary xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
-                <ControlTemplate x:Key='HintSurface' TargetType='{x:Type ToolTip}'>
-                    <Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}'
-                            Padding='{TemplateBinding Padding}' CornerRadius='8' SnapsToDevicePixels='True'>
-                        <ContentPresenter/>
-                    </Border>
-                </ControlTemplate>
                 <ControlTemplate x:Key='MenuSurface' TargetType='{x:Type ContextMenu}'>
                     <Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}'
                             BorderThickness='{TemplateBinding BorderThickness}' Padding='{TemplateBinding Padding}' CornerRadius='10' SnapsToDevicePixels='True'>
@@ -158,7 +151,7 @@ namespace Polka {
             PreviewMouseMove += OnPointerMove;
             PreviewMouseLeftButtonUp += OnPointerReleased;
             LostMouseCapture += delegate { if(internalDrag && !endingDrag && Mouse.Captured!=this) EndInternalDrag(false); };
-            Deactivated += delegate { CloseTooltips(); if(internalDrag) EndInternalDrag(false); ResetMagnification(); };
+            Deactivated += delegate { if(internalDrag) EndInternalDrag(false); ResetMagnification(); };
             PreviewKeyDown += delegate(object sender,KeyEventArgs e) { if(e.Key==Key.Escape && internalDrag) { EndInternalDrag(false); e.Handled=true; } };
             glass.MouseLeftButtonDown += delegate(object sender,MouseButtonEventArgs e) {
                 if(e.OriginalSource==glass || e.OriginalSource==strip || e.OriginalSource==iconGrid) MoveDock(e);
@@ -183,9 +176,6 @@ namespace Polka {
                 source.AddHook(delegate(IntPtr h,int msg,IntPtr w,IntPtr l,ref bool handled) {
                     if((uint)msg==Program.ShowMessage) { Dispatcher.BeginInvoke(new Action(ShowDock)); handled=true; }
                     if(msg==0x007e || msg==0x02e0) Dispatcher.BeginInvoke(new Action(delegate { ApplySettings(); ClampPosition(); }));
-                    // DesktopHost uses native SW_HIDE. WPF's IsVisible can stay
-                    // true, so prevent an already queued tooltip from reopening.
-                    if(msg==0x0018) { surfaceHidden=w==IntPtr.Zero; if(surfaceHidden) CloseTooltips(); }
                     return IntPtr.Zero;
                 });
                 InitTray();
@@ -198,7 +188,6 @@ namespace Polka {
             };
             LocationChanged += delegate { if(ready && !moving && IsVisible) { Store.Settings.Left=Left; Store.Settings.Top=Top; } };
             Closing += delegate(object sender,System.ComponentModel.CancelEventArgs e) {
-                CloseTooltips();
                 if(helperRunning) { e.Cancel=true; return; }
                 StopDesktopWatcher();
                 if(internalDrag) EndInternalDrag(false);
@@ -210,45 +199,17 @@ namespace Polka {
         SolidColorBrush NormalStroke() { return new SolidColorBrush(Color.FromArgb(75,255,255,255)); }
         internal static Button PlainButton(object content,string help) {
             var button=new Button { Content=content, Background=Brushes.Transparent, BorderThickness=new Thickness(0),
-                Foreground=Brushes.White, Cursor=Cursors.Hand, Padding=new Thickness(0),
+                Foreground=Brushes.White, Cursor=Cursors.Hand, Padding=new Thickness(0), ToolTip=help,
                 FocusVisualStyle=null, HorizontalContentAlignment=HorizontalAlignment.Center, VerticalContentAlignment=VerticalAlignment.Center };
             button.Template=(ControlTemplate)System.Windows.Markup.XamlReader.Parse(
                 "<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'><Border x:Name='body' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' Background='{TemplateBinding Background}' CornerRadius='9' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='{TemplateBinding VerticalContentAlignment}'/></Border><ControlTemplate.Triggers><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='body' Property='Background' Value='#405E9BFF'/></Trigger></ControlTemplate.Triggers></ControlTemplate>");
             ToolTipService.SetInitialShowDelay(button,250); ToolTipService.SetBetweenShowDelay(button,80);
-            ToolTipService.SetShowDuration(button,30000);
-            var tip=new ToolTip { Content=new TextBlock { Text=help, TextWrapping=TextWrapping.Wrap, MaxWidth=300, LineHeight=16, LineStackingStrategy=LineStackingStrategy.BlockLineHeight },
-                Background=new SolidColorBrush(Color.FromRgb(32,37,50)), Foreground=Brushes.White,
-                BorderBrush=new SolidColorBrush(Color.FromRgb(75,86,109)), BorderThickness=new Thickness(1), Padding=new Thickness(10,6,10,6), FontSize=12,
-                MaxWidth=322, Focusable=false, IsHitTestVisible=false, Template=(ControlTemplate)MenuTheme["HintSurface"] };
-            tip.Opened+=delegate { tip.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(140)) { EasingFunction=new QuadraticEase { EasingMode=EasingMode.EaseOut } }); };
-            tip.Closed+=delegate { tip.BeginAnimation(UIElement.OpacityProperty,null); };
-            button.ToolTip=tip;
+            button.ToolTip=new ToolTip { Content=help, Background=new SolidColorBrush(Color.FromRgb(32,37,50)), Foreground=Brushes.White,
+                BorderBrush=new SolidColorBrush(Color.FromRgb(75,86,109)), Padding=new Thickness(10,6,10,6), FontSize=12 };
             ToolTipService.SetPlacement(button,System.Windows.Controls.Primitives.PlacementMode.Top);
             ToolTipService.SetVerticalOffset(button,-9);
             System.Windows.Automation.AutomationProperties.SetName(button,help);
             return button;
-        }
-
-        void TrackToolTip(Button button) {
-            tooltipButtons.Add(button);
-            button.ToolTipOpening+=delegate(object sender,ToolTipEventArgs e) {
-                var tip=button.ToolTip as ToolTip;
-                if(tip==null) return;
-                if(surfaceHidden || !IsVisible || internalDrag || dragLanding || moving || exiting || helperRunning || settingsWindow!=null || openMenus.Any(menu=>menu.IsOpen)) {
-                    e.Handled=true; tip.IsOpen=false; return;
-                }
-                double width=Math.Max(1,Math.Min(322,Native.WorkingArea(this).Width-24));
-                tip.MaxWidth=width;
-                var text=tip.Content as TextBlock;
-                if(text!=null) text.MaxWidth=Math.Max(1,width-tip.Padding.Left-tip.Padding.Right-tip.BorderThickness.Left-tip.BorderThickness.Right);
-            };
-        }
-
-        internal void CloseTooltips() {
-            foreach(var button in tooltipButtons) {
-                var tip=button.ToolTip as ToolTip;
-                if(tip!=null) tip.IsOpen=false;
-            }
         }
 
         internal void ApplySettings() {
@@ -353,13 +314,11 @@ namespace Polka {
         }
 
         void RenderIcons() {
-            CloseTooltips(); tooltipButtons.Clear();
             if(internalDrag) EndInternalDrag(false);
             FinishLanding();
             var previousIds=new HashSet<string>(views.Select(x=>x.Item.Id));
             strip.Children.Clear(); views.Clear(); pressed=null;
             var handle=PlainButton(new TextBlock { Text="⠿", FontSize=21, Foreground=new SolidColorBrush(Color.FromRgb(151,159,179)) },L10n.T("MoveDock"));
-            TrackToolTip(handle);
             handle.Width=verticalDock?effectiveSize+8:19; handle.Height=verticalDock?19:effectiveSize+8;
             handle.VerticalAlignment=VerticalAlignment.Center; handle.HorizontalAlignment=HorizontalAlignment.Center;
             handle.PreviewMouseLeftButtonDown += delegate(object s,MouseButtonEventArgs e) { MoveDock(e); };
@@ -371,7 +330,6 @@ namespace Polka {
                     TextWrapping=TextWrapping.Wrap, TextTrimming=TextTrimming.CharacterEllipsis,
                     Foreground=new SolidColorBrush(Color.FromRgb(192,200,217)) };
                 var empty=PlainButton(emptyText,L10n.T("AddShortcuts"));
-                TrackToolTip(empty);
                 empty.Width=verticalDock?effectiveSize+10:Math.Max(24,Width-122);
                 empty.Height=effectiveSize+8;
                 emptyText.MaxWidth=empty.Width; emptyText.MaxHeight=empty.Height;
@@ -381,9 +339,9 @@ namespace Polka {
             iconGrid=new Grid { Width=layout.GridWidth, Height=layout.GridHeight, VerticalAlignment=VerticalAlignment.Bottom };
             for(int c=0;c<layoutColumns;c++) {
                 bool compactColumn=verticalDock && (Store.Settings.Placement=="right"?c==0:c==layoutColumns-1);
-                iconGrid.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(compactColumn?layout.TileWidth:slot) });
+                iconGrid.ColumnDefinitions.Add(new ColumnDefinition { Width=new GridLength(compactColumn?effectiveSize+10:slot) });
             }
-            for(int r=0;r<layoutRows;r++) iconGrid.RowDefinitions.Add(new RowDefinition { Height=new GridLength(!verticalDock && r==0?effectiveSize+8+layout.LabelHeight:rowPitch) });
+            for(int r=0;r<layoutRows;r++) iconGrid.RowDefinitions.Add(new RowDefinition { Height=new GridLength(!verticalDock && r==0?effectiveSize+8+(Store.Settings.ShowLabels?21:0):rowPitch) });
             if(Store.Settings.Items.Count>0) { strip.Children.Add(iconGrid); iconAreaLength=verticalDock?iconGrid.Height:iconGrid.Width; }
             foreach(var item in Store.Settings.Items) {
                 var v=new IconView { Item=item, Scale=new ScaleTransform(1,1), Translate=new TranslateTransform(0,0), Shift=new TranslateTransform(0,0) };
@@ -395,12 +353,11 @@ namespace Polka {
                 stack.Children.Add(v.Image);
                 if(Store.Settings.ShowLabels) {
                     v.LabelTranslate=new TranslateTransform();
-                    stack.Children.Add(new TextBlock { Text=L10n.DisplayName(item), FontSize=10, Width=Math.Max(1,layout.TileWidth-12), Height=28, LineHeight=14, LineStackingStrategy=LineStackingStrategy.BlockLineHeight,
-                        TextWrapping=TextWrapping.Wrap, TextTrimming=TextTrimming.CharacterEllipsis, TextAlignment=TextAlignment.Center, Margin=new Thickness(0,6,0,0),
+                    stack.Children.Add(new TextBlock { Text=L10n.DisplayName(item), FontSize=10, MaxWidth=effectiveSize+8,
+                        TextTrimming=TextTrimming.CharacterEllipsis, TextAlignment=TextAlignment.Center, Margin=new Thickness(0,6,0,0),
                         IsHitTestVisible=false, RenderTransform=v.LabelTranslate });
                 }
-                v.Button=PlainButton(stack,L10n.DisplayName(item)); v.Button.Width=layout.TileWidth; v.Button.Height=effectiveSize+8+layout.LabelHeight;
-                TrackToolTip(v.Button);
+                v.Button=PlainButton(stack,L10n.DisplayName(item)); v.Button.Width=effectiveSize+10; v.Button.Height=effectiveSize+8+(Store.Settings.ShowLabels?21:0);
                 v.Button.RenderTransform=v.Shift;
                 v.Button.VerticalAlignment=verticalDock?VerticalAlignment.Center:VerticalAlignment.Bottom;
                 v.Button.HorizontalAlignment=verticalDock?(Store.Settings.Placement=="right"?HorizontalAlignment.Right:HorizontalAlignment.Left):HorizontalAlignment.Center;
@@ -433,7 +390,6 @@ namespace Polka {
                 StrokeStartLineCap=PenLineCap.Round, StrokeEndLineCap=PenLineCap.Round,
                 Stroke=new SolidColorBrush(Color.FromRgb(184,198,224)), IsHitTestVisible=false };
             var plus=PlainButton(plusGlyph,L10n.T("AddAndSettings"));
-            TrackToolTip(plus);
             double available=verticalDock?Height-root.Margin.Top-root.Margin.Bottom-glass.BorderThickness.Top-glass.BorderThickness.Bottom-strip.Margin.Top-strip.Margin.Bottom:
                 Width-root.Margin.Left-root.Margin.Right-glass.BorderThickness.Left-glass.BorderThickness.Right-strip.Margin.Left-strip.Margin.Right;
             double plusLength=Math.Max(26,available-(verticalDock?handle.Height:handle.Width)-iconAreaLength-
@@ -584,7 +540,6 @@ namespace Polka {
         }
         internal void BeginInternalDrag(IconView view,Point pointer) {
             if(view==null || helperRunning || !views.Contains(view)) return;
-            CloseTooltips();
             if(dragLanding) FinishLanding();
             dragView=view; dragSourceIndex=views.IndexOf(view); dragTargetIndex=dragSourceIndex;
             internalDrag=true; dragValid=true; pressed=null;
@@ -707,7 +662,7 @@ namespace Polka {
             menu.Template=(ControlTemplate)MenuTheme["MenuSurface"];
             menu.Resources[typeof(MenuItem)]=MenuTheme[typeof(MenuItem)];
             menu.Resources[typeof(Separator)]=MenuTheme[typeof(Separator)];
-            menu.Opened+=delegate { openMenus.Add(menu); CloseTooltips(); if(host!=null) host.Refresh(); };
+            menu.Opened+=delegate { openMenus.Add(menu); if(host!=null) host.Refresh(); };
             menu.Closed+=delegate { openMenus.Remove(menu); if(host!=null) host.Refresh(); };
             return menu;
         }
@@ -797,7 +752,6 @@ namespace Polka {
         void MoveDock(MouseButtonEventArgs e) {
             if(helperRunning) return;
             if(e.LeftButton!=MouseButtonState.Pressed) return;
-            CloseTooltips();
             moving=true; try { DragMove(); } catch(InvalidOperationException) {} finally { moving=false; }
             Store.Settings.Placement="free";
             ApplySettings();
@@ -839,7 +793,6 @@ namespace Polka {
         internal void Toast(string text) { notice.Text=text; notice.Visibility=Visibility.Visible; noticeTimer.Stop(); noticeTimer.Start(); }
         internal void ShowSettings() {
             if(helperRunning) return;
-            CloseTooltips();
             if(settingsWindow!=null) { settingsWindow.Activate(); return; }
             settingsWindow=new SettingsWindow(this); settingsWindow.Owner=this;
             settingsWindow.Closed+=delegate { settingsWindow=null; SaveQuietly(); };

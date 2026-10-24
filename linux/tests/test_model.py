@@ -144,16 +144,6 @@ class ModelTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ModelError):
                 Settings.from_dict({"auto_add_desktop_shortcuts": value})
 
-    def test_label_modes_preserve_the_legacy_preference_and_allocate_two_lines(self):
-        self.assertFalse(Settings().labels)
-        for always in (False, True):
-            settings = Settings.from_dict({"labels": always})
-            self.assertEqual(always, Settings.from_dict(settings.to_dict()).labels)
-            geometry = dock_layout(settings, 1280, 720)
-            if always:
-                self.assertGreaterEqual(geometry.cell_width, 88)
-                self.assertGreaterEqual(geometry.cell_height, 34 + settings.icon_size * settings.zoom)
-
     def test_invalid_settings_do_not_replace_existing_file(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "settings.json"

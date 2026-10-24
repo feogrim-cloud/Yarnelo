@@ -163,9 +163,9 @@ The desktop must support XDG autostart, as GNOME, KDE Plasma and Xfce generally 
 
 ## Shortcuts, language and settings
 
-Drop a `.desktop` file, ordinary file or folder on the dock. **+** and the context menu also add Computer and Trash. Computer opens the filesystem root. Drag icons to rearrange them. The two-column **Settings…** window provides background opacity, corner rounding (0 square, 100 capsule), icon size, magnification and shortcut names without vertical scrolling.
+Drop a `.desktop` file, ordinary file or folder on the dock. **+** and the context menu also add Computer and Trash. Computer opens the filesystem root. Drag icons to rearrange them. The two-column **Settings…** window provides background opacity, corner rounding (0 square, 100 capsule), icon size, magnification and labels without vertical scrolling.
 
-Under **Shortcut names**, choose **On hover** for a full-name bubble when pointing at an icon, or **Always (two lines)** for captions under the icons. The full-name bubble remains available in both modes when a long caption does not fit. Two-line mode allows wider cells and enough row spacing for captions; if the dock needs more room, it wraps to extra rows or side columns. The earlier **Show labels** preference is retained as the corresponding mode.
+Enable **Show labels** for compact one-line captions under the icons. Long captions are shortened to fit; hovering an icon shows its name. The saved preference is retained when updating.
 
 **Automatically add new desktop shortcuts** is off by default. Enable it in Settings and choose **OK** to watch for new `.desktop` launchers on your desktop while Yarnelo is running. Existing icons are left alone when enabling or starting the app; ordinary files and folders are ignored. Launchers are allowed to settle before import, duplicates are skipped, and originals remain untouched. At the 30-icon limit, new launchers stay on the desktop and are not queued for later; make room and add them manually. Turning the option off returns to manual adding through drag-and-drop or **+**.
 
