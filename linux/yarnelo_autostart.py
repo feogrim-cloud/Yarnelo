@@ -64,6 +64,29 @@ def _executable(path: Path, environ: Mapping[str, str]) -> bool:
     return path.is_file() and os.access(path, os.X_OK)
 
 
+def _env_launcher() -> str:
+    # Do not resolve env through a user-controlled PATH. Linux distributions
+    # supply this core utility in one of these stable absolute locations.
+    for name in ("/usr/bin/env", "/bin/env"):
+        path = Path(name)
+        if path.is_absolute() and _executable(path, {}):
+            return str(path)
+    _invalid("startup_command_missing")
+
+
+def desktop_launch_command(command: Sequence[str]) -> list[str]:
+    """Keep a literal percent out of argv[0] for GLib's pre-expansion check.
+
+    GLib checks the executable's existence before expanding Desktop Entry %%
+    escapes. A valid filename containing '%' would consequently be checked as
+    '%%' and rejected. Passing that exact filename to env as an argument avoids
+    this ordering bug; env directly executes it without a shell or re-parsing.
+    TryExec remains the original executable's literal absolute path.
+    """
+    command = _command(command)
+    return [_env_launcher(), "--", *command] if "%" in command[0] else command
+
+
 def resolve_startup_command(*, executable=None, script=None, frozen=None, environ=None) -> list[str]:
     """Resolve a persistent launcher, retaining the outer AppImage when mounted.
 
@@ -286,7 +309,13 @@ class AutostartManager:
         if entry.values.get(OWNER_KEY) != "true":
             return False
         try:
-            return _identity(decode_exec(entry.values.get("Exec", ""))) == _identity(self.command)
+            registered = decode_exec(entry.values.get("Exec", ""))
+            if _identity(registered) == _identity(self.command):
+                return True
+            if "%" in self.command[0]:
+                launcher = _env_launcher()
+                return registered[:2] == [launcher, "--"] and _identity(registered[2:]) == _identity(self.command)
+            return False
         except ModelError:
             return False
 
@@ -342,7 +371,7 @@ class AutostartManager:
     def _content(self, enabled: bool) -> bytes:
         return ("[Desktop Entry]\nType=Application\nName=Yarnelo\n"
                 "Comment=Your shortcuts. In one place.\n"
-                f"Exec={encode_exec(self.command)}\n"
+                f"Exec={encode_exec(desktop_launch_command(self.command))}\n"
                 f"TryExec={_escape_string(self.command[0])}\n"
                 "Terminal=false\nStartupNotify=false\n"
                 f"Hidden={'false' if enabled else 'true'}\n"

@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from yarnelo_autostart import (
-    AutostartManager, OWNER_KEY, decode_exec, encode_exec, resolve_startup_command,
+    AutostartManager, OWNER_KEY, decode_exec, desktop_launch_command, encode_exec, resolve_startup_command,
 )
 from yarnelo_model import ModelError
 
@@ -29,6 +29,12 @@ class AutostartTests(unittest.TestCase):
         self.command = [sys.executable, str((self.root / "Yarnelo space % Ю.py").absolute()), "--startup"]
         Path(self.command[1]).write_text("# source fixture\n", encoding="utf-8")
         self.manager = self.manager_for()
+        if os.name == "nt":
+            # The Linux env utility is not installed on the Windows test host.
+            # Native gio tests below exercise the real verified Linux utility.
+            launcher = patch("yarnelo_autostart._env_launcher", return_value=sys.executable)
+            launcher.start()
+            self.addCleanup(launcher.stop)
 
     def manager_for(self, **kwargs):
         args = dict(config_home=self.config, environ={}, home=self.home, config_dirs=[self.system])
@@ -266,6 +272,36 @@ class AutostartTests(unittest.TestCase):
         self.assertIn("\\\\\\\\", encoded)  # Four file backslashes encode one literal backslash.
         self.assertIn("%%", encoded)
 
+    def test_desktop_launch_keeps_normal_executable_direct(self):
+        with patch("yarnelo_autostart._env_launcher") as launcher:
+            self.assertEqual(self.command, desktop_launch_command(self.command))
+            launcher.assert_not_called()
+
+    def test_percent_executable_uses_literal_env_argument_without_a_shell(self):
+        command = [str(self.root / "Yarnelo 100% Ю.AppImage"), "--startup"]
+        with patch("yarnelo_autostart._env_launcher", return_value=sys.executable):
+            self.assertEqual([sys.executable, "--", *command], desktop_launch_command(command))
+            manager = AutostartManager(command, self.config, environ={}, config_dirs=[])
+            path = self.entry(content=manager._content(True).decode())
+            self.assertNotEqual("foreign", manager.status)
+            for changed in (path.read_text(encoding="utf-8").replace('"--"', '"--ignore-environment"'),
+                            path.read_text(encoding="utf-8").replace("100%%", "101%%")):
+                path.write_text(changed, encoding="utf-8")
+                self.assertEqual("foreign", manager.status)
+                self.assert_key("startup_entry_foreign", lambda: manager.set_enabled(False))
+                path.write_bytes(manager._content(True))
+
+    def test_percent_executable_keeps_appimage_mode_ownership(self):
+        executable = self.root / "Yarnelo 100%.AppImage"
+        executable.write_bytes(b"fixture image")
+        executable.chmod(0o700)
+        normal = AutostartManager([str(executable), "--startup"], self.config, environ={}, config_dirs=[])
+        extracted = AutostartManager([str(executable), "--appimage-extract-and-run", "--startup"], self.config, environ={}, config_dirs=[])
+        extracted.set_enabled(True)
+        self.assertTrue(normal.enabled)
+        normal.set_enabled(False)
+        self.assertFalse(extracted.enabled)
+
     def test_exec_rejects_shell_expansion_and_field_codes(self):
         for value in ('"python" "%f"', '"python" "$(touch x)"', 'python;touch', '"python" "`touch x`"', '"unterminated', '"a"tail'):
             with self.subTest(value=value):
@@ -304,7 +340,7 @@ class AutostartTests(unittest.TestCase):
                 manager = AutostartManager(expected, self.config, environ={}, config_dirs=[])
                 manager.set_enabled(True)
                 self.assertTrue(manager.enabled)
-                self.assertEqual(expected, decode_exec(next(line[5:] for line in manager.path.read_text(encoding="utf-8").splitlines() if line.startswith("Exec="))))
+                self.assertEqual(desktop_launch_command(expected), decode_exec(next(line[5:] for line in manager.path.read_text(encoding="utf-8").splitlines() if line.startswith("Exec="))))
 
     def test_appimage_cli_only_extract_and_run_keeps_runtime_flag(self):
         app_dir = self.root / "appimage_extracted_fcdcab5a421c40bc8aeb422c5e59b08e"
@@ -367,23 +403,28 @@ class AutostartTests(unittest.TestCase):
     def test_native_gio_launch_preserves_literal_exec_arguments(self):
         if not shutil.which("gio") or not shutil.which("desktop-file-validate"):
             self.skipTest("gio and desktop-file-validate are not installed")
-        # Check with the desktop implementation, not just our own parser.
-        executable = self.root / 'Yarnelo Ю % $ ` " \\ launcher'
-        output = self.root / "launched.json"
-        executable.write_text("#!/usr/bin/env python3\nimport json,sys\nfrom pathlib import Path\nPath(sys.argv[1]).write_text(json.dumps(sys.argv[2:]), encoding='utf-8')\n", encoding="utf-8")
-        executable.chmod(0o700)
-        arguments = ["Unicode Ю with spaces", '100% $ ` " \\ literal', "';&|#()<>*?~", "--startup"]
-        manager = AutostartManager([str(executable), str(output), *arguments], self.config, environ={}, config_dirs=[])
-        manager.set_enabled(True)
-        validated = subprocess.run(["desktop-file-validate", str(manager.path)], text=True, capture_output=True)
-        self.assertEqual(0, validated.returncode, validated.stdout + validated.stderr)
-        launched = subprocess.run(["gio", "launch", str(manager.path)], text=True, capture_output=True)
-        self.assertEqual(0, launched.returncode, launched.stdout + launched.stderr)
-        deadline = time.monotonic() + 10
-        while not output.exists() and time.monotonic() < deadline:
-            time.sleep(0.05)
-        self.assertTrue(output.exists(), "gio did not invoke the fixture launcher")
-        self.assertEqual(arguments, json.loads(output.read_text(encoding="utf-8")))
+        # Check with the desktop implementation, not just our own parser. The
+        # subcases distinguish Exec quoting from GLib's argv[0] percent bug.
+        for index, name in enumerate(("plain-launcher", "Yarnelo Ю space launcher", 'Yarnelo Ю $ ` " \\ launcher', 'Yarnelo Ю % $ ` " \\ launcher')):
+            with self.subTest(executable=name):
+                executable = self.root / name
+                output = self.root / f"launched-{index}.json"
+                executable.write_text("#!/usr/bin/env python3\nimport json,sys\nfrom pathlib import Path\noutput=Path(sys.argv[1])\ntemporary=output.with_suffix('.tmp')\ntemporary.write_text(json.dumps(sys.argv[2:]), encoding='utf-8')\ntemporary.replace(output)\n", encoding="utf-8")
+                executable.chmod(0o700)
+                arguments = ["Unicode Ю with spaces", '100% $ ` " \\ literal', "';&|#()<>*?~", "--startup"]
+                manager = AutostartManager([str(executable), str(output), *arguments], self.config / str(index), environ={}, config_dirs=[])
+                manager.set_enabled(True)
+                diagnostic = (f"\nexecutable exists={executable.is_file()}, executable={os.access(executable, os.X_OK)}"
+                              f"\ncommand={manager.command!r}\nentry:\n{manager.path.read_text(encoding='utf-8')}")
+                validated = subprocess.run(["desktop-file-validate", str(manager.path)], text=True, capture_output=True)
+                self.assertEqual(0, validated.returncode, validated.stdout + validated.stderr + diagnostic)
+                launched = subprocess.run(["gio", "launch", str(manager.path)], text=True, capture_output=True)
+                self.assertEqual(0, launched.returncode, launched.stdout + launched.stderr + diagnostic)
+                deadline = time.monotonic() + 10
+                while not output.exists() and time.monotonic() < deadline:
+                    time.sleep(0.05)
+                self.assertTrue(output.exists(), "gio did not invoke the fixture launcher" + diagnostic)
+                self.assertEqual(arguments, json.loads(output.read_text(encoding="utf-8")), diagnostic)
 
 
 if __name__ == "__main__":
