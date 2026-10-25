@@ -1,7 +1,8 @@
 """Five native, Qt-independent appearance and motion presets.
 
-Dusk keeps the pre-theme Linux colors and motion. Materials are painted colors
-and gradients; no backdrop blur or platform-specific window hooks are required.
+Dusk keeps the pre-theme dock colors and motion while all five themes share
+the same controls. Materials are painted colors and gradients; no backdrop blur
+or platform-specific window hooks are required.
 """
 
 from dataclasses import dataclass
@@ -45,24 +46,8 @@ def default_appearance(theme: str) -> dict[str, float]:
     return {"opacity": value.opacity, "corner_radius": value.corner_radius}
 
 
-LEGACY_STYLESHEET = """
-    QMenu, QDialog { background: #1c2334; color: #f2f3fc; }
-    QMenu { border: 1px solid #566078; border-radius: 9px; padding: 6px; }
-    QMenu::item { padding: 7px 22px; border-radius: 5px; }
-    QMenu::item:selected { background: #46547b; }
-    QMenu::separator { height: 1px; background: #455068; margin: 5px 9px; }
-    QSpinBox, QDoubleSpinBox, QComboBox { color: #f2f3fc; background: #303b52; padding: 4px; }
-    QComboBox QAbstractItemView { color: #f2f3fc; background: #303b52; selection-background-color: #46547b; }
-    QLabel, QCheckBox { color: #f2f3fc; }
-    QPushButton { padding: 6px 14px; }
-    QToolTip { background: #222b40; color: white; border: 1px solid #6b7891; padding: 5px; }
-"""
-
-
 def stylesheet(theme: str) -> str:
     value = THEMES[theme]
-    if theme == "dusk":
-        return LEGACY_STYLESHEET + '\nQLabel[tone="muted"] { color: #b8c6e2; }'
     return f"""
         QMenu, QDialog {{ background: {value.sheet}; color: {value.foreground}; }}
         QMenu {{ background: {value.menu}; border: 1px solid {value.edge}; border-radius: 9px; padding: 6px; }}

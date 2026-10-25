@@ -171,6 +171,7 @@ namespace Polka {
             submenu.Measure(new Size(double.PositiveInfinity,double.PositiveInfinity));
             Layout(submenu,Math.Max(150,submenu.DesiredSize.Width),submenu.DesiredSize.Height);
             Save(Path.Combine(output,"yarnelo-language-menu.png"),1440,670,"English or Russian. Your choice.","Change the interface language from the dock menu. Your choice is saved.",panel,new Rect(110,440,dock.Width,dock.Height),menu,new Rect(900,177,menuWidth,menuHeight),submenu,new Rect(900+menuWidth+4,330,submenu.ActualWidth,submenu.ActualHeight));
+            store.Settings.MoveDesktopShortcuts=true;
             foreach(string code in new[]{"en","ru"}) {
                 store.Settings.Language=code; L10n.SetLanguage(code);
                 var settings=new SettingsWindow(dock);

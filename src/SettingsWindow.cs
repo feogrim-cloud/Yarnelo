@@ -216,7 +216,7 @@ namespace Polka {
             Grid.SetColumn(label,1); row.Children.Add(label); target.Children.Add(row);
             var slider=new Slider { Minimum=min, Maximum=max, Value=value, TickFrequency=1, IsSnapToTickEnabled=true,
                 Margin=new Thickness(0,7,0,16), Foreground=ThemePalette.Brush(palette.Accent), Tag="setting-"+key };
-            if(!palette.Original) slider.Template=SliderTemplate();
+            slider.Template=SliderTemplate();
             System.Windows.Automation.AutomationProperties.SetName(slider,L10n.T(key));
             slider.ValueChanged+=delegate { set(slider.Value); label.Text=Math.Round(slider.Value)+unit; dock.ApplySettings(); dock.SaveQuietly(); };
             target.Children.Add(slider); return slider;
@@ -224,7 +224,7 @@ namespace Polka {
         CheckBox AddCheck(Panel target,string key,bool value,Action<bool> set) {
             var box=new CheckBox { Content=new TextBlock { Text=L10n.T(key), TextWrapping=TextWrapping.Wrap }, IsChecked=value,
                 FontSize=12, Foreground=ThemePalette.Brush(palette.Foreground), Margin=new Thickness(0,0,0,12), Cursor=Cursors.Hand, Tag="setting-"+key };
-            if(!palette.Original) box.Template=CheckTemplate();
+            box.Template=CheckTemplate();
             System.Windows.Automation.AutomationProperties.SetName(box,L10n.T(key));
             bool updating=false, accepted=value;
             RoutedEventHandler change=delegate {

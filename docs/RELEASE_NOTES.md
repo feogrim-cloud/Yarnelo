@@ -1,8 +1,8 @@
-# Yarnelo 1.8.0 — Five themes / Пять тем
+# Yarnelo 1.8.1 — Modern Dusk controls / Современные элементы Dusk
 
 ## English
 
-This release adds **five themes for the dock, menus and settings on Windows and Linux**. The original appearance remains available as **Dusk**. Existing backgrounds, shortcut profiles, compact labels, startup and automatic addition of new desktop shortcuts are preserved; all 14 Intel/AMD and native ARM64 packages remain available.
+This release updates **Dusk's settings and menu controls to match the common style of the other themes**. Windows has thin accent sliders with round thumbs and rounded checkboxes; Linux uses the same slider, button and menu styling as the other four themes. Dusk retains its dock colors, motion, default opacity and saved backgrounds. All five themes, shortcut profiles, compact labels, startup and automatic addition of new desktop shortcuts are preserved; all 14 Intel/AMD and native ARM64 packages remain available.
 
 ### Themes
 
@@ -85,7 +85,7 @@ Windows installers run per user and retain `Data` on update/removal. Update a po
 
 ## Русский
 
-В Windows и Linux добавлены **пять тем для панели, меню и настроек**. Прежний вид доступен как **Dusk («Сумерки», базовая)**. Выбранный фон, профили ярлыков, компактные подписи, автозапуск и автоматическое добавление новых ярлыков сохраняются; доступны все 14 пакетов Intel/AMD и нативных ARM64.
+**Элементы настроек и меню Dusk приведены к общему стилю остальных тем**. В Windows используются тонкие акцентные ползунки с круглыми бегунками и скруглённые галочки; в Linux — то же оформление ползунков, кнопок и меню, что у остальных четырёх тем. Цвета панели Dusk, анимации, непрозрачность по умолчанию и сохранённый фон остаются прежними. Все пять тем, профили ярлыков, компактные подписи, автозапуск и автоматическое добавление новых ярлыков сохраняются; доступны все 14 пакетов Intel/AMD и нативных ARM64.
 
 ### Темы
 

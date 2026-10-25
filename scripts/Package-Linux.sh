@@ -19,7 +19,7 @@ while (($#)); do
         --version) (($# >= 2)) || die '--version needs a version'; version=$2; shift 2 ;;
         --smoke-test) smoke_test=true; shift ;;
         -h|--help)
-            printf '%s\n' 'Usage: bash scripts/Package-Linux.sh [--output DIRECTORY] [--version 1.8.0] [--smoke-test]' \
+            printf '%s\n' 'Usage: bash scripts/Package-Linux.sh [--output DIRECTORY] [--version 1.8.1] [--smoke-test]' \
               'Requires Python + PyInstaller + linux/requirements.txt, fpm, dpkg-deb, rpmbuild,' \
               'desktop-file-validate, APPIMAGETOOL and APPIMAGE_RUNTIME (verified local files).'
             exit 0 ;;

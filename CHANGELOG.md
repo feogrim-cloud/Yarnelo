@@ -1,5 +1,17 @@
 # Changelog / Изменения
 
+## 1.8.1 — 2026-10-25
+
+### English
+
+- Updated Dusk's settings and menu controls to use the common style of the other themes. Windows has thin accent sliders with round thumbs and rounded checkboxes; Linux uses the same slider, button and menu styling as the other four themes.
+- Preserved Dusk's dock colors, motion, default opacity and saved backgrounds. All five themes, shortcut profiles, startup and automatic desktop-shortcut settings remain unchanged.
+
+### Русский
+
+- Элементы настроек и меню Dusk приведены к общему стилю остальных тем. В Windows используются тонкие акцентные ползунки с круглыми бегунками и скруглённые галочки; в Linux — то же оформление ползунков, кнопок и меню, что у остальных четырёх тем.
+- Цвета панели Dusk, анимации, непрозрачность по умолчанию и сохранённый фон оставлены прежними. Все пять тем, профили ярлыков, автозапуск и автоматическое добавление ярлыков сохраняются без изменений.
+
 ## 1.8.0 — 2026-10-25
 
 ### English

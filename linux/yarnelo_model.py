@@ -16,7 +16,7 @@ from typing import Any
 from yarnelo_i18n import LANGUAGES, text
 from yarnelo_themes import THEMES, THEME_IDS, default_appearance
 
-VERSION = "1.8.0"
+VERSION = "1.8.1"
 MAX_ITEMS = 30
 PLACEMENTS = ("free", "bottom", "top", "left", "right")
 

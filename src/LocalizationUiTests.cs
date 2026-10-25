@@ -65,7 +65,7 @@ namespace Polka {
                     var tooltip=(ToolTip)Field<List<DockWindow.IconView>>(dock,"views")[0].Button.ToolTip;
                     Check(((SolidColorBrush)tooltip.Background).Color==palette.Hint && ((SolidColorBrush)tooltip.Foreground).Color==palette.Foreground,"icon tooltip follows both light and dark themes");
                     Check(((SolidColorBrush)dock.ContextMenu.Background).Color==palette.Menu && ((SolidColorBrush)dock.ContextMenu.Foreground).Color==palette.Foreground,"context menu follows the selected theme");
-                    if(id!="dusk") Check(Visuals((DependencyObject)settings.Content).OfType<Slider>().All(slider=>slider.Template!=null),"new theme sliders use the matching production template");
+                    Check(Visuals((DependencyObject)settings.Content).OfType<Slider>().All(slider=>slider.Template!=null),"all five themes use the matching production slider template");
                     CheckSettingsSheet(settings,directory,language+"-"+id);
                 }
             }

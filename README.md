@@ -23,13 +23,13 @@ Windows interface demonstrations rendered by Yarnelo with example shortcuts on a
 | --- | --- |
 | ![Yarnelo in a multi-row layout](assets/screenshots/yarnelo-multi-row.png) | ![Yarnelo language selection menu](assets/screenshots/yarnelo-language-menu.png) |
 
-![Yarnelo 1.8.0 settings with theme selection, compact labels and optional automatic desktop-shortcut addition](assets/screenshots/yarnelo-settings-en.png)
+![Yarnelo 1.8.1 Dusk settings with modern sliders, rounded checkboxes and theme selection](assets/screenshots/yarnelo-settings-en.png)
 
 ## Features
 
 - Up to **30 shortcuts**, with one to four preferred rows and automatic wrapping when the screen fills up.
 - Adjustable background opacity and corner rounding, from square corners to a capsule; icon size and hover magnification.
-- Five themes for the dock, menus and settings: **Dusk**, **Frost**, **Graphite**, **Ember** and **Aurora**. Each remembers its own opacity and corner rounding; Dusk keeps your original appearance and background settings.
+- Five themes for the dock, menus and settings: **Dusk**, **Frost**, **Graphite**, **Ember** and **Aurora**. Each remembers its own opacity and corner rounding; Dusk keeps your original dock colors, motion and background settings. All five share modern settings controls.
 - Optional compact one-line captions: **Show icon labels** on Windows or **Show labels** on Linux. Hovering an icon shows its name.
 - Center the dock at the top, bottom, left or right. Side docks run vertically with upright icons; dragging the handle enables free positioning.
 - Wider, two-column settings with every control on one page and no vertical scrolling.
