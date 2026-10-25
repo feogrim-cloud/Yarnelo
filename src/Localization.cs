@@ -79,6 +79,18 @@ namespace Polka {
             Add("IconSize","Размер значков","Icon size");
             Add("HoverZoom","Увеличение при наведении","Hover magnification");
             Add("Appearance","Внешний вид","Appearance");
+            Add("Theme","Тема","Theme");
+            Add("ThemeHelp","Цвета и движение. Фон каждой темы сохраняется отдельно.","Colors and motion. Each theme remembers its own background.");
+            Add("ThemeName_dusk","Dusk","Dusk");
+            Add("ThemeName_frost","Frost","Frost");
+            Add("ThemeName_graphite","Graphite","Graphite");
+            Add("ThemeName_ember","Ember","Ember");
+            Add("ThemeName_aurora","Aurora","Aurora");
+            Add("ThemeDescription_dusk","Сумерки · базовая","Dusk · original");
+            Add("ThemeDescription_frost","Матовое стекло","Frosted glass");
+            Add("ThemeDescription_graphite","Матовый графит","Matte graphite");
+            Add("ThemeDescription_ember","Тёмная бронза","Dark bronze");
+            Add("ThemeDescription_aurora","Ночной индиго","Night indigo");
             Add("Behavior","Поведение","Behavior");
             Add("CornerRadius","Скругление фона","Background corners");
             Add("CornerSquare","Прямые","Square");

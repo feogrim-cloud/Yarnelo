@@ -74,6 +74,60 @@ namespace Polka {
             Layout(panel,dock.Width,dock.Height);
             return panel;
         }
+        static void ThemePreviews(DockWindow dock,List<DemoEntry> entries,string output) {
+            var store=dock.Store;
+            store.Settings.Language="ru"; L10n.SetLanguage("ru");
+            store.Settings.Rows=1; store.Settings.ShowLabels=false;
+            store.Settings.IconSize=48; store.Settings.Zoom=1.35;
+            store.Settings.Items.Clear();
+            int index=0;
+            foreach(var entry in entries.GetRange(0,10)) store.Settings.Items.Add(new DockItem { Id="theme-demo-"+(index++),Name=entry.Name,Path=entry.Path,OriginalPath=entry.Path });
+            string[] ids={"dusk","frost","graphite","ember","aurora"};
+            string[] names={"Dusk — Сумерки","Frost — Матовое стекло","Graphite — Матовый графит","Ember — Тёмная бронза","Aurora — Ночной индиго"};
+            string[] notes={"Базовая тема Yarnelo","Светлая поверхность и холодный акцент","Плотный контраст и точное движение","Тёплые оттенки и мягкий отклик","Индиго и деликатная световая кромка"};
+            string[] englishNames={"Dusk — Original","Frost — Frosted glass","Graphite — Matte charcoal","Ember — Warm bronze","Aurora — Night indigo"};
+            string[] englishNotes={"The familiar Yarnelo appearance","A light surface with a cool accent","Dense contrast and precise motion","Warm tones with a soft response","Indigo with a subtle edge accent"};
+            var board=new RenderTargetBitmap(1440,1040,96,96,PixelFormats.Pbgra32);
+            board.Render(Backdrop(1440,1040,"Пять тем. Одна панель Yarnelo.","Dusk сохраняет привычный вид. Новые темы выбираются в настройках."));
+            var englishBoard=new RenderTargetBitmap(1440,1040,96,96,PixelFormats.Pbgra32);
+            englishBoard.Render(Backdrop(1440,1040,"Five themes. One Yarnelo dock.","Dusk preserves your familiar look. Choose a new theme in Settings."));
+            var scene=new DrawingVisual();
+            var englishScene=new DrawingVisual();
+            using(var draw=scene.RenderOpen()) using(var englishDraw=englishScene.RenderOpen()) {
+                for(int theme=0;theme<ids.Length;theme++) {
+                    dock.SetTheme(ids[theme]);
+                    var panel=Dock(dock);
+                    var capture=new RenderTargetBitmap((int)Math.Ceiling(dock.Width),(int)Math.Ceiling(dock.Height),96,96,PixelFormats.Pbgra32);
+                    capture.Render(panel); capture.Freeze();
+                    double top=154+theme*165;
+                    draw.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(9,255,255,255)),new Pen(new SolidColorBrush(Color.FromArgb(18,255,255,255)),1),new Rect(35,top,1370,151),15,15);
+                    Text(draw,names[theme],58,top+43,21,Color.FromRgb(242,245,253));
+                    Text(draw,notes[theme],59,top+80,12,Color.FromRgb(168,183,207));
+                    draw.DrawImage(capture,new Rect(540,top+(151-dock.Height)/2,dock.Width,dock.Height));
+                    englishDraw.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(9,255,255,255)),new Pen(new SolidColorBrush(Color.FromArgb(18,255,255,255)),1),new Rect(35,top,1370,151),15,15);
+                    Text(englishDraw,englishNames[theme],58,top+43,21,Color.FromRgb(242,245,253));
+                    Text(englishDraw,englishNotes[theme],59,top+80,12,Color.FromRgb(168,183,207));
+                    englishDraw.DrawImage(capture,new Rect(540,top+(151-dock.Height)/2,dock.Width,dock.Height));
+                    var settings=new SettingsWindow(dock);
+                    var content=(FrameworkElement)settings.Content;
+                    System.Windows.Documents.TextElement.SetForeground(content,settings.Foreground);
+                    System.Windows.Documents.TextElement.SetFontFamily(content,settings.FontFamily);
+                    settings.Content=null;
+                    Layout(content,settings.Width,settings.Height);
+                    int canvasHeight=(int)Math.Ceiling(settings.Height+430);
+                    Save(Path.Combine(output,"yarnelo-theme-"+ids[theme]+".png"),1440,canvasHeight,names[theme],notes[theme],
+                        content,new Rect((1440-settings.Width)/2,160,settings.Width,settings.Height),panel,
+                        new Rect((1440-dock.Width)/2,settings.Height+220,dock.Width,dock.Height));
+                }
+            }
+            board.Render(scene);
+            var encoder=new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(board));
+            using(var stream=File.Create(Path.Combine(output,"yarnelo-themes.png"))) encoder.Save(stream);
+            englishBoard.Render(englishScene);
+            var englishEncoder=new PngBitmapEncoder(); englishEncoder.Frames.Add(BitmapFrame.Create(englishBoard));
+            using(var stream=File.Create(Path.Combine(output,"yarnelo-themes-en.png"))) englishEncoder.Save(stream);
+            dock.SetTheme("dusk");
+        }
         [STAThread] static int Main(string[] args) {
             if(args.Length!=3) throw new ArgumentException("Usage: ScreenshotRenderer MANIFEST OUTPUT NEW-SCRATCH-DIRECTORY");
             var entries=(List<DemoEntry>)new DataContractJsonSerializer(typeof(List<DemoEntry>)).ReadObject(File.OpenRead(args[0]));
@@ -131,6 +185,7 @@ namespace Polka {
                     code=="ru"?"Скругление фона · четыре края экрана · автоматический перенос":"Corner rounding · four screen edges · automatic wrapping",
                     content,new Rect((canvasWidth-settings.Width)/2,160,settings.Width,settings.Height),null,Rect.Empty);
             }
+            ThemePreviews(dock,entries,output);
             if(PresentationSource.FromVisual(dock)!=null) throw new InvalidOperationException("Renderer must never show a native dock window.");
             Console.WriteLine("Rendered actual controls without showing windows, starting applications, moving shortcuts or reading the installed profile.");
             return 0;

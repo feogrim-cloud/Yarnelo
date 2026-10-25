@@ -173,6 +173,16 @@ Choose top, bottom, left or right centered placement; side docks run vertically 
 
 Choose **Language / Язык → English / Русский** in the dock's context menu to switch the interface immediately. The choice is saved. The initial default follows the system locale: Russian for a Russian locale, English otherwise. User file and shortcut names stay as they are.
 
+### Themes
+
+Choose **Settings → Theme**, then **OK**, for **Dusk** (the original dark appearance), **Frost** (light ice), **Graphite** (matte charcoal), **Ember** (warm bronze) or **Aurora** (indigo with an edge accent). **Cancel** leaves the saved theme and settings unchanged. Menus and settings follow the palette; Frost uses contrasting dark text on light surfaces.
+
+Each theme remembers its own background opacity and corner rounding. On first use, Frost starts at **76% / 22**, Graphite at **96% / 12**, Ember at **85% / 16** and Aurora at **88% / 24**. Upgrading keeps the original appearance as Dusk with your current background settings. Returning to Dusk, or another theme you adjusted, restores that theme's saved background. Theme changes preserve icon size, magnification, rows, placement, compact labels, startup and automatic desktop-shortcut preferences.
+
+Themes also tune hover, click and drag motion. Aurora's edge highlight appears during interaction; there is no idle flare. Styling uses native Qt colors, translucency, borders and shadows. The X11/XWayland compositor limitations above continue to apply.
+
+### Shortcut storage
+
 The Linux version stores references and **does not move originals off the desktop**. To clear your desktop, move originals to a permanent folder first, then add them from that location. Removing an icon only removes Yarnelo's reference.
 
 The profile is `$XDG_CONFIG_HOME/yarnelo/settings.json`, or `~/.config/yarnelo/settings.json` by default. Linux and Windows profiles are separate; Windows `.lnk` / `.url` files are not automatically imported as Linux launchers.

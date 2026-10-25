@@ -13,6 +13,71 @@ using Microsoft.Win32.SafeHandles;
 namespace Polka
 {
     [DataContract]
+    public sealed class ThemeAppearance
+    {
+        [DataMember(Order = 0)] public string Theme { get; set; }
+        [DataMember(Order = 1)] public double Opacity { get; set; }
+        [DataMember(Order = 2)] public double CornerRadius { get; set; }
+    }
+
+    // Persisted theme data stays independent of WPF and the installed desktop.
+    internal static class ThemeCatalog
+    {
+        internal static readonly string[] Ids = { "dusk", "frost", "graphite", "ember", "aurora" };
+        internal static string Normalize(string theme)
+        {
+            string value = (theme ?? String.Empty).Trim().ToLowerInvariant();
+            return Ids.Contains(value) ? value : "dusk";
+        }
+        internal static double Opacity(string theme)
+        {
+            switch (Normalize(theme)) { case "frost": return .76; case "graphite": return .96; case "ember": return .85; case "aurora": return .88; default: return .72; }
+        }
+        internal static double Corners(string theme)
+        {
+            switch (Normalize(theme)) { case "frost": return 22; case "graphite": return 12; case "ember": return 16; case "aurora": return 24; default: return 23; }
+        }
+        internal static List<ThemeAppearance> Copy(IEnumerable<ThemeAppearance> appearances)
+        {
+            return appearances == null ? new List<ThemeAppearance>() : appearances.Where(value => value != null).Select(value => new ThemeAppearance { Theme = value.Theme, Opacity = value.Opacity, CornerRadius = value.CornerRadius }).ToList();
+        }
+        internal static void Sanitize(DockSettings settings)
+        {
+            settings.Theme = Normalize(settings.Theme);
+            var valid = new List<ThemeAppearance>();
+            var known = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var value in settings.ThemeAppearances ?? new List<ThemeAppearance>())
+            {
+                if (value == null) continue;
+                string id = (value.Theme ?? String.Empty).Trim().ToLowerInvariant();
+                if (!Ids.Contains(id) || !known.Add(id)) continue;
+                valid.Add(new ThemeAppearance { Theme = id,
+                    Opacity = Store.IsFinite(value.Opacity) ? Math.Max(.15, Math.Min(1, value.Opacity)) : Opacity(id),
+                    CornerRadius = Store.IsFinite(value.CornerRadius) ? Math.Max(0, Math.Min(100, value.CornerRadius)) : Corners(id) });
+                if (valid.Count == Ids.Length) break;
+            }
+            settings.ThemeAppearances = valid;
+        }
+        internal static void Remember(DockSettings settings)
+        {
+            Sanitize(settings);
+            var current = settings.ThemeAppearances.FirstOrDefault(value => value.Theme == settings.Theme);
+            if (current == null) { current = new ThemeAppearance { Theme = settings.Theme }; settings.ThemeAppearances.Add(current); }
+            current.Opacity = settings.Opacity; current.CornerRadius = settings.CornerRadius;
+        }
+        internal static void Select(DockSettings settings, string theme)
+        {
+            Remember(settings);
+            string id = Normalize(theme);
+            var previous = settings.ThemeAppearances.FirstOrDefault(value => value.Theme == id);
+            settings.Theme = id;
+            settings.Opacity = previous == null ? Opacity(id) : previous.Opacity;
+            settings.CornerRadius = previous == null ? Corners(id) : previous.CornerRadius;
+            Remember(settings);
+        }
+    }
+
+    [DataContract]
     public sealed class DockSettings
     {
         private double left = Double.NaN;
@@ -51,6 +116,8 @@ namespace Polka
         [DataMember(Order = 14)] public double CornerRadius { get; set; }
         [DataMember(Order = 15)] public string Placement { get; set; }
         [DataMember(Order = 16)] public bool AutoAddDesktopShortcuts { get; set; }
+        [DataMember(Order = 17)] public string Theme { get; set; }
+        [DataMember(Order = 18, EmitDefaultValue = false)] public List<ThemeAppearance> ThemeAppearances { get; set; }
 
         public DockSettings() { SetDefaults(); }
 
@@ -74,6 +141,8 @@ namespace Polka
             Language = L10n.Normalize(null);
             CornerRadius = 23;
             Placement = "free";
+            Theme = "dusk";
+            ThemeAppearances = new List<ThemeAppearance>();
             Items = new List<DockItem>();
         }
     }
@@ -196,6 +265,24 @@ namespace Polka
                 keepExistingBackup = false;
             }
             finally { TryDelete(temporaryPath); }
+        }
+
+        public bool SetTheme(string theme)
+        {
+            string requested = ThemeCatalog.Normalize(theme);
+            if (ThemeCatalog.Normalize(Settings.Theme) == requested) return false;
+            string previousTheme = Settings.Theme;
+            double previousOpacity = Settings.Opacity, previousCorners = Settings.CornerRadius;
+            var previousAppearances = ThemeCatalog.Copy(Settings.ThemeAppearances);
+            ThemeCatalog.Select(Settings, requested);
+            try { Save(); }
+            catch
+            {
+                Settings.Theme = previousTheme; Settings.Opacity = previousOpacity; Settings.CornerRadius = previousCorners;
+                Settings.ThemeAppearances = previousAppearances;
+                throw;
+            }
+            return true;
         }
 
         public DockItem Add(string path)
@@ -705,6 +792,8 @@ namespace Polka
             Settings.Width = Clamp(Settings.Width, 160, 2400, 570);
             Settings.Height = Clamp(Settings.Height, 80, 1600, 280);
             Settings.Opacity = Clamp(Settings.Opacity, 0.15, 1, 0.72);
+            Settings.CornerRadius = Clamp(Settings.CornerRadius, 0, 100, 23);
+            ThemeCatalog.Sanitize(Settings);
             Settings.IconSize = Clamp(Settings.IconSize, 24, 96, 52);
             Settings.Zoom = Clamp(Settings.Zoom, 1, 1.8, 1.28);
             Settings.Rows = Math.Max(1, Math.Min(4, Settings.Rows));

@@ -9,8 +9,8 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyDescription("Yarnelo — shortcut dock for Windows")]
 [assembly: AssemblyCompany("Yarnelo")]
 [assembly: AssemblyProduct("Yarnelo")]
-[assembly: AssemblyVersion("1.7.3.0")]
-[assembly: AssemblyFileVersion("1.7.3.0")]
+[assembly: AssemblyVersion("1.8.0.0")]
+[assembly: AssemblyFileVersion("1.8.0.0")]
 
 namespace Polka {
     internal static class Program {

@@ -13,6 +13,7 @@ from yarnelo_model import (
     load_settings, move_item, preserve_invalid_settings, save_settings, slot_indices,
 )
 from yarnelo import external_environment
+from yarnelo_themes import THEMES, THEME_IDS, default_appearance, stylesheet
 import yarnelo
 
 
@@ -143,6 +144,82 @@ class ModelTests(unittest.TestCase):
         for value in (0, 1, "true", None, [], {}):
             with self.subTest(value=value), self.assertRaises(ModelError):
                 Settings.from_dict({"auto_add_desktop_shortcuts": value})
+
+    def test_theme_migration_keeps_the_original_dusk_background_and_shortcuts(self):
+        legacy = {"opacity": .37123, "corner_radius": 8.5, "rows": 3,
+                  "items": [{"id": "old-computer", "kind": "computer"}, {"id": "old-trash", "kind": "trash"}]}
+        settings = Settings.from_dict(legacy)
+        self.assertEqual(("dusk", .37123, 8.5, {}), (settings.theme, settings.opacity, settings.corner_radius, settings.theme_appearances))
+        self.assertEqual(["old-computer", "old-trash"], [item.id for item in settings.items])
+        self.assertEqual(("#2A3146", "#11192B", 190, 150, 210, 2, .13),
+                         (THEMES["dusk"].surface, THEMES["dusk"].bottom, THEMES["dusk"].hover_ms,
+                          THEMES["dusk"].press_ms, THEMES["dusk"].move_ms, THEMES["dusk"].lift, THEMES["dusk"].press_depth))
+        self.assertEqual(("dusk", .37123, 8.5), (Settings.from_dict(settings.to_dict()).theme, settings.opacity, settings.corner_radius))
+
+    def test_explicit_first_theme_choice_uses_the_preset_and_keeps_global_preferences(self):
+        settings = Settings(opacity=.413, corner_radius=37, rows=3, icon_size=38, zoom=1.42, labels=True,
+                            placement="right", language="ru", x=-1200, y=150,
+                            items=[Item("retained-trash", "trash")])
+        original_geometry = dock_layout(settings, 1280, 720)
+        for name, opacity, radius, surface, accent in (
+            ("frost", .76, 22, "#EEF6FD", "#357CBA"),
+            ("graphite", .96, 12, "#191C20", "#AAD0BD"),
+            ("ember", .85, 16, "#37241F", "#EAB981"),
+            ("aurora", .88, 24, "#17182F", "#C2B0FF"),
+        ):
+            settings.select_theme(name)
+            self.assertEqual((name, opacity, radius, surface, accent),
+                             (settings.theme, settings.opacity, settings.corner_radius, THEMES[name].surface, THEMES[name].accent))
+            self.assertEqual(original_geometry, dock_layout(settings, 1280, 720))
+            self.assertEqual((3, 38, 1.42, True, "right", "ru", -1200, 150, "retained-trash"),
+                             (settings.rows, settings.icon_size, settings.zoom, settings.labels, settings.placement, settings.language, settings.x, settings.y, settings.items[0].id))
+        settings.select_theme("dusk")
+        self.assertEqual((.413, 37), (settings.opacity, settings.corner_radius))
+
+    def test_each_theme_remembers_its_own_appearance_after_save_and_reload(self):
+        settings = Settings(opacity=.39, corner_radius=0)
+        settings.select_theme("frost")
+        settings.opacity, settings.corner_radius = .52, 100
+        settings.select_theme("graphite")
+        settings.opacity, settings.corner_radius = .83, 7
+        settings.select_theme("frost")
+        self.assertEqual((.52, 100), (settings.opacity, settings.corner_radius))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            save_settings(path, settings)
+            restored = load_settings(path)
+            restored.select_theme("graphite")
+            self.assertEqual((.83, 7), (restored.opacity, restored.corner_radius))
+            restored.select_theme("dusk")
+            self.assertEqual((.39, 0), (restored.opacity, restored.corner_radius))
+
+    def test_invalid_optional_theme_data_does_not_discard_legacy_shortcuts(self):
+        for theme in (None, True, 12, "unknown", [], {}):
+            restored = Settings.from_dict({"theme": theme, "opacity": .47, "corner_radius": 33,
+                                          "items": [{"id": "keep", "kind": "trash"}]})
+            self.assertEqual(("dusk", .47, 33, "keep"), (restored.theme, restored.opacity, restored.corner_radius, restored.items[0].id))
+        for invalid in (None, [], "bad", True, 42):
+            self.assertEqual({}, Settings.from_dict({"theme_appearances": invalid}).theme_appearances)
+        for invalid in (None, [], "bad", True, {}, {"opacity": .5}, {"opacity": True, "corner_radius": 20},
+                        {"opacity": float("nan"), "corner_radius": 20}, {"opacity": .5, "corner_radius": float("inf")}):
+            self.assertEqual({}, Settings.from_dict({"theme_appearances": {"frost": invalid}}).theme_appearances)
+        values = {"unknown-" + str(index): {"opacity": .5, "corner_radius": 20} for index in range(20)}
+        values.update({name: {"opacity": .5, "corner_radius": 20} for name in THEME_IDS})
+        self.assertEqual(set(THEME_IDS), set(Settings.from_dict({"theme_appearances": values}).theme_appearances))
+        restored = Settings.from_dict({"theme_appearances": {"frost": {"opacity": -2, "corner_radius": 1000}}})
+        self.assertEqual({"opacity": .12, "corner_radius": 100.0}, restored.theme_appearances["frost"])
+
+    def test_theme_foreground_and_secondary_text_remain_readable_on_settings(self):
+        def luminance(value):
+            components = [int(value[index:index + 2], 16) / 255 for index in (1, 3, 5)]
+            linear = [number / 12.92 if number <= .04045 else ((number + .055) / 1.055) ** 2.4 for number in components]
+            return sum(number * weight for number, weight in zip(linear, (.2126, .7152, .0722)))
+        for name, theme in THEMES.items():
+            for color in (theme.foreground, theme.muted):
+                lighter, darker = sorted((luminance(color), luminance(theme.sheet)), reverse=True)
+                self.assertGreaterEqual((lighter + .05) / (darker + .05), 4.5, name)
+            self.assertEqual({"opacity": theme.opacity, "corner_radius": theme.corner_radius}, default_appearance(name))
+            self.assertIn(theme.foreground.lower(), stylesheet(name).lower())
 
     def test_invalid_settings_do_not_replace_existing_file(self):
         with tempfile.TemporaryDirectory() as directory:

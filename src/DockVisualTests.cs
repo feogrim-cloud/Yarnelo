@@ -82,6 +82,70 @@ namespace Polka {
             Check(Field<DesktopShortcutWatcher>(dock,"desktopWatcher")==null && Field<object>(dock,"desktopWatcherTimer")==null,"manual mode disposes observation and has no timer");
             Check(Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null && !dock.IsVisible,"auto-add integration uses only isolated directories and an unshown dock");
         }
+        static void CheckThemeRendering(string directory) {
+            string desktop=Path.Combine(directory,"theme-desktop"); Directory.CreateDirectory(desktop);
+            var store=new Store(Path.Combine(directory,"ThemeData"),desktop,desktop);
+            store.Settings.IconSize=80; store.Settings.Zoom=1.65; store.Settings.Items.Clear();
+            var dock=new DockWindow(store);
+            var drawing=new DrawingImage(new GeometryDrawing(Brushes.OrangeRed,null,new EllipseGeometry(new Point(40,40),40,40))); drawing.Freeze();
+            var cache=Field<Dictionary<string,ImageSource>>(dock,"iconCache");
+            for(int index=0;index<30;index++) { string path="fixture:theme-"+index; cache[path]=drawing; store.Settings.Items.Add(new DockItem { Id="theme-"+index,Name="Long original shortcut "+index,Path=path }); }
+            var dusk=ThemeMotion.For("dusk");
+            Check(dusk.Response==25 && dusk.HoverLift==6 && dusk.ClickPop==.19 && dusk.ClickHop==12 && dusk.ClickDuration==.43 && dusk.DragResponse==55 && dusk.DragScale==1.10,"Dusk preserves the established pointer, click and drag responses exactly");
+            Check(ThemeCatalog.Ids.Select(id=>ThemeMotion.For(id).Response).Distinct().Count()==5,"all five themes have a distinct motion response");
+            foreach(string id in ThemeCatalog.Ids) {
+                dock.SetTheme(id);
+                var palette=ThemePalette.For(id); var motion=ThemeMotion.For(id);
+                Check(Object.ReferenceEquals(palette,ThemePalette.For(id)) && Object.ReferenceEquals(motion,ThemeMotion.For(id)),"theme palettes and motion are cached outside pointer/frame loops");
+                foreach(string placement in new[]{"bottom","top","left","right"}) foreach(bool labels in new[]{false,true}) {
+                    store.Settings.Placement=placement; store.Settings.ShowLabels=labels;
+                    dock.ApplySettings(new Rect(0,0,1920,1040));
+                    var content=(FrameworkElement)dock.Content; dock.Content=null;
+                    System.Windows.Documents.TextElement.SetForeground(content,dock.Foreground);
+                    try {
+                        Arrange(content,dock);
+                        var views=Field<List<DockWindow.IconView>>(dock,"views");
+                        var glass=Field<Border>(dock,"glass");
+                        string scenario=id+" "+placement+" labels="+labels;
+                        Check(views.Count==30,scenario+": every icon remains present");
+                        if(id=="dusk") {
+                            var gradient=(LinearGradientBrush)glass.Background;
+                            Check(gradient.GradientStops[0].Color==Color.FromArgb((byte)(store.Settings.Opacity*255),43,47,60) && gradient.GradientStops[1].Color==Color.FromArgb((byte)(store.Settings.Opacity*255),21,24,34),"Dusk uses the exact existing two-stop dock background");
+                        } else {
+                            var background=((SolidColorBrush)glass.Background).Color;
+                            Check(background.R==palette.Surface.R && background.G==palette.Surface.G && background.B==palette.Surface.B && background.A==(byte)(store.Settings.Opacity*255),scenario+": selected surface and opacity are applied to the real dock");
+                        }
+                        foreach(var view in views) {
+                            Check(Object.ReferenceEquals(view.Image.Source,drawing),scenario+": theme retains the original full-color icon source");
+                            Near(view.Button.Width,view.Image.Width+10,scenario+": compact tile width is unchanged");
+                            foreach(var label in Descendants<TextBlock>(view.Button)) Check(label.TextWrapping==TextWrapping.NoWrap && label.TextTrimming==TextTrimming.CharacterEllipsis,scenario+": optional labels keep the compact single-line rendering");
+                            view.HoverScale=1.85; view.SizeMotion.Reset(1.85); view.HoverLift=-(motion.HoverLift+motion.ClickHop); view.LiftMotion.Reset(view.HoverLift);
+                        }
+                        dock.AdvanceAnimations(.001);
+                        foreach(var view in views) WithinWindow(view.Image,content,dock,scenario+": themed hover plus click remains inside the existing window geometry");
+                        if(id=="aurora") {
+                            Check(views.All(view=>view.HoverGlow!=null && view.HoverGlow.Opacity>0),"Aurora adds its restrained accent only during icon activity");
+                            Check(((SolidColorBrush)glass.BorderBrush).Color.A>95,"Aurora softly brightens the panel edge during the existing animation");
+                            typeof(DockWindow).GetField("externalDragFeedback",Private).SetValue(dock,true);
+                            var dragFeedback=Brushes.Orange; glass.BorderBrush=dragFeedback; dock.AdvanceAnimations(.001);
+                            Check(Object.ReferenceEquals(dragFeedback,glass.BorderBrush),"Aurora animation preserves external file-drag feedback");
+                            typeof(DockWindow).GetField("externalDragFeedback",Private).SetValue(dock,false);
+                        }
+                        typeof(DockWindow).GetMethod("ResetMagnification",Private).Invoke(dock,new object[0]);
+                        for(int frame=0;frame<240;frame++) dock.AdvanceAnimations(1.0/120);
+                        Check(!Field<bool>(dock,"rendering"),scenario+": animation stops after settling instead of running an idle loop");
+                        Check(views.All(view=>Math.Abs(view.Scale.ScaleX-1)<.001 && (view.HoverGlow==null || view.HoverGlow.Opacity==0)),scenario+": all icons return to their exact idle appearance");
+                        if(id=="aurora") Check(((SolidColorBrush)glass.BorderBrush).Color.A==95,"Aurora panel edge returns to its resting opacity without an idle timer");
+                        if(!labels) {
+                            var bitmap=new RenderTargetBitmap((int)Math.Ceiling(dock.Width),(int)Math.Ceiling(dock.Height),96,96,PixelFormats.Pbgra32); bitmap.Render(content);
+                            var encoder=new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                            using(var stream=File.Create(Path.Combine(directory,"theme-"+id+"-"+placement+".png"))) encoder.Save(stream);
+                        }
+                    } finally { dock.Content=content; }
+                }
+            }
+            Check(Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null && !dock.IsVisible,"theme rendering never starts a real desktop host or visible window");
+        }
         [STAThread] public static int Main(string[] args) {
             var app=new Application { ShutdownMode=ShutdownMode.OnExplicitShutdown };
             try {
@@ -171,6 +235,7 @@ namespace Polka {
                 Check(!Field<bool>(dock,"verticalDock") && store.Settings.Placement=="free","free placement returns the dock to horizontal orientation");
                 Check(Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null && !dock.IsVisible,"visual tests never create a desktop host, tray or visible window");
                 CheckAutomaticDesktopAdding(directory);
+                CheckThemeRendering(directory);
                 Console.WriteLine("PASS: "+assertions+" dock visual assertions; own-control renders: "+directory);
                 return 0;
             } catch(Exception ex) { Console.WriteLine(ex); return 1; }

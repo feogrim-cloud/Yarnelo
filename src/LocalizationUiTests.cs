@@ -26,7 +26,7 @@ namespace Polka {
             return Visuals((DependencyObject)settings.Content).OfType<T>().Single(element=>Object.Equals(element.Tag,tag));
         }
         static void CheckSettingsSheet(SettingsWindow settings,string directory,string language) {
-            foreach(var area in new[]{new Size(1920,1040),new Size(1280,680),new Size(800,576),new Size(640,480)}) {
+            foreach(var area in new[]{new Size(1920,1040),new Size(1280,680),new Size(800,576),new Size(640,480),new Size(640,360)}) {
                 settings.FitToWorkingArea(new Rect(new Point(),area));
                 Check(settings.Width<=area.Width-23 && settings.Height<=area.Height-23,"settings sheet fits working area including high-DPI equivalent sizes");
                 string name="settings-"+language+"-"+(int)area.Width+"x"+(int)area.Height+".png";
@@ -48,6 +48,42 @@ namespace Polka {
                     "settings exposes all four centered edge positions and free placement");
             }
             settings.FitToWorkingArea(new Rect(0,0,1920,1040));
+        }
+        static void CheckThemes(DockWindow dock,SettingsWindow settings,Store store,string desktop,string directory) {
+            string originalLanguage=store.Settings.Language;
+            dock.SetTheme("dusk");
+            double duskOpacity=store.Settings.Opacity,duskCorners=store.Settings.CornerRadius;
+            foreach(string language in new[]{"en","ru"}) {
+                dock.SetLanguage(language);
+                foreach(string id in ThemeCatalog.Ids) {
+                    Tagged<Button>(settings,"theme-"+id).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    var palette=ThemePalette.For(id);
+                    Check(store.Settings.Theme==id && new Store(store.DataDirectory,desktop,desktop).Settings.Theme==id,"one click applies and persists the selected theme: "+id);
+                    Check(Visuals((DependencyObject)settings.Content).OfType<Button>().Count(button=>System.Windows.Automation.AutomationProperties.GetName(button).StartsWith("Theme: ",StringComparison.Ordinal))==5,"all five named theme swatches remain available");
+                    Check(Visuals((DependencyObject)Tagged<Button>(settings,"theme-"+id).Content).OfType<TextBlock>().Any(block=>block.Text==L10n.T("ThemeDescription_"+id)),"theme descriptions follow the selected interface language: "+language+" "+id);
+                    Check(((SolidColorBrush)settings.Foreground).Color==palette.Foreground && ((SolidColorBrush)dock.Foreground).Color==palette.Foreground,"dock and settings foreground use the same readable palette: "+id);
+                    var tooltip=(ToolTip)Field<List<DockWindow.IconView>>(dock,"views")[0].Button.ToolTip;
+                    Check(((SolidColorBrush)tooltip.Background).Color==palette.Hint && ((SolidColorBrush)tooltip.Foreground).Color==palette.Foreground,"icon tooltip follows both light and dark themes");
+                    Check(((SolidColorBrush)dock.ContextMenu.Background).Color==palette.Menu && ((SolidColorBrush)dock.ContextMenu.Foreground).Color==palette.Foreground,"context menu follows the selected theme");
+                    if(id!="dusk") Check(Visuals((DependencyObject)settings.Content).OfType<Slider>().All(slider=>slider.Template!=null),"new theme sliders use the matching production template");
+                    CheckSettingsSheet(settings,directory,language+"-"+id);
+                }
+            }
+            string profile=Path.Combine(store.DataDirectory,"settings.json");
+            string beforeTheme=store.Settings.Theme;
+            double beforeOpacity=store.Settings.Opacity,beforeCorner=store.Settings.CornerRadius;
+            byte[] before=File.ReadAllBytes(profile);
+            var glass=Field<Border>(dock,"glass");
+            Brush beforeBackground=glass.Background;
+            using(var locked=new FileStream(profile,FileMode.Open,FileAccess.Read,FileShare.Read)) {
+                Tagged<Button>(settings,"theme-frost").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Check(store.Settings.Theme==beforeTheme && store.Settings.Opacity==beforeOpacity && store.Settings.CornerRadius==beforeCorner,"failed theme selection restores the previous model and background values");
+                Check(Object.ReferenceEquals(beforeBackground,glass.Background),"failed theme save leaves the actual dock background unchanged");
+                Check(((SolidColorBrush)Tagged<Button>(settings,"theme-"+beforeTheme).Background).Color==dock.Palette.Selected,"failed theme save restores the visible selected swatch");
+            }
+            Check(before.SequenceEqual(File.ReadAllBytes(profile)),"failed theme UI save preserves exact persisted profile bytes");
+            dock.SetTheme("dusk"); dock.SetLanguage(originalLanguage);
+            Check(store.Settings.Opacity==duskOpacity && store.Settings.CornerRadius==duskCorners,"Dusk restores the user's exact original background after all themes");
         }
         static void Render(FrameworkElement element,string path,Size size) {
             var window=element as Window;
@@ -158,6 +194,7 @@ namespace Polka {
                 Check(dock.Title=="Yarnelo — панель ярлыков" && settings.Title=="Настройки — Yarnelo","switching back updates both existing windows");
                 Render(settings,Path.Combine(directory,"settings-ru.png"),new Size(settings.Width,settings.Height));
                 CheckSettingsSheet(settings,directory,"ru");
+                CheckThemes(dock,settings,store,desktop,directory);
                 Check(Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null && !dock.IsVisible && !settings.IsVisible,"localization tests never start a visible window, tray or desktop host");
                 Console.WriteLine("PASS: "+assertions+" localization UI assertions; own-window renders: "+directory);
                 return 0;

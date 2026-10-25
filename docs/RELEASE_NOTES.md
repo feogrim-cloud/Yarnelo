@@ -1,12 +1,28 @@
-# Yarnelo 1.7.3 — Compact labels restored / Возвращены компактные подписи
+# Yarnelo 1.8.0 — Five themes / Пять тем
 
 ## English
 
-This release **restores the compact one-line labels and original checkbox** on Windows and Linux. The Linux startup-at-sign-in option, automatic addition of new desktop shortcuts and Windows startup fix are retained. Existing shortcut profiles and label preferences are preserved; all 14 Intel/AMD and native ARM64 packages remain available.
+This release adds **five themes for the dock, menus and settings on Windows and Linux**. The original appearance remains available as **Dusk**. Existing backgrounds, shortcut profiles, compact labels, startup and automatic addition of new desktop shortcuts are preserved; all 14 Intel/AMD and native ARM64 packages remain available.
+
+### Themes
+
+Choose **Settings → Theme**. Windows applies and saves changes immediately; Linux applies them when you choose **OK**, while **Cancel** leaves the saved settings unchanged.
+
+| Theme | Appearance | First-use background opacity / corner rounding |
+| --- | --- | --- |
+| **Dusk** | The original translucent dark dock | Your existing settings and the original defaults |
+| **Frost** | Light ice tones | 76% / 22 |
+| **Graphite** | Matte charcoal | 96% / 12 |
+| **Ember** | Warm bronze | 85% / 16 |
+| **Aurora** | Indigo with a colored edge accent | 88% / 24 |
+
+Each theme remembers its own opacity and corner rounding. Returning to Dusk brings back the background you had before trying another theme. Switching themes preserves icon size, magnification, rows, position, label visibility, startup and automatic desktop-shortcut settings. Menus and settings use the selected palette, including readable dark text on Frost's light surfaces.
+
+Hover, click and drag motion follows each theme's feel. Aurora highlights its edge during interaction; the dock has no idle flare. The themes use native colors, translucency, borders and shadows. Local concept previews are design references; app screenshots show the actual native interface.
 
 ### Compact labels
 
-The wider two-line caption layout and two-mode name selector from 1.7.2 have been removed. Use **Settings → Show icon labels** on Windows or **Show labels** on Linux to show compact one-line captions. Long captions are shortened to fit; hovering an icon shows its name with the original tooltip behavior. The original icon spacing and label animations are restored.
+Compact one-line captions from 1.7.3 remain available through **Settings → Show icon labels** on Windows or **Show labels** on Linux. Long captions are shortened to fit; hovering an icon shows its name. Themes preserve the compact icon spacing and your saved label preference.
 
 ### Linux startup
 
@@ -69,11 +85,27 @@ Windows installers run per user and retain `Data` on update/removal. Update a po
 
 ## Русский
 
-В Windows и Linux **возвращены компактные однострочные подписи и прежняя галочка**. Автозапуск Linux, автоматическое добавление новых ярлыков и исправление автозапуска Windows сохранены. Профили ярлыков и выбор показа подписей не теряются; доступны все 14 пакетов Intel/AMD и нативных ARM64.
+В Windows и Linux добавлены **пять тем для панели, меню и настроек**. Прежний вид доступен как **Dusk («Сумерки», базовая)**. Выбранный фон, профили ярлыков, компактные подписи, автозапуск и автоматическое добавление новых ярлыков сохраняются; доступны все 14 пакетов Intel/AMD и нативных ARM64.
+
+### Темы
+
+Выберите **Настройки → Тема**. В Windows изменения применяются и сохраняются сразу. В Linux нажмите **OK** для применения; **«Отмена»** оставляет сохранённые настройки без изменений.
+
+| Тема | Вид | Непрозрачность / скругление при первом выборе |
+| --- | --- | --- |
+| **Dusk («Сумерки», базовая)** | Прежняя полупрозрачная тёмная панель | Ваши текущие настройки и прежние значения по умолчанию |
+| **Frost («Матовое стекло»)** | Светлые ледяные оттенки | 76% / 22 |
+| **Graphite («Матовый графит»)** | Матовый угольный фон | 96% / 12 |
+| **Ember («Тёмная бронза»)** | Тёплая бронза | 85% / 16 |
+| **Aurora («Ночной индиго»)** | Индиго с цветным акцентом по краю | 88% / 24 |
+
+Каждая тема запоминает собственные непрозрачность и скругление. Возврат к Dusk восстанавливает фон, который был выбран до знакомства с другими темами. Переключение сохраняет размер значков, увеличение, ряды, положение, показ подписей, автозапуск и автоматическое добавление ярлыков. Меню и настройки используют выбранную палитру; на светлых поверхностях Frost остаётся контрастный тёмный текст.
+
+Характер анимаций наведения, нажатия и перетаскивания зависит от темы. Край Aurora подсвечивается при взаимодействии; в покое панель не переливается. Для оформления используются нативные цвета, полупрозрачность, границы и тени. Локальные концепты служат примерами дизайна; скриншоты приложения показывают настоящий нативный интерфейс.
 
 ### Компактные подписи
 
-Расширенная двухстрочная раскладка и переключатель двух режимов из 1.7.2 убраны. Для компактных однострочных подписей используйте **Настройки → Подписи под значками** в Windows или **«Показывать подписи»** в Linux. Длинные подписи сокращаются по ширине; при наведении на значок его название отображается с прежним поведением подсказки. Возвращены исходные отступы и анимации подписей.
+Компактные однострочные подписи из 1.7.3 доступны через **Настройки → Подписи под значками** в Windows или **«Показывать подписи»** в Linux. Длинные подписи сокращаются по ширине; название также видно при наведении на значок. Темы сохраняют компактные отступы и выбранный показ подписей.
 
 ### Автозапуск Linux
 

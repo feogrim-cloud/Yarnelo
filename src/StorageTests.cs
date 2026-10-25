@@ -33,6 +33,70 @@ internal static class StorageTests
         return path;
     }
 
+    private static void CheckThemeProfiles()
+    {
+        string desktop, data;
+        Store store = NewStore("theme-profiles", out desktop, out data);
+        string settings = Path.Combine(data, "settings.json");
+        File.WriteAllText(settings, "{\"Opacity\":0.43,\"CornerRadius\":7,\"IconSize\":38,\"Zoom\":1.49,\"Rows\":3,\"Placement\":\"left\",\"ShowLabels\":true,\"Items\":[{\"Id\":\"legacy-theme\",\"Name\":\"Legacy computer\",\"Path\":\"shell:MyComputerFolder\"}]}");
+        store = new Store(data, desktop);
+        Check(store.Settings.Theme == "dusk" && store.Settings.Opacity == .43 && store.Settings.CornerRadius == 7,
+            "legacy profiles keep their exact custom background under Dusk");
+        Check(store.Settings.Items.Count == 1 && store.Settings.Items[0].Id == "legacy-theme", "adding theme defaults never discards a legacy shortcut");
+        var expected = new System.Collections.Generic.Dictionary<string,double[]>();
+        expected.Add("dusk", new[] { .43, 7.0 });
+        foreach (string id in ThemeCatalog.Ids.Skip(1))
+        {
+            store.SetTheme(id);
+            Check(store.Settings.Theme == id && store.Settings.Opacity == ThemeCatalog.Opacity(id) && store.Settings.CornerRadius == ThemeCatalog.Corners(id),
+                "first selection uses the documented theme background: " + id);
+            Check(store.Settings.IconSize == 38 && store.Settings.Zoom == 1.49 && store.Settings.Rows == 3 && store.Settings.Placement == "left" && store.Settings.ShowLabels,
+                "theme choice leaves icon geometry, placement and captions unchanged: " + id);
+            double opacity = .50 + expected.Count * .07, corner = 11 + expected.Count * 9;
+            store.Settings.Opacity = opacity; store.Settings.CornerRadius = corner; store.Save();
+            expected.Add(id, new[] { opacity, corner });
+        }
+        store.SetTheme("dusk");
+        Check(store.Settings.Opacity == .43 && store.Settings.CornerRadius == 7, "Dusk restores its pre-upgrade background after other themes");
+        store = new Store(data, desktop);
+        foreach (string id in ThemeCatalog.Ids)
+        {
+            store.SetTheme(id);
+            Check(store.Settings.Opacity == expected[id][0] && store.Settings.CornerRadius == expected[id][1], "each edited background survives switching and reload: " + id);
+        }
+        Check(store.Settings.ThemeAppearances.Count == 5, "background memory has exactly the five known themes");
+        store.SetTheme("dusk");
+        byte[] before = File.ReadAllBytes(settings);
+        string previousProfiles = String.Join("|", store.Settings.ThemeAppearances.Select(value => value.Theme + ":" + value.Opacity + ":" + value.CornerRadius));
+        bool failed = false;
+        using (var locked = new FileStream(settings, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            try { store.SetTheme("aurora"); } catch (IOException) { failed = true; }
+        }
+        Check(failed && store.Settings.Theme == "dusk" && store.Settings.Opacity == .43 && store.Settings.CornerRadius == 7,
+            "failed theme persistence restores the selected theme and current background");
+        Check(previousProfiles == String.Join("|", store.Settings.ThemeAppearances.Select(value => value.Theme + ":" + value.Opacity + ":" + value.CornerRadius)) && before.SequenceEqual(File.ReadAllBytes(settings)),
+            "failed theme persistence preserves all remembered backgrounds and exact saved bytes");
+        store.Settings.Theme = "unknown-theme";
+        store.Settings.ThemeAppearances = new System.Collections.Generic.List<ThemeAppearance> {
+            null, new ThemeAppearance { Theme="unknown",Opacity=.8,CornerRadius=15 },
+            new ThemeAppearance { Theme="FROST",Opacity=Double.NaN,CornerRadius=Double.PositiveInfinity },
+            new ThemeAppearance { Theme="frost",Opacity=.9,CornerRadius=99 },
+            new ThemeAppearance { Theme="graphite",Opacity=-1,CornerRadius=900 },
+            new ThemeAppearance { Theme="ember",Opacity=5,CornerRadius=-20 },
+            new ThemeAppearance { Theme="aurora",Opacity=.6,CornerRadius=20 },
+            new ThemeAppearance { Theme="dusk",Opacity=.7,CornerRadius=30 }
+        };
+        store.Save(); store = new Store(data, desktop);
+        Check(store.Settings.Theme == "dusk" && store.Settings.Items.Count == 1, "unknown optional theme falls back without losing valid shortcuts");
+        Check(store.Settings.ThemeAppearances.Count == 5 && store.Settings.ThemeAppearances.Select(value => value.Theme).Distinct().Count() == 5,
+            "invalid, duplicate and unknown background keys normalize to five unique known entries");
+        Check(store.Settings.ThemeAppearances.All(value => Store.IsFinite(value.Opacity) && value.Opacity >= .15 && value.Opacity <= 1 && Store.IsFinite(value.CornerRadius) && value.CornerRadius >= 0 && value.CornerRadius <= 100),
+            "remembered backgrounds are finite and bounded before serialization");
+        var frost = store.Settings.ThemeAppearances.Single(value => value.Theme == "frost");
+        Check(frost.Opacity == .76 && frost.CornerRadius == 22, "invalid optional Frost values use its preset without replacing valid current values");
+    }
+
     private static void Main(string[] args)
     {
         // Original regression fixtures deliberately exercise Russian recovery names.
@@ -63,6 +127,7 @@ internal static class StorageTests
         root = Path.GetFullPath(args.Length == 0 ? "work\\test-data\\storage-" +
             DateTime.UtcNow.ToString("yyyyMMddHHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8) : args[0]);
         Directory.CreateDirectory(root);
+        CheckThemeProfiles();
         string desktop, data;
         Store store = NewStore("move", out desktop, out data);
         Check(store.IsFirstRun, "fresh directory reported as first run");

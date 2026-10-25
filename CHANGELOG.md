@@ -1,5 +1,21 @@
 # Changelog / Изменения
 
+## 1.8.0 — 2026-10-25
+
+### English
+
+- Added five themes on Windows and Linux: **Dusk**, **Frost**, **Graphite**, **Ember** and **Aurora**, covering the dock, menus and settings. Dusk preserves the original appearance, defaults and existing user background settings.
+- Each theme remembers its own background opacity and corner rounding. First-use presets for Frost, Graphite, Ember and Aurora are respectively **76% / 22**, **96% / 12**, **85% / 16** and **88% / 24**. Returning to Dusk restores its saved background.
+- Themes tune hover, click and drag motion while retaining your chosen icon size, magnification, rows, placement and compact one-line labels. Aurora's edge highlight appears during interaction; idle panels remain calm.
+- Windows applies theme changes immediately and saves them automatically. Linux applies them with **OK**; **Cancel** leaves the saved settings unchanged. Startup, automatic desktop-shortcut addition, profiles and all 14 package variants are preserved.
+
+### Русский
+
+- В Windows и Linux добавлены пять тем для панели, меню и настроек: **Dusk («Сумерки», базовая)**, **Frost («Матовое стекло»)**, **Graphite («Матовый графит»)**, **Ember («Тёмная бронза»)** и **Aurora («Ночной индиго»)**. Dusk сохраняет прежний вид, значения по умолчанию и уже выбранный пользователем фон.
+- У каждой темы запоминаются собственные непрозрачность и скругление фона. При первом выборе Frost, Graphite, Ember и Aurora используются соответственно **76% / 22**, **96% / 12**, **85% / 16** и **88% / 24**. Возврат к Dusk восстанавливает её сохранённый фон.
+- Темы задают характер анимаций наведения, нажатия и перетаскивания; выбранные размер значков, увеличение, ряды, положение и компактные однострочные подписи сохраняются. Подсветка края Aurora появляется при взаимодействии; в покое панель остаётся спокойной.
+- В Windows тема применяется сразу с автоматическим сохранением. В Linux изменения применяются по **OK**; **«Отмена»** оставляет сохранённые настройки без изменений. Автозапуск, автоматическое добавление новых ярлыков, профили и все 14 вариантов пакетов сохранены.
+
 ## 1.7.3 — 2026-10-24
 
 ### English

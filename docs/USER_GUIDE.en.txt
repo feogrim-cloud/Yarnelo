@@ -1,4 +1,4 @@
-YARNELO 1.7.3 — shortcut dock for Windows 10/11 x64,
+YARNELO 1.8.0 — shortcut dock for Windows 10/11 x64,
 Windows 10 x86 and Windows 11 ARM64
 
 Choose the package matching Settings → System → About → System type:
@@ -35,6 +35,18 @@ labels, showing above ordinary windows, and startup at sign-in.
 Settings → Show icon labels enables compact one-line captions.
 Long captions are shortened to fit; hovering an icon shows its name.
 Your previous choice of showing labels is retained.
+Settings → Theme chooses Dusk (the original dark dock), Frost (light ice),
+Graphite (matte charcoal), Ember (warm bronze) or Aurora (indigo accent).
+The dock, menus and settings change together; Windows applies the choice
+immediately and saves it automatically. Each theme remembers its own
+opacity and corner rounding. First-use presets are 76% / 22 for Frost,
+96% / 12 for Graphite, 85% / 16 for Ember and 88% / 24 for Aurora.
+Dusk keeps your current background after updating. Returning to it, or
+another theme you adjusted, restores that theme's saved background.
+Icon size, magnification, rows, position, compact labels, startup and
+automatic desktop-shortcut preferences are preserved. Themes tune hover,
+click and drag motion; Aurora highlights its edge during interaction.
+There is no idle flare. Styling uses native colors, translucency and shadows.
 Changing background opacity keeps icons readable.
 Hover animations do not restart with every pointer movement.
 Older icons with large transparent margins are fitted to their visible

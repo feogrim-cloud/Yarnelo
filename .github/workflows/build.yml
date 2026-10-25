@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Optional version to publish after all checks, for example v1.7.3
+        description: Optional version to publish after all checks, for example v1.8.0
         type: string
         default: ''
 

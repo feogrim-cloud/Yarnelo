@@ -12,6 +12,7 @@ import sys
 from yarnelo_i18n import LANGUAGES, error_text, resolve_language, text
 from yarnelo_autostart import AutostartManager, resolve_startup_command
 from yarnelo_desktop_watch import DesktopShortcutTracker
+from yarnelo_themes import THEMES, THEME_IDS, default_appearance, stylesheet
 
 from yarnelo_model import (
     VERSION, PLACEMENTS, Item, ModelError, Settings, config_path, desktop_metadata, dock_layout,
@@ -72,7 +73,7 @@ def main() -> int:
         QRect, QRectF, QSize, QStandardPaths, Qt, QTimer, QPropertyAnimation, QTranslator,
     )
     from PySide6.QtGui import (
-        QActionGroup, QColor, QFont, QFontDatabase, QIcon, QImage, QLinearGradient, QPainter, QPen, QPixmap,
+        QActionGroup, QColor, QFont, QFontDatabase, QIcon, QImage, QLinearGradient, QPainter, QPalette, QPen, QPixmap,
     )
     from PySide6.QtNetwork import QLocalServer, QLocalSocket
     from shiboken6 import isValid
@@ -88,6 +89,7 @@ def main() -> int:
     app.setOrganizationName("Yarnelo")
     app.setQuitOnLastWindowClosed(False)
     app.setStyle("Fusion")
+    legacy_palette = QPalette(app.palette())
     if args.smoke_test:
         # CPython before 3.12 has a mortal None singleton. A broken abi3 Qt
         # wheel can silently decrement it on wrapped void calls, then crash at
@@ -117,18 +119,7 @@ def main() -> int:
     asset_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent)) / "assets"
     app_icon = QIcon(str(asset_root / "Yarnelo-Icon-256.png"))
     app.setWindowIcon(app_icon)
-    app.setStyleSheet("""
-        QMenu, QDialog { background: #1c2334; color: #f2f3fc; }
-        QMenu { border: 1px solid #566078; border-radius: 9px; padding: 6px; }
-        QMenu::item { padding: 7px 22px; border-radius: 5px; }
-        QMenu::item:selected { background: #46547b; }
-        QMenu::separator { height: 1px; background: #455068; margin: 5px 9px; }
-        QSpinBox, QDoubleSpinBox, QComboBox { color: #f2f3fc; background: #303b52; padding: 4px; }
-        QComboBox QAbstractItemView { color: #f2f3fc; background: #303b52; selection-background-color: #46547b; }
-        QLabel, QCheckBox { color: #f2f3fc; }
-        QPushButton { padding: 6px 14px; }
-        QToolTip { background: #222b40; color: white; border: 1px solid #6b7891; padding: 5px; }
-    """)
+    app.setStyleSheet(stylesheet("dusk"))
 
     store = None if args.smoke_test else config_path()
     load_error = None
@@ -155,6 +146,23 @@ def main() -> int:
 
     set_qt_language(settings.language)
 
+    def theme_palette(theme):
+        palette = QPalette(legacy_palette)
+        if theme == "dusk":
+            return palette
+        value = THEMES[theme]
+        for role, color in (
+            (QPalette.ColorRole.Window, value.sheet), (QPalette.ColorRole.WindowText, value.foreground),
+            (QPalette.ColorRole.Base, value.control), (QPalette.ColorRole.AlternateBase, value.selection),
+            (QPalette.ColorRole.Text, value.foreground), (QPalette.ColorRole.Button, value.control),
+            (QPalette.ColorRole.ButtonText, value.foreground), (QPalette.ColorRole.Highlight, value.accent),
+            (QPalette.ColorRole.HighlightedText, value.accent_text), (QPalette.ColorRole.ToolTipBase, value.menu),
+            (QPalette.ColorRole.ToolTipText, value.foreground), (QPalette.ColorRole.Light, value.edge),
+            (QPalette.ColorRole.Mid, value.edge), (QPalette.ColorRole.Dark, value.surface),
+        ):
+            palette.setColor(role, QColor(color))
+        return palette
+
     class Tile(QWidget):
         def __init__(self, dock: "Dock", item: Item | None):
             super().__init__(dock)
@@ -168,15 +176,19 @@ def main() -> int:
             self.setMouseTracking(True)
             self.setCursor(Qt.CursorShape.PointingHandCursor)
             self.hover_animation = QPropertyAnimation(self, b"hover", self)
-            self.hover_animation.setDuration(190)
-            self.hover_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
             self.press_animation = QPropertyAnimation(self, b"press", self)
-            self.press_animation.setDuration(150)
-            self.press_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
             self.position_animation = QPropertyAnimation(self, b"pos", self)
-            self.position_animation.setDuration(210)
-            self.position_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+            self.configure_theme()
             self.refresh_icon()
+
+        def configure_theme(self):
+            value = THEMES[self.dock.settings.theme]
+            self.hover_animation.setDuration(value.hover_ms)
+            self.hover_animation.setEasingCurve(getattr(QEasingCurve.Type, value.hover_curve))
+            self.press_animation.setDuration(value.press_ms)
+            self.press_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+            self.position_animation.setDuration(value.move_ms)
+            self.position_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         def get_hover(self):
             return self.progress
@@ -184,6 +196,8 @@ def main() -> int:
         def set_hover(self, value):
             self.progress = value
             self.update()
+            if self.dock.settings.theme == "aurora":
+                self.dock.update()
 
         hover = Property(float, get_hover, set_hover)
 
@@ -198,6 +212,10 @@ def main() -> int:
 
         def animate(self, animation, value):
             animation.stop()
+            if animation is self.press_animation:
+                curve = QEasingCurve(QEasingCurve.Type.OutBack if self.dock.settings.theme == "ember" and value == 0 else QEasingCurve.Type.OutCubic)
+                curve.setOvershoot(.75)
+                animation.setEasingCurve(curve)
             animation.setStartValue(self.property(animation.propertyName().data().decode()))
             animation.setEndValue(value)
             animation.start()
@@ -259,10 +277,13 @@ def main() -> int:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
             base = self.dock.effective_icon_size
-            scale = (1 + (self.dock.settings.zoom - 1) * self.progress) * (1 - 0.13 * self.pressed_progress)
+            theme = THEMES[self.dock.settings.theme]
+            scale = (1 + (self.dock.settings.zoom - 1) * self.progress) * (1 - theme.press_depth * self.pressed_progress)
+            if self.dock.settings.theme != "dusk":
+                scale = min(self.dock.settings.zoom, scale)
             size = base * scale
             label_height = 17 if self.dock.settings.labels and self.width() >= 42 else 0
-            center = QPointF(self.width() / 2, (self.height() - label_height) / 2 - 2 * self.progress)
+            center = QPointF(self.width() / 2, (self.height() - label_height) / 2 - theme.lift * self.progress)
             target = QRectF(center.x() - size / 2, center.y() - size / 2, size, size)
             if self.item:
                 if not self.pixmap.isNull():
@@ -274,12 +295,14 @@ def main() -> int:
                     image_target = QRectF(center.x() - image_width / 2, center.y() - image_height / 2, image_width, image_height)
                     painter.drawPixmap(image_target, self.pixmap, QRectF(self.pixmap.rect()))
             else:
-                painter.setPen(QPen(QColor(224, 230, 250, int(175 + 65 * self.progress)), max(1.6, base / 20), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+                glyph = QColor(224, 230, 250) if self.dock.settings.theme == "dusk" else QColor(theme.foreground)
+                glyph.setAlpha(int(175 + 65 * self.progress))
+                painter.setPen(QPen(glyph, max(1.6, base / 20), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
                 arm = max(4.0, base * 0.17 * scale)
                 painter.drawLine(QPointF(center.x() - arm, center.y()), QPointF(center.x() + arm, center.y()))
                 painter.drawLine(QPointF(center.x(), center.y() - arm), QPointF(center.x(), center.y() + arm))
             if label_height:
-                painter.setPen(QColor(242, 244, 255))
+                painter.setPen(QColor(242, 244, 255) if self.dock.settings.theme == "dusk" else QColor(theme.foreground))
                 painter.setFont(QFont("", 8))
                 text = painter.fontMetrics().elidedText(self.label, Qt.TextElideMode.ElideRight, self.width() - 5)
                 painter.drawText(QRect(2, self.height() - 18, self.width() - 4, 16), Qt.AlignmentFlag.AlignCenter, text)
@@ -331,6 +354,25 @@ def main() -> int:
             layout = QVBoxLayout(self)
             layout.setContentsMargins(24, 22, 24, 20)
             layout.setSpacing(16)
+            self.preview_theme = dock.settings.theme
+            self.appearance_drafts = {name: dict(value) for name, value in dock.settings.theme_appearances.items()}
+            self.appearance_drafts[self.preview_theme] = dock.settings.appearance_for(self.preview_theme)
+            self.background_dirty = set()
+            self.loading_background = False
+            theme_row = QHBoxLayout()
+            self.theme_label = QLabel()
+            self.theme_choice = QComboBox()
+            for name in THEME_IDS:
+                swatch = QPixmap(18, 14)
+                swatch.fill(QColor(THEMES[name].surface))
+                swatch_painter = QPainter(swatch)
+                swatch_painter.fillRect(12, 0, 6, 14, QColor(THEMES[name].accent))
+                swatch_painter.end()
+                self.theme_choice.addItem(QIcon(swatch), "", name)
+            self.theme_choice.setCurrentIndex(THEME_IDS.index(self.preview_theme))
+            theme_row.addWidget(self.theme_label)
+            theme_row.addWidget(self.theme_choice, 1)
+            layout.addLayout(theme_row)
             columns = QHBoxLayout()
             columns.setSpacing(28)
             self.headings, self.field_labels, self.fields = {}, {}, []
@@ -393,7 +435,7 @@ def main() -> int:
                 heading.addWidget(label, 1)
                 if value_format:
                     value = QLabel(value_format(widget.value()))
-                    value.setStyleSheet("color: #b8c6e2;")
+                    value.setProperty("tone", "muted")
                     widget.valueChanged.connect(lambda number: value.setText(value_format(number)))
                     heading.addWidget(value)
                 group.addLayout(heading)
@@ -404,7 +446,7 @@ def main() -> int:
             add_field(0, "corner_radius", self.corners, str)
             self.corner_note = QLabel()
             self.corner_note.setWordWrap(True)
-            self.corner_note.setStyleSheet("color: #b8c6e2;")
+            self.corner_note.setProperty("tone", "muted")
             self.columns[0].addWidget(self.corner_note)
             add_field(0, "icon_size", self.icon_size)
             add_field(0, "hover_zoom", self.zoom)
@@ -412,7 +454,7 @@ def main() -> int:
             add_field(1, "row_count", self.rows)
             self.rows_note = QLabel()
             self.rows_note.setWordWrap(True)
-            self.rows_note.setStyleSheet("color: #b8c6e2;")
+            self.rows_note.setProperty("tone", "muted")
             self.columns[1].addWidget(self.rows_note)
             self.columns[1].addWidget(self.labels)
             self.columns[1].addWidget(self.startup)
@@ -421,13 +463,54 @@ def main() -> int:
                 column.addStretch(1)
             self.note = QLabel()
             self.note.setWordWrap(True)
-            self.note.setStyleSheet("color: #b8c6e2;")
+            self.note.setProperty("tone", "muted")
             layout.addWidget(self.note)
             self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+            self.buttons.button(QDialogButtonBox.StandardButton.Ok).setObjectName("primaryButton")
             self.buttons.accepted.connect(self.accept)
             self.buttons.rejected.connect(self.reject)
             layout.addWidget(self.buttons)
             self.retranslate()
+            self.theme_choice.currentIndexChanged.connect(self.choose_theme)
+            self.opacity.valueChanged.connect(lambda: self.background_dirty.add("opacity") if not self.loading_background else None)
+            self.corners.valueChanged.connect(lambda: self.background_dirty.add("corner_radius") if not self.loading_background else None)
+
+        def remember_background(self):
+            value = dict(self.appearance_drafts[self.preview_theme])
+            if "opacity" in self.background_dirty:
+                value["opacity"] = self.opacity.value() / 100
+            if "corner_radius" in self.background_dirty:
+                value["corner_radius"] = float(self.corners.value())
+            self.appearance_drafts[self.preview_theme] = value
+            return value
+
+        def choose_theme(self, index):
+            self.remember_background()
+            self.preview_theme = self.theme_choice.itemData(index)
+            value = self.appearance_drafts.setdefault(self.preview_theme, default_appearance(self.preview_theme))
+            self.loading_background = True
+            try:
+                self.opacity.setValue(round(value["opacity"] * 100))
+                self.corners.setValue(round(value["corner_radius"]))
+            finally:
+                self.loading_background = False
+            self.background_dirty.clear()
+            self.fit_available_screen()
+
+        def restore_theme(self, settings):
+            self.preview_theme = settings.theme
+            self.appearance_drafts = {name: dict(value) for name, value in settings.theme_appearances.items()}
+            value = settings.appearance_for(settings.theme)
+            self.appearance_drafts[settings.theme] = value
+            previous = self.theme_choice.blockSignals(True)
+            self.theme_choice.setCurrentIndex(THEME_IDS.index(settings.theme))
+            self.theme_choice.blockSignals(previous)
+            self.loading_background = True
+            self.opacity.setValue(round(value["opacity"] * 100))
+            self.corners.setValue(round(value["corner_radius"]))
+            self.loading_background = False
+            self.background_dirty.clear()
+            self.fit_available_screen()
 
         def accept(self):
             # Applying before accepting keeps a failed change visible and lets
@@ -444,7 +527,9 @@ def main() -> int:
             # both columns visible, reducing spacing/font only on small areas.
             small = bounds.width() < 720 or bounds.height() < 500
             compact = bounds.height() < 380
-            self.setStyleSheet("QLabel, QCheckBox, QSpinBox, QDoubleSpinBox, QComboBox, QPushButton { font-size: 10px; } QSpinBox, QDoubleSpinBox, QComboBox { padding: 2px; } QPushButton { padding: 3px 10px; }" if compact else "")
+            compact_style = "QLabel, QCheckBox, QSpinBox, QDoubleSpinBox, QComboBox, QPushButton { font-size: 10px; } QSpinBox, QDoubleSpinBox, QComboBox { padding: 2px; } QPushButton { padding: 3px 10px; }" if compact else ""
+            self.setPalette(theme_palette(self.preview_theme))
+            self.setStyleSheet(stylesheet(self.preview_theme) + compact_style)
             font = QFont(self.base_font)
             if small:
                 font.setPointSizeF(7.0 if compact else max(7.0, min(9.0, font.pointSizeF())))
@@ -471,6 +556,10 @@ def main() -> int:
             self.setLocale(QLocale(resolve_language(self.dock.settings.language)))
             self.zoom.setLocale(self.locale())
             self.labels.setText(self.dock.t("show_labels"))
+            self.theme_label.setText(self.dock.t("theme"))
+            self.theme_choice.setToolTip(self.dock.t("theme_help"))
+            for index, name in enumerate(THEME_IDS):
+                self.theme_choice.setItemText(index, self.dock.t(f"theme_{name}"))
             self.startup.setText(self.dock.t("start_at_login"))
             self.startup.setToolTip(self.dock.describe_error(self.startup_error) if self.startup_error else self.dock.t("startup_help"))
             self.auto_add_desktop.setText(self.dock.t("auto_add_desktop"))
@@ -545,6 +634,7 @@ def main() -> int:
                 self.tray.setContextMenu(menu)
                 self.tray.activated.connect(lambda reason: self.show_passive() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
                 self.tray.show()
+            self.apply_theme()
             self.apply_language()
             # A bound QObject method is disconnected with its receiver. Avoid
             # application-owned lambdas retaining the dock past Qt shutdown.
@@ -589,6 +679,14 @@ def main() -> int:
 
         def describe_error(self, error):
             return error_text(error, self.settings.language)
+
+        def apply_theme(self):
+            app.setPalette(theme_palette(self.settings.theme))
+            app.setStyleSheet(stylesheet(self.settings.theme))
+            for tile in [*self.tiles.values(), self.add_tile]:
+                tile.configure_theme()
+                tile.update()
+            self.update()
 
         def add_action(self, menu, key, callback):
             action = menu.addAction(self.t(key), callback)
@@ -727,14 +825,29 @@ def main() -> int:
             rect = QRectF(self.rect()).adjusted(1, 1, -1, -1)
             background = QLinearGradient(rect.topLeft(), rect.bottomRight())
             alpha = round(255 * self.settings.opacity)
-            background.setColorAt(0, QColor(42, 49, 70, alpha))
-            background.setColorAt(1, QColor(17, 25, 43, alpha))
+            theme = THEMES[self.settings.theme]
+            top, bottom = QColor(theme.surface), QColor(theme.bottom)
+            top.setAlpha(alpha)
+            bottom.setAlpha(alpha)
+            background.setColorAt(0, top)
+            background.setColorAt(1, bottom)
             painter.setBrush(background)
-            painter.setPen(QPen(QColor(222, 232, 255, max(35, alpha // 2)), 1))
+            edge = QColor(222, 232, 255, max(35, alpha // 2))
+            if self.settings.theme != "dusk":
+                edge = QColor(theme.edge)
+                edge.setAlpha(max(75, alpha // 2))
+                if self.settings.theme == "aurora":
+                    influence = max((tile.progress for tile in [*self.tiles.values(), self.add_tile]), default=0)
+                    edge = QColor(theme.accent)
+                    edge.setAlpha(round(60 + 95 * min(1, max(0, influence))))
+            painter.setPen(QPen(edge, 1))
             radius = min(rect.width(), rect.height()) / 2 if self.settings.corner_radius >= 100 else min(self.settings.corner_radius, min(rect.width(), rect.height()) / 2)
             painter.drawRoundedRect(rect, radius, radius)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(221, 229, 255, 95))
+            handle = QColor(221, 229, 255, 95) if self.settings.theme == "dusk" else QColor(theme.foreground)
+            if self.settings.theme != "dusk":
+                handle.setAlpha(110)
+            painter.setBrush(handle)
             if self.layout_geometry.vertical:
                 for x in (-7, 0, 7):
                     for y in (11, 17):
@@ -747,8 +860,13 @@ def main() -> int:
                 dragged = next((tile for tile in self.tiles.values() if tile.dragging), None)
                 if dragged:
                     placeholder = QRectF(dragged.rect()).translated(self.positions[dragged.item.id]).adjusted(6, 6, -6, -6)
-                    painter.setBrush(QColor(143, 163, 240, 22))
-                    painter.setPen(QPen(QColor(180, 198, 250, 110), 1, Qt.PenStyle.DashLine))
+                    fill, stroke = QColor(143, 163, 240, 22), QColor(180, 198, 250, 110)
+                    if self.settings.theme != "dusk":
+                        fill, stroke = QColor(theme.accent), QColor(theme.accent)
+                        fill.setAlpha(26)
+                        stroke.setAlpha(145)
+                    painter.setBrush(fill)
+                    painter.setPen(QPen(stroke, 1, Qt.PenStyle.DashLine))
                     painter.drawRoundedRect(placeholder, 12, 12)
 
         def begin_drag(self, tile):
@@ -1011,15 +1129,19 @@ def main() -> int:
                         self.autostart.set_enabled(dialog.startup.isChecked())
                     self.settings.launch_at_login = self.autostart.enabled
                 self.settings.rows = dialog.rows.value()
-                self.settings.opacity = dialog.opacity.value() / 100
+                appearance = dialog.remember_background()
+                self.settings.theme = dialog.preview_theme
+                self.settings.theme_appearances = {name: dict(value) for name, value in dialog.appearance_drafts.items()}
+                self.settings.opacity = appearance["opacity"]
                 self.settings.icon_size = dialog.icon_size.value()
                 self.settings.zoom = dialog.zoom.value()
                 self.settings.labels = dialog.labels.isChecked()
                 self.settings.auto_add_desktop_shortcuts = dialog.auto_add_desktop.isChecked()
-                self.settings.corner_radius = dialog.corners.value()
+                self.settings.corner_radius = appearance["corner_radius"]
                 self.settings.placement = dialog.placement.currentData()
                 if self.persist():
                     dialog.startup_initial = self.settings.launch_at_login
+                    self.apply_theme()
                     self.relayout(True)
                     if previous.auto_add_desktop_shortcuts != self.settings.auto_add_desktop_shortcuts:
                         self.configure_desktop_tracking()
@@ -1029,6 +1151,7 @@ def main() -> int:
             # Preserve the same Settings object: tiles and live menus refer to
             # it, and a failed disk write must not change the running dock.
             self.settings.__dict__.update(previous.__dict__)
+            dialog.restore_theme(previous)
             if previous_enabled is not None:
                 try:
                     if self.autostart.enabled != previous_enabled:
@@ -1258,6 +1381,73 @@ def main() -> int:
                 dock.settings_dialog = None
                 current.deleteLater()
 
+            # Theme drafts belong to this dialog until OK. Switching back must
+            # retain unsaved per-theme sliders without touching the live dock.
+            original_profile = settings.to_dict()
+            original_bytes = dock.store.read_bytes()
+            original_style = app.styleSheet()
+            dialog = startup_dialog()
+            dialog.theme_choice.setCurrentIndex(THEME_IDS.index("frost"))
+            if (dialog.opacity.value(), dialog.corners.value()) != (76, 22) or settings.theme != "dusk" or app.styleSheet() != original_style:
+                raise RuntimeError("A theme preview changed the live dock or ignored its first preset")
+            if dialog.palette().color(QPalette.ColorRole.Window).name().upper() != THEMES["frost"].sheet:
+                raise RuntimeError("The light settings preview did not use its readable palette")
+            dialog.opacity.setValue(51)
+            dialog.corners.setValue(0)
+            dialog.theme_choice.setCurrentIndex(THEME_IDS.index("graphite"))
+            if (dialog.opacity.value(), dialog.corners.value()) != (96, 12):
+                raise RuntimeError("A first theme choice did not use its preset background")
+            dialog.opacity.setValue(83)
+            dialog.corners.setValue(100)
+            dialog.theme_choice.setCurrentIndex(THEME_IDS.index("frost"))
+            if (dialog.opacity.value(), dialog.corners.value()) != (51, 0):
+                raise RuntimeError("Switching themes lost unsaved background values")
+            dialog.reject()
+            discard_dialog(dialog)
+            if settings.to_dict() != original_profile or dock.store.read_bytes() != original_bytes or app.styleSheet() != original_style:
+                raise RuntimeError("Cancel saved a theme or changed the live style")
+            for index, name in enumerate(THEME_IDS[1:], 1):
+                dialog = startup_dialog()
+                dialog.theme_choice.setCurrentIndex(THEME_IDS.index(name))
+                preset = THEMES[name]
+                if (dialog.opacity.value(), dialog.corners.value()) != (round(preset.opacity * 100), round(preset.corner_radius)):
+                    raise RuntimeError("An unvisited theme did not use its preset")
+                dialog.opacity.setValue(46 + index * 5)
+                dialog.corners.setValue(index * 7)
+                dialog.accept()
+                if dialog.result() != QDialog.DialogCode.Accepted or load_settings(dock.store).theme != name or app.styleSheet() != stylesheet(name):
+                    raise RuntimeError("OK did not persist and apply the selected theme")
+                if dock.add_tile.hover_animation.duration() != preset.hover_ms or dock.add_tile.press_animation.duration() != preset.press_ms or dock.add_tile.position_animation.duration() != preset.move_ms:
+                    raise RuntimeError("A theme did not apply its animation durations")
+                if (settings.rows, settings.icon_size, settings.zoom, settings.placement, settings.labels) != tuple(original_profile[key] for key in ("rows", "icon_size", "zoom", "placement", "labels")):
+                    raise RuntimeError("Choosing a theme changed a global layout preference")
+                discard_dialog(dialog)
+            dialog = startup_dialog()
+            dialog.theme_choice.setCurrentIndex(THEME_IDS.index("dusk"))
+            dialog.accept()
+            discard_dialog(dialog)
+            if settings.opacity != original_profile["opacity"] or settings.corner_radius != original_profile["corner_radius"]:
+                raise RuntimeError("Returning to Dusk did not retain the original background")
+            saved_profile, saved_bytes, saved_style = settings.to_dict(), dock.store.read_bytes(), app.styleSheet()
+            dialog = startup_dialog()
+            dialog.theme_choice.setCurrentIndex(THEME_IDS.index("frost"))
+            if (dialog.opacity.value(), dialog.corners.value()) != (51, 7):
+                raise RuntimeError("A reopened dialog did not remember its theme background")
+            dialog.opacity.setValue(88)
+            dialog.corners.setValue(0)
+            dock.persist = lambda: False
+            try:
+                dialog.accept()
+            finally:
+                dock.persist = original_persist
+            if dialog.result() == QDialog.DialogCode.Accepted or settings.to_dict() != saved_profile or dock.store.read_bytes() != saved_bytes or app.styleSheet() != saved_style or dialog.preview_theme != "dusk" or dialog.theme_choice.currentData() != "dusk":
+                raise RuntimeError("A failed theme save did not restore the profile, background and style")
+            discard_dialog(dialog)
+            settings.__dict__.update(Settings.from_dict(original_profile).__dict__)
+            dock.apply_theme()
+            dock.relayout()
+            dock.persist()
+
             # Enable via OK, then read both the actual XDG file and its saved
             # mirror. No user directories or real session startup are involved.
             dialog = startup_dialog()
@@ -1471,6 +1661,7 @@ def main() -> int:
         original_screen = dock.current_screen
         original_items, original_rows = list(settings.items), settings.rows
         original_placement, original_corners = settings.placement, settings.corner_radius
+        original_theme, original_opacity = settings.theme, settings.opacity
 
         class ScreenFixture:
             def __init__(self):
@@ -1485,7 +1676,10 @@ def main() -> int:
         settings.items = [Item(f"layout-{index}", "computer") for index in range(30)]
         settings.rows, settings.labels = 1, True
         dock.rebuild()
-        for labels in (False, True):
+        for name, labels in ((name, labels) for name in THEME_IDS for labels in (False, True)):
+            settings.theme = name
+            settings.opacity, settings.corner_radius = THEMES[name].opacity, THEMES[name].corner_radius
+            dock.apply_theme()
             settings.labels = labels
             for width, height in ((1280, 720), (640, 360)):
                 fixture.bounds = QRect(-width, 50, width, height)
@@ -1498,6 +1692,26 @@ def main() -> int:
                     for tile in [*dock.tiles.values(), dock.add_tile]:
                         if not dock.rect().contains(tile.geometry()):
                             raise RuntimeError("Label visibility clipped an icon on a small work area")
+                    if name == "aurora":
+                        before = QImage(dock.size(), QImage.Format.Format_ARGB32)
+                        before.fill(Qt.GlobalColor.transparent)
+                        dock.render(before)
+                        first_tile = next(iter(dock.tiles.values()))
+                        first_tile.set_hover(1)
+                        after = QImage(dock.size(), QImage.Format.Format_ARGB32)
+                        after.fill(Qt.GlobalColor.transparent)
+                        dock.render(after)
+                        if before.pixelColor(1, dock.height() // 2) == after.pixelColor(1, dock.height() // 2):
+                            raise RuntimeError("Aurora's edge did not react to hover")
+                        first_tile.set_hover(0)
+                    if args.smoke_output and width == 1280 and not labels and placement == "bottom":
+                        preview = QImage(dock.size(), QImage.Format.Format_ARGB32)
+                        preview.fill(Qt.GlobalColor.transparent)
+                        dock.render(preview)
+                        args.smoke_output.parent.mkdir(parents=True, exist_ok=True)
+                        preview.save(str(args.smoke_output.with_name(f"{args.smoke_output.stem}-theme-{name}.png")), "PNG")
+        settings.theme, settings.opacity = original_theme, original_opacity
+        dock.apply_theme()
         settings.labels = True
         fixture.bounds = QRect(-1280, 50, 1280, 720)
         for placement in ("top", "bottom", "left", "right"):
@@ -1539,7 +1753,10 @@ def main() -> int:
                 raise RuntimeError("A background rounding option could not render")
         for width, height in ((1280, 720), (640, 480), (640, 360)):
             fixture.bounds = QRect(-width, 20, width, height)
-            for language in ("en", "ru"):
+            for language, name in ((language, name) for language in ("en", "ru") for name in THEME_IDS):
+                settings.theme = name
+                settings.opacity, settings.corner_radius = THEMES[name].opacity, THEMES[name].corner_radius
+                dock.apply_theme()
                 dock.change_language(language)
                 dialog = SettingsDialog(dock)
                 dialog.show()
@@ -1548,7 +1765,9 @@ def main() -> int:
                 app.processEvents()
                 if not fixture.bounds.contains(dialog.frameGeometry()):
                     raise RuntimeError(f"Settings did not fit the {width}x{height} work area ({language})")
-                widgets = [dialog.rows, dialog.opacity, dialog.corners, dialog.icon_size, dialog.zoom, dialog.placement, dialog.labels, dialog.startup, dialog.auto_add_desktop, dialog.buttons, dialog.note, dialog.rows_note, dialog.corner_note, *dialog.field_labels.values(), *dialog.headings.values()]
+                if dialog.theme_choice.currentData() != name or dialog.theme_choice.count() != 5 or dialog.theme_label.text() != text("theme", language):
+                    raise RuntimeError("The theme picker did not retain its choice or translation")
+                widgets = [dialog.theme_label, dialog.theme_choice, dialog.rows, dialog.opacity, dialog.corners, dialog.icon_size, dialog.zoom, dialog.placement, dialog.labels, dialog.startup, dialog.auto_add_desktop, dialog.buttons, dialog.note, dialog.rows_note, dialog.corner_note, *dialog.field_labels.values(), *dialog.headings.values()]
                 for widget in widgets:
                     rect = QRect(widget.mapTo(dialog, QPoint()), widget.size())
                     if not dialog.rect().contains(rect):
@@ -1560,13 +1779,15 @@ def main() -> int:
                     preview.fill(Qt.GlobalColor.transparent)
                     dialog.render(preview)
                     args.smoke_output.parent.mkdir(parents=True, exist_ok=True)
-                    suffix = "-compact" if width == 640 else ""
+                    suffix = ("" if name == "dusk" else f"-{name}") + ("-compact" if width == 640 else "")
                     preview.save(str(args.smoke_output.with_name(f"{args.smoke_output.stem}-settings{suffix}-{language}.png")), "PNG")
                 dialog.close()
                 dialog.deleteLater()
         dock.current_screen = original_screen
         settings.items, settings.rows = original_items, original_rows
         settings.placement, settings.corner_radius = original_placement, original_corners
+        settings.theme, settings.opacity = original_theme, original_opacity
+        dock.apply_theme()
         dock.change_language(args.language or "auto")
         dock.rebuild()
         app.processEvents()

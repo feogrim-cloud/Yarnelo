@@ -15,6 +15,37 @@ using System.Diagnostics;
 using Forms = System.Windows.Forms;
 
 namespace Polka {
+    internal sealed class ThemePalette {
+        static readonly Dictionary<string,ThemePalette> cache=new Dictionary<string,ThemePalette>();
+        internal string Id;
+        internal Color Surface, Foreground, Accent, Muted, Stroke, Menu, MenuStroke, Hint, HintStroke, Highlight, Choice, Selected, SelectedBorder, Handle, Empty, Plus, Divider;
+        internal bool Original { get { return Id=="dusk"; } }
+        internal static Color Hex(string value) { return (Color)ColorConverter.ConvertFromString(value); }
+        internal static string Text(Color color) { return "#"+color.A.ToString("X2")+color.R.ToString("X2")+color.G.ToString("X2")+color.B.ToString("X2"); }
+        internal static Color Mix(Color first,Color second,double amount) {
+            return Color.FromRgb((byte)Math.Round(first.R+(second.R-first.R)*amount),(byte)Math.Round(first.G+(second.G-first.G)*amount),(byte)Math.Round(first.B+(second.B-first.B)*amount));
+        }
+        internal static SolidColorBrush Brush(Color color) { return new SolidColorBrush(color); }
+        internal Color AccentText { get { return Id=="frost"?Colors.White:Surface; } }
+        internal static ThemePalette For(string theme) {
+            string id=ThemeCatalog.Normalize(theme);
+            lock(cache) { ThemePalette palette; if(!cache.TryGetValue(id,out palette)) { palette=Create(id); cache.Add(id,palette); } return palette; }
+        }
+        static ThemePalette Create(string theme) {
+            string id=ThemeCatalog.Normalize(theme);
+            if(id=="dusk") return new ThemePalette { Id=id, Surface=Hex("#191D28"), Foreground=Colors.White, Accent=Hex("#74A1FF"), Muted=Hex("#9EAAC2"), Stroke=Hex("#424B60"), Menu=Hex("#232733"), MenuStroke=Hex("#484F63"), Hint=Hex("#202532"), HintStroke=Hex("#4B566D"), Highlight=Hex("#3B527B"), Choice=Hex("#242B3A"), Selected=Hex("#3A5891"), SelectedBorder=Hex("#74A1FF"), Handle=Hex("#979FB3"), Empty=Hex("#C0C8D9"), Plus=Hex("#B8C6E0"), Divider=Color.FromArgb(45,255,255,255) };
+            string background=id=="frost"?"#EEF6FD":id=="graphite"?"#191C20":id=="ember"?"#37241F":"#17182F";
+            string foreground=id=="frost"?"#203340":id=="graphite"?"#E6E8EC":id=="ember"?"#F0E1D0":"#ECEAFC";
+            string accent=id=="frost"?"#357CBA":id=="graphite"?"#AAD0BD":id=="ember"?"#EAB981":"#C2B0FF";
+            var p=new ThemePalette { Id=id, Surface=Hex(background), Foreground=Hex(foreground), Accent=Hex(accent) };
+            p.Muted=Mix(p.Surface,p.Foreground,.68); p.Stroke=Mix(p.Surface,p.Foreground,.20);
+            p.Menu=p.Hint=p.Surface; p.MenuStroke=p.HintStroke=p.Stroke; p.Highlight=Mix(p.Surface,p.Accent,.21);
+            p.Choice=Mix(p.Surface,p.Foreground,.065); p.Selected=Mix(p.Surface,p.Accent,.24); p.SelectedBorder=p.Accent;
+            p.Handle=p.Muted; p.Empty=p.Foreground; p.Plus=p.Muted; p.Divider=Color.FromArgb(45,p.Foreground.R,p.Foreground.G,p.Foreground.B);
+            return p;
+        }
+    }
+
     public class DockWindow : Window {
         internal Store Store;
         Border glass;
@@ -37,7 +68,7 @@ namespace Polka {
         int layoutRows, layoutColumns;
         DockLayout layout;
         bool verticalDock;
-        bool ready, moving, exiting, helperRunning;
+        bool ready, moving, exiting, helperRunning, externalDragFeedback;
         Point pressPoint;
         IconView pressed;
         readonly Stopwatch animationClock=Stopwatch.StartNew();
@@ -54,7 +85,8 @@ namespace Polka {
         const string ItemFormat="Polka.Reorder.Id";
         // Own the full popup surface; the system template paints a separate
         // light icon/checkmark gutter even when its background is changed.
-        static readonly ResourceDictionary MenuTheme=(ResourceDictionary)System.Windows.Markup.XamlReader.Parse(@"
+        static readonly Dictionary<string,ResourceDictionary> menuThemes=new Dictionary<string,ResourceDictionary>();
+        const string MenuThemeSource=@"
             <ResourceDictionary xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
                 <ControlTemplate x:Key='MenuSurface' TargetType='{x:Type ContextMenu}'>
                     <Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}'
@@ -101,7 +133,20 @@ namespace Polka {
                         <Setter.Value><ControlTemplate TargetType='{x:Type Separator}'><Border Height='1' Background='#454F65' Margin='8,4,8,4'/></ControlTemplate></Setter.Value>
                     </Setter>
                 </Style>
-            </ResourceDictionary>");
+            </ResourceDictionary>";
+
+        internal ThemePalette Palette { get { return ThemePalette.For(Store.Settings.Theme); } }
+        ThemeMotion Motion { get { return ThemeMotion.For(Store.Settings.Theme); } }
+        ResourceDictionary MenuTheme {
+            get {
+                var palette=Palette; ResourceDictionary result;
+                if(!menuThemes.TryGetValue(palette.Id,out result)) {
+                    string source=MenuThemeSource.Replace("#232733",ThemePalette.Text(palette.Menu)).Replace("#484F63",ThemePalette.Text(palette.MenuStroke)).Replace("#3B527B",ThemePalette.Text(palette.Highlight)).Replace("#454F65",ThemePalette.Text(palette.Original?ThemePalette.Hex("#454F65"):palette.Stroke));
+                    result=(ResourceDictionary)System.Windows.Markup.XamlReader.Parse(source); menuThemes.Add(palette.Id,result);
+                }
+                return result;
+            }
+        }
 
         internal class IconView {
             public DockItem Item;
@@ -111,6 +156,7 @@ namespace Polka {
             public TranslateTransform Translate;
             public TranslateTransform Shift;
             public TranslateTransform LabelTranslate;
+            public DropShadowEffect HoverGlow;
             public MotionValue SizeMotion=new MotionValue(1), LiftMotion=new MotionValue(0), ShiftMotion=new MotionValue(0), ShiftYMotion=new MotionValue(0), AlphaMotion=new MotionValue(1);
             public double HoverScale=1, HoverLift, ClickStarted=-1;
             public double ScaleResponse=25;
@@ -144,7 +190,7 @@ namespace Polka {
             root.Children.Add(notice); Content=root;
             AllowDrop=true;
             PreviewDragOver += OnDragOver;
-            PreviewDragLeave += delegate { glass.BorderBrush=NormalStroke(); };
+            PreviewDragLeave += delegate { externalDragFeedback=false; glass.BorderBrush=NormalStroke(); };
             PreviewDrop += OnDrop;
             root.MouseMove += OnHoverMove;
             root.MouseLeave += delegate { if(!internalDrag && pressed==null) ResetMagnification(); };
@@ -196,26 +242,35 @@ namespace Polka {
             Closed += delegate { StopDesktopWatcher(); StopRendering(); if(internalDrag) Mouse.Capture(null); if(host!=null) host.Dispose(); if(recycleTimer!=null) recycleTimer.Stop(); noticeTimer.Stop(); if(tray!=null) tray.Dispose(); Application.Current.Shutdown(); };
         }
 
-        SolidColorBrush NormalStroke() { return new SolidColorBrush(Color.FromArgb(75,255,255,255)); }
+        SolidColorBrush NormalStroke() { var p=Palette; return ThemePalette.Brush(p.Original?Color.FromArgb(75,255,255,255):Color.FromArgb(95,p.Accent.R,p.Accent.G,p.Accent.B)); }
         internal static Button PlainButton(object content,string help) {
+            return PlainButton(content,help,ThemePalette.For("dusk"));
+        }
+        internal static Button PlainButton(object content,string help,ThemePalette palette) {
             var button=new Button { Content=content, Background=Brushes.Transparent, BorderThickness=new Thickness(0),
-                Foreground=Brushes.White, Cursor=Cursors.Hand, Padding=new Thickness(0), ToolTip=help,
+                Foreground=ThemePalette.Brush(palette.Foreground), Cursor=Cursors.Hand, Padding=new Thickness(0), ToolTip=help,
                 FocusVisualStyle=null, HorizontalContentAlignment=HorizontalAlignment.Center, VerticalContentAlignment=VerticalAlignment.Center };
             button.Template=(ControlTemplate)System.Windows.Markup.XamlReader.Parse(
-                "<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'><Border x:Name='body' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' Background='{TemplateBinding Background}' CornerRadius='9' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='{TemplateBinding VerticalContentAlignment}'/></Border><ControlTemplate.Triggers><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='body' Property='Background' Value='#405E9BFF'/></Trigger></ControlTemplate.Triggers></ControlTemplate>");
+                "<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'><Border x:Name='body' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' Background='{TemplateBinding Background}' CornerRadius='9' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='{TemplateBinding VerticalContentAlignment}'/></Border><ControlTemplate.Triggers><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='body' Property='Background' Value='"+(palette.Original?"#405E9BFF":ThemePalette.Text(Color.FromArgb(64,palette.Accent.R,palette.Accent.G,palette.Accent.B)))+"'/></Trigger></ControlTemplate.Triggers></ControlTemplate>");
             ToolTipService.SetInitialShowDelay(button,250); ToolTipService.SetBetweenShowDelay(button,80);
-            button.ToolTip=new ToolTip { Content=help, Background=new SolidColorBrush(Color.FromRgb(32,37,50)), Foreground=Brushes.White,
-                BorderBrush=new SolidColorBrush(Color.FromRgb(75,86,109)), Padding=new Thickness(10,6,10,6), FontSize=12 };
+            button.ToolTip=new ToolTip { Content=help, Background=ThemePalette.Brush(palette.Hint), Foreground=ThemePalette.Brush(palette.Foreground),
+                BorderBrush=ThemePalette.Brush(palette.HintStroke), Padding=new Thickness(10,6,10,6), FontSize=12 };
             ToolTipService.SetPlacement(button,System.Windows.Controls.Primitives.PlacementMode.Top);
             ToolTipService.SetVerticalOffset(button,-9);
             System.Windows.Automation.AutomationProperties.SetName(button,help);
             return button;
         }
+        Button DockButton(object content,string help) { return PlainButton(content,help,Palette); }
 
         internal void ApplySettings() {
             ApplySettings(Native.WorkingArea(this));
         }
         internal void ApplySettings(Rect area) {
+            var palette=Palette;
+            Foreground=ThemePalette.Brush(palette.Foreground);
+            glass.BorderBrush=NormalStroke();
+            notice.Foreground=ThemePalette.Brush(palette.Foreground);
+            notice.Background=ThemePalette.Brush(palette.Original?Color.FromArgb(245,30,33,44):Color.FromArgb(245,palette.Menu.R,palette.Menu.G,palette.Menu.B));
             bool wasVertical=verticalDock;
             verticalDock=Store.Settings.Placement=="left" || Store.Settings.Placement=="right";
             layout=DockLayout.Create(Store.Settings.Items.Count,Store.Settings.Rows,Store.Settings.IconSize,Store.Settings.Zoom,
@@ -240,8 +295,8 @@ namespace Polka {
                 if(wasVertical && !double.IsNaN(centerY) && !double.IsInfinity(centerY)) Top=centerY-Height/2;
                 else if(!double.IsNaN(bottom) && !double.IsInfinity(bottom)) Top=bottom-Height;
             }
-            glass.Background=new LinearGradientBrush(Color.FromArgb((byte)(Store.Settings.Opacity*255),43,47,60),
-                Color.FromArgb((byte)(Store.Settings.Opacity*255),21,24,34),verticalDock?0:90);
+            glass.Background=palette.Original?(Brush)new LinearGradientBrush(Color.FromArgb((byte)(Store.Settings.Opacity*255),43,47,60),
+                Color.FromArgb((byte)(Store.Settings.Opacity*255),21,24,34),verticalDock?0:90):ThemePalette.Brush(Color.FromArgb((byte)(Store.Settings.Opacity*255),palette.Surface.R,palette.Surface.G,palette.Surface.B));
             Topmost=Store.Settings.AlwaysOnTop;
             RenderIcons();
             ContextMenu=BuildDockMenu();
@@ -318,7 +373,9 @@ namespace Polka {
             FinishLanding();
             var previousIds=new HashSet<string>(views.Select(x=>x.Item.Id));
             strip.Children.Clear(); views.Clear(); pressed=null;
-            var handle=PlainButton(new TextBlock { Text="⠿", FontSize=21, Foreground=new SolidColorBrush(Color.FromRgb(151,159,179)) },L10n.T("MoveDock"));
+            var palette=Palette;
+            var motion=Motion;
+            var handle=DockButton(new TextBlock { Text="⠿", FontSize=21, Foreground=ThemePalette.Brush(palette.Handle) },L10n.T("MoveDock"));
             handle.Width=verticalDock?effectiveSize+8:19; handle.Height=verticalDock?19:effectiveSize+8;
             handle.VerticalAlignment=VerticalAlignment.Center; handle.HorizontalAlignment=HorizontalAlignment.Center;
             handle.PreviewMouseLeftButtonDown += delegate(object s,MouseButtonEventArgs e) { MoveDock(e); };
@@ -328,8 +385,8 @@ namespace Polka {
             if(Store.Settings.Items.Count==0) {
                 var emptyText=new TextBlock { Text=L10n.T("DropShortcuts"), FontSize=12, TextAlignment=TextAlignment.Center,
                     TextWrapping=TextWrapping.Wrap, TextTrimming=TextTrimming.CharacterEllipsis,
-                    Foreground=new SolidColorBrush(Color.FromRgb(192,200,217)) };
-                var empty=PlainButton(emptyText,L10n.T("AddShortcuts"));
+                    Foreground=ThemePalette.Brush(palette.Empty) };
+                var empty=DockButton(emptyText,L10n.T("AddShortcuts"));
                 empty.Width=verticalDock?effectiveSize+10:Math.Max(24,Width-122);
                 empty.Height=effectiveSize+8;
                 emptyText.MaxWidth=empty.Width; emptyText.MaxHeight=empty.Height;
@@ -348,6 +405,8 @@ namespace Polka {
                 var transform=new TransformGroup(); transform.Children.Add(v.Scale); transform.Children.Add(v.Translate);
                 v.Image=new Image { Width=effectiveSize, Height=effectiveSize, Stretch=Stretch.Uniform,
                     RenderTransform=transform, RenderTransformOrigin=ScaleOrigin(), IsHitTestVisible=false };
+                v.ScaleResponse=motion.Response;
+                if(palette.Id=="aurora") { v.HoverGlow=new DropShadowEffect { Color=palette.Accent, BlurRadius=15, ShadowDepth=0, Opacity=0 }; v.Image.Effect=v.HoverGlow; }
                 RenderOptions.SetBitmapScalingMode(v.Image,BitmapScalingMode.HighQuality);
                 var stack=new StackPanel { Orientation=Orientation.Vertical, HorizontalAlignment=HorizontalAlignment.Center };
                 stack.Children.Add(v.Image);
@@ -357,7 +416,7 @@ namespace Polka {
                         TextTrimming=TextTrimming.CharacterEllipsis, TextAlignment=TextAlignment.Center, Margin=new Thickness(0,6,0,0),
                         IsHitTestVisible=false, RenderTransform=v.LabelTranslate });
                 }
-                v.Button=PlainButton(stack,L10n.DisplayName(item)); v.Button.Width=effectiveSize+10; v.Button.Height=effectiveSize+8+(Store.Settings.ShowLabels?21:0);
+                v.Button=DockButton(stack,L10n.DisplayName(item)); v.Button.Width=effectiveSize+10; v.Button.Height=effectiveSize+8+(Store.Settings.ShowLabels?21:0);
                 v.Button.RenderTransform=v.Shift;
                 v.Button.VerticalAlignment=verticalDock?VerticalAlignment.Center:VerticalAlignment.Bottom;
                 v.Button.HorizontalAlignment=verticalDock?(Store.Settings.Placement=="right"?HorizontalAlignment.Right:HorizontalAlignment.Left):HorizontalAlignment.Center;
@@ -368,7 +427,7 @@ namespace Polka {
                 v.Button.PreviewMouseLeftButtonDown += delegate(object sender,MouseButtonEventArgs e) {
                     if(helperRunning) return;
                     if(dragLanding) FinishLanding();
-                    pressed=v; pressPoint=e.GetPosition(root); v.Pressing=true; v.ScaleResponse=34; StartRendering();
+                    pressed=v; pressPoint=e.GetPosition(root); v.Pressing=true; v.ScaleResponse=Motion.PressResponse; StartRendering();
                 };
                 v.Button.PreviewMouseLeftButtonUp += delegate { if(!internalDrag) { v.Pressing=false; pressed=null; StartRendering(); } };
                 v.Button.LostMouseCapture += delegate { if(!internalDrag) { v.Pressing=false; if(pressed==v) pressed=null; StartRendering(); } };
@@ -382,14 +441,14 @@ namespace Polka {
             }
             var divider=new Border { Width=verticalDock?effectiveSize*.62:1, Height=verticalDock?1:effectiveSize*.62,
                 Margin=verticalDock?new Thickness(0,6,0,10):new Thickness(6,0,10,0),
-                Background=new SolidColorBrush(Color.FromArgb(45,255,255,255)), VerticalAlignment=VerticalAlignment.Center, HorizontalAlignment=HorizontalAlignment.Center };
+                Background=ThemePalette.Brush(palette.Divider), VerticalAlignment=VerticalAlignment.Center, HorizontalAlignment=HorizontalAlignment.Center };
             strip.Children.Add(divider);
             double glyphSize=Math.Max(12,Math.Min(18,effectiveSize*.30));
             var plusGlyph=new System.Windows.Shapes.Path { Data=Geometry.Parse("M 0,6 L 12,6 M 6,0 L 6,12"),
                 Width=glyphSize, Height=glyphSize, Stretch=Stretch.Uniform, StrokeThickness=1.7,
                 StrokeStartLineCap=PenLineCap.Round, StrokeEndLineCap=PenLineCap.Round,
-                Stroke=new SolidColorBrush(Color.FromRgb(184,198,224)), IsHitTestVisible=false };
-            var plus=PlainButton(plusGlyph,L10n.T("AddAndSettings"));
+                Stroke=ThemePalette.Brush(palette.Plus), IsHitTestVisible=false };
+            var plus=DockButton(plusGlyph,L10n.T("AddAndSettings"));
             double available=verticalDock?Height-root.Margin.Top-root.Margin.Bottom-glass.BorderThickness.Top-glass.BorderThickness.Bottom-strip.Margin.Top-strip.Margin.Bottom:
                 Width-root.Margin.Left-root.Margin.Right-glass.BorderThickness.Left-glass.BorderThickness.Right-strip.Margin.Left-strip.Margin.Right;
             double plusLength=Math.Max(26,available-(verticalDock?handle.Height:handle.Width)-iconAreaLength-
@@ -439,6 +498,7 @@ namespace Polka {
 
         void OnHoverMove(object sender,MouseEventArgs e) {
             if(internalDrag || dragLanding || e.LeftButton==MouseButtonState.Pressed) return;
+            var motion=Motion;
             Point pointer=e.GetPosition(root);
             foreach(var v in views) {
                 Point center=BaseImageCenter(v);
@@ -446,16 +506,16 @@ namespace Polka {
                 double influence=Math.Exp(-(dx*dx+dy*dy)*1.45);
                 double scale=1+(Store.Settings.Zoom-1)*influence;
                 Panel.SetZIndex(v.Button,(int)(influence*100));
-                v.HoverScale=scale; v.HoverLift=-6*influence; v.ScaleResponse=25;
+                v.HoverScale=scale; v.HoverLift=-motion.HoverLift*influence; v.ScaleResponse=motion.Response;
             }
             StartRendering();
         }
         void Animate(IconView v,double scale,double lift,int ms) {
-            v.HoverScale=scale; v.HoverLift=lift; v.ScaleResponse=25; StartRendering();
+            v.HoverScale=scale; v.HoverLift=lift; v.ScaleResponse=Motion.Response; StartRendering();
         }
-        void ResetMagnification() { foreach(var v in views) { v.Pressing=false; v.HoverScale=1; v.HoverLift=0; v.ScaleResponse=25; } StartRendering(); }
+        void ResetMagnification() { var response=Motion.Response; foreach(var v in views) { v.Pressing=false; v.HoverScale=1; v.HoverLift=0; v.ScaleResponse=response; } StartRendering(); }
         void Bounce(IconView v) {
-            v.ClickStarted=animationClock.Elapsed.TotalSeconds; v.Pressing=false; v.ScaleResponse=30; StartRendering();
+            v.ClickStarted=animationClock.Elapsed.TotalSeconds; v.Pressing=false; v.ScaleResponse=Motion.ClickResponse; StartRendering();
         }
 
         void StartRendering() {
@@ -476,22 +536,26 @@ namespace Polka {
             AdvanceAnimations(Math.Max(.001,Math.Min(.05,dt)));
         }
         internal void AdvanceAnimations(double dt) {
+            var motion=Motion;
             bool active=internalDrag || dragLanding;
+            double accentActivity=active?.8:0;
             double now=animationClock.Elapsed.TotalSeconds;
             foreach(var v in views) {
                 double pop=0, hop=0;
                 if(v.ClickStarted>=0) {
                     double elapsed=now-v.ClickStarted;
-                    if(elapsed<.43) { pop=.19*Math.Sin(Math.PI*Math.Min(1,elapsed/.36)); hop=-12*Math.Sin(Math.PI*Math.Min(1,elapsed/.43)); active=true; }
+                    if(elapsed<motion.ClickDuration) { pop=motion.ClickPop*Math.Sin(Math.PI*Math.Min(1,elapsed/motion.PopDuration)); hop=-motion.ClickHop*Math.Sin(Math.PI*Math.Min(1,elapsed/motion.ClickDuration)); active=true; }
                     else v.ClickStarted=-1;
                 }
-                v.SizeMotion.Target=Math.Min(1.85,v.HoverScale*(v.Pressing?.93:1)+pop);
+                v.SizeMotion.Target=Math.Min(1.85,v.HoverScale*(v.Pressing?motion.PressScale:1)+pop);
                 v.LiftMotion.Target=v.HoverLift+(v.Pressing?1:0)+hop;
-                v.SizeMotion.Step(dt,v.ScaleResponse); v.LiftMotion.Step(dt,25); v.ShiftMotion.Step(dt,26); v.ShiftYMotion.Step(dt,26); v.AlphaMotion.Step(dt,35);
+                v.SizeMotion.Step(dt,v.ScaleResponse); v.LiftMotion.Step(dt,motion.LiftResponse); v.ShiftMotion.Step(dt,motion.ShiftResponse); v.ShiftYMotion.Step(dt,motion.ShiftResponse); v.AlphaMotion.Step(dt,motion.AlphaResponse);
                 bool still=!v.SizeMotion.IsSettled(.001) || !v.LiftMotion.IsSettled(.01) || !v.ShiftMotion.IsSettled(.01) || !v.ShiftYMotion.IsSettled(.01) || !v.AlphaMotion.IsSettled(.001);
                 if(!still) { v.SizeMotion.SnapToTarget(); v.LiftMotion.SnapToTarget(); v.ShiftMotion.SnapToTarget(); v.ShiftYMotion.SnapToTarget(); v.AlphaMotion.SnapToTarget(); }
                 active|=still;
                 v.Scale.ScaleX=v.Scale.ScaleY=v.SizeMotion.Value;
+                accentActivity=Math.Max(accentActivity,v.Pressing?1:Math.Max(0,v.SizeMotion.Value-1)/Math.Max(.01,Store.Settings.Zoom-1));
+                if(v.HoverGlow!=null) v.HoverGlow.Opacity=Math.Max(0,Math.Min(.34,(v.SizeMotion.Value-1)*.65));
                 v.Translate.X=verticalDock?(Store.Settings.Placement=="left"?-v.LiftMotion.Value:v.LiftMotion.Value):0;
                 v.Translate.Y=verticalDock?0:Store.Settings.Placement=="top"?-v.LiftMotion.Value:v.LiftMotion.Value;
                 if(v.LabelTranslate!=null) {
@@ -501,9 +565,15 @@ namespace Polka {
                 }
                 v.Shift.X=v.ShiftMotion.Value; v.Shift.Y=v.ShiftYMotion.Value; v.Button.Opacity=v.AlphaMotion.Value;
             }
+            if(Store.Settings.Theme=="aurora" && !externalDragFeedback) {
+                var palette=Palette;
+                byte alpha=(byte)(95+60*Math.Min(1,accentActivity));
+                var current=glass.BorderBrush as SolidColorBrush;
+                if(current==null || current.Color.A!=alpha) glass.BorderBrush=ThemePalette.Brush(Color.FromArgb(alpha,palette.Accent.R,palette.Accent.G,palette.Accent.B));
+            }
             if(dragView!=null && dragGhost!=null) {
-                ghostX.Step(dt,55); ghostY.Step(dt,55); ghostScale.Step(dt,28); ghostAlpha.Step(dt,35); placeholderX.Step(dt,28); placeholderY.Step(dt,28);
-                ghostAngle.Target=internalDrag?Math.Max(-5,Math.Min(5,ghostX.Velocity*.012)):0; ghostAngle.Step(dt,24);
+                ghostX.Step(dt,motion.DragResponse); ghostY.Step(dt,motion.DragResponse); ghostScale.Step(dt,motion.DragScaleResponse); ghostAlpha.Step(dt,motion.DragAlphaResponse); placeholderX.Step(dt,motion.PlaceholderResponse); placeholderY.Step(dt,motion.PlaceholderResponse);
+                ghostAngle.Target=internalDrag?Math.Max(-motion.DragTilt,Math.Min(motion.DragTilt,ghostX.Velocity*.012)):0; ghostAngle.Step(dt,24);
                 Canvas.SetLeft(dragGhost,ghostX.Value-effectiveSize/2); Canvas.SetTop(dragGhost,ghostY.Value-effectiveSize/2);
                 ghostScaleTransform.ScaleX=ghostScaleTransform.ScaleY=ghostScale.Value; ghostRotation.Angle=ghostAngle.Value; dragGhost.Opacity=ghostAlpha.Value;
                 if(dragPlaceholder!=null) { Canvas.SetLeft(dragPlaceholder,placeholderX.Value-(slot-5)/2); Canvas.SetTop(dragPlaceholder,placeholderY.Value-effectiveSize/2-2); }
@@ -550,7 +620,7 @@ namespace Polka {
             Point target=SlotCenter(dragTargetIndex);
             placeholderX.Reset(target.X); placeholderY.Reset(target.Y);
             dragPlaceholder=new Border { Width=slot-5, Height=effectiveSize+5, CornerRadius=new CornerRadius(Math.Max(7,effectiveSize*.18)),
-                Background=new SolidColorBrush(Color.FromArgb(18,180,210,255)), BorderBrush=new SolidColorBrush(Color.FromArgb(44,180,210,255)), BorderThickness=new Thickness(1) };
+                Background=ThemePalette.Brush(Palette.Original?Color.FromArgb(18,180,210,255):Color.FromArgb(18,Palette.Accent.R,Palette.Accent.G,Palette.Accent.B)), BorderBrush=ThemePalette.Brush(Palette.Original?Color.FromArgb(44,180,210,255):Color.FromArgb(70,Palette.Accent.R,Palette.Accent.G,Palette.Accent.B)), BorderThickness=new Thickness(1) };
             Canvas.SetLeft(dragPlaceholder,placeholderX.Value-(slot-5)/2); Canvas.SetTop(dragPlaceholder,placeholderY.Value-effectiveSize/2-2);
             dragLayer.Children.Add(dragPlaceholder);
             ghostScaleTransform=new ScaleTransform(ghostScale.Value,ghostScale.Value); ghostRotation=new RotateTransform();
@@ -571,10 +641,11 @@ namespace Polka {
         }
         internal void UpdateInternalDrag(Point pointer) {
             if(!internalDrag || dragView==null) return;
-            ghostX.Target=pointer.X-dragGrabOffset.X; ghostY.Target=pointer.Y-dragGrabOffset.Y-7; ghostScale.Target=1.10;
+            var motion=Motion;
+            ghostX.Target=pointer.X-dragGrabOffset.X; ghostY.Target=pointer.Y-dragGrabOffset.Y-motion.DragLift; ghostScale.Target=motion.DragScale;
             var allowed=new Rect(-18,-28,root.ActualWidth+36,root.ActualHeight+56);
             dragValid=allowed.Contains(pointer); ghostAlpha.Target=dragValid?1:.55;
-            dragTargetIndex=dragValid?NearestSlot(new Point(ghostX.Target,ghostY.Target+7)):dragSourceIndex;
+            dragTargetIndex=dragValid?NearestSlot(new Point(ghostX.Target,ghostY.Target+motion.DragLift)):dragSourceIndex;
             Point target=SlotCenter(dragTargetIndex);
             placeholderX.Target=target.X; placeholderY.Target=target.Y;
             foreach(var v in views) {
@@ -622,14 +693,16 @@ namespace Polka {
         }
 
         void OnDragOver(object sender,DragEventArgs e) {
+            externalDragFeedback=true;
             bool own=e.Data.GetDataPresent(ItemFormat);
             bool files=e.Data.GetDataPresent(DataFormats.FileDrop);
             e.Effects=own ? DragDropEffects.Move : files ? ((e.AllowedEffects & DragDropEffects.Copy)!=0?DragDropEffects.Copy:DragDropEffects.Link) : DragDropEffects.None;
             if(files && Store.Settings.Items.Count>=30) e.Effects=DragDropEffects.None;
-            glass.BorderBrush=e.Effects==DragDropEffects.None ? NormalStroke() : new SolidColorBrush(Color.FromRgb(121,177,255));
+            glass.BorderBrush=e.Effects==DragDropEffects.None ? NormalStroke() : ThemePalette.Brush(Palette.Original?Color.FromRgb(121,177,255):Palette.Accent);
             e.Handled=true;
         }
         void OnDrop(object sender,DragEventArgs e) {
+            externalDragFeedback=false;
             glass.BorderBrush=NormalStroke(); e.Handled=true;
             if(e.Data.GetDataPresent(ItemFormat)) {
                 string id=e.Data.GetData(ItemFormat) as string;
@@ -655,10 +728,11 @@ namespace Polka {
             if(Store.Settings.MoveDesktopShortcuts && Store.Settings.Items.Count(x=>x.PendingPublicMove)>pendingBefore) MovePublicShortcuts();
         }
 
-        MenuItem Menu(string text,Action action) { var m=new MenuItem { Header=text, Foreground=Brushes.White, Background=Brushes.Transparent }; m.Click+=delegate { action(); }; return m; }
+        MenuItem Menu(string text,Action action) { var m=new MenuItem { Header=text, Foreground=ThemePalette.Brush(Palette.Foreground), Background=Brushes.Transparent }; m.Click+=delegate { action(); }; return m; }
         Separator MenuDivider() { return new Separator { Style=(Style)MenuTheme[typeof(Separator)] }; }
         ContextMenu NewMenu() {
-            var menu=new ContextMenu { FontFamily=FontFamily, FontSize=13, Background=new SolidColorBrush(Color.FromRgb(35,39,51)), Foreground=Brushes.White, BorderBrush=new SolidColorBrush(Color.FromRgb(72,79,99)), BorderThickness=new Thickness(1), Padding=new Thickness(5), SnapsToDevicePixels=true };
+            var palette=Palette;
+            var menu=new ContextMenu { FontFamily=FontFamily, FontSize=13, Background=ThemePalette.Brush(palette.Menu), Foreground=ThemePalette.Brush(palette.Foreground), BorderBrush=ThemePalette.Brush(palette.MenuStroke), BorderThickness=new Thickness(1), Padding=new Thickness(5), SnapsToDevicePixels=true };
             menu.Template=(ControlTemplate)MenuTheme["MenuSurface"];
             menu.Resources[typeof(MenuItem)]=MenuTheme[typeof(MenuItem)];
             menu.Resources[typeof(Separator)]=MenuTheme[typeof(Separator)];
@@ -731,7 +805,7 @@ namespace Polka {
             }
         }
         string AskName(string current) {
-            var dialog=new Window { Title=L10n.T("ShortcutName"), Width=380, Height=165, ResizeMode=ResizeMode.NoResize, WindowStartupLocation=WindowStartupLocation.CenterOwner, Owner=this, Background=new SolidColorBrush(Color.FromRgb(30,34,45)), Foreground=Brushes.White, ShowInTaskbar=false };
+            var dialog=new Window { Title=L10n.T("ShortcutName"), Width=380, Height=165, ResizeMode=ResizeMode.NoResize, WindowStartupLocation=WindowStartupLocation.CenterOwner, Owner=this, Background=ThemePalette.Brush(Palette.Original?Color.FromRgb(30,34,45):Palette.Surface), Foreground=ThemePalette.Brush(Palette.Foreground), ShowInTaskbar=false };
             var layout=new StackPanel { Margin=new Thickness(20) }; var box=new TextBox { Text=current, FontSize=15, Margin=new Thickness(0,0,0,15), MaxLength=80 };
             var ok=new Button { Content=L10n.T("Save"), Height=31, IsDefault=true }; ok.Click+=delegate { dialog.DialogResult=true; };
             layout.Children.Add(box); layout.Children.Add(ok); dialog.Content=layout; dialog.Loaded+=delegate { box.Focus(); box.SelectAll(); };
@@ -816,6 +890,12 @@ namespace Polka {
             L10n.SetLanguage(normalized);
             RefreshLanguageUi();
         }
+        internal void SetTheme(string theme) {
+            if(helperRunning) return;
+            try { Store.SetTheme(theme); }
+            catch(Exception ex) { if(settingsWindow!=null) settingsWindow.RefreshLanguage(); Toast(L10n.T("SaveSettingsFailed")+ex.Message); return; }
+            RefreshLanguageUi();
+        }
         void RefreshLanguageUi() {
             // An open popup retains old strings, so close it before replacing menus.
             foreach(var menu in openMenus.ToArray()) menu.IsOpen=false;
@@ -826,7 +906,7 @@ namespace Polka {
             if(settingsWindow!=null) settingsWindow.RefreshLanguage();
         }
         MenuItem BuildLanguageMenu() {
-            var languageMenu=new MenuItem { Header=L10n.T("Language"), Foreground=Brushes.White, Background=Brushes.Transparent };
+            var languageMenu=new MenuItem { Header=L10n.T("Language"), Foreground=ThemePalette.Brush(Palette.Foreground), Background=Brushes.Transparent };
             foreach(string code in new[]{"en","ru"}) {
                 string choice=code;
                 var item=Menu(code=="en"?"English":"Русский",delegate { SetLanguage(choice); });
@@ -836,7 +916,7 @@ namespace Polka {
             return languageMenu;
         }
         MenuItem BuildPlacementMenu() {
-            var placementMenu=new MenuItem { Header=L10n.T("Placement"), Foreground=Brushes.White, Background=Brushes.Transparent };
+            var placementMenu=new MenuItem { Header=L10n.T("Placement"), Foreground=ThemePalette.Brush(Palette.Foreground), Background=Brushes.Transparent };
             foreach(string placement in new[]{"bottom","top","left","right","free"}) {
                 string choice=placement;
                 string key="Placement"+Char.ToUpperInvariant(choice[0])+choice.Substring(1);

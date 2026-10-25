@@ -14,8 +14,9 @@ from pathlib import Path
 from typing import Any
 
 from yarnelo_i18n import LANGUAGES, text
+from yarnelo_themes import THEMES, THEME_IDS, default_appearance
 
-VERSION = "1.7.3"
+VERSION = "1.8.0"
 MAX_ITEMS = 30
 PLACEMENTS = ("free", "bottom", "top", "left", "right")
 
@@ -63,6 +64,8 @@ class Settings:
     launch_at_login: bool = False
     auto_add_desktop_shortcuts: bool = False
     corner_radius: float = 23.0
+    theme: str = "dusk"
+    theme_appearances: dict[str, dict[str, float]] = field(default_factory=dict)
     placement: str = "free"
     language: str = "auto"
     screen: str = ""
@@ -77,6 +80,8 @@ class Settings:
         if data.get("schema", 1) != 1:
             raise ModelError("settings_schema")
         result = cls()
+        selected_theme = data.get("theme", "dusk")
+        result.theme = selected_theme if isinstance(selected_theme, str) and selected_theme in THEMES else "dusk"
         for name, low, high, numeric_type in (
             ("rows", 1, 4, int),
             ("opacity", 0.12, 1.0, float),
@@ -88,6 +93,22 @@ class Settings:
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
                 raise ModelError("invalid_value", name=name)
             setattr(result, name, numeric_type(min(high, max(low, value))))
+        # These fields were added after schema 1. A bad optional theme must not
+        # discard an otherwise valid legacy collection of shortcuts.
+        raw_appearances = data.get("theme_appearances", {})
+        if isinstance(raw_appearances, dict):
+            for name in THEME_IDS:
+                appearance = raw_appearances.get(name)
+                if not isinstance(appearance, dict):
+                    continue
+                values = {}
+                for key, low, high in (("opacity", .12, 1.0), ("corner_radius", 0.0, 100.0)):
+                    value = appearance.get(key)
+                    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                        break
+                    values[key] = float(min(high, max(low, value)))
+                if len(values) == 2:
+                    result.theme_appearances[name] = values
         for name in ("labels", "launch_at_login", "auto_add_desktop_shortcuts"):
             if not isinstance(data.get(name, False), bool):
                 raise ModelError("invalid_value", name=name)
@@ -134,6 +155,20 @@ class Settings:
 
     def to_dict(self) -> dict[str, Any]:
         return {"schema": 1, **asdict(self)}
+
+    def appearance_for(self, theme: str) -> dict[str, float]:
+        if theme == self.theme:
+            return {"opacity": self.opacity, "corner_radius": self.corner_radius}
+        return dict(self.theme_appearances.get(theme, default_appearance(theme)))
+
+    def select_theme(self, theme: str) -> None:
+        if theme not in THEMES or theme == self.theme:
+            return
+        target = self.appearance_for(theme)
+        self.theme_appearances[self.theme] = self.appearance_for(self.theme)
+        self.theme = theme
+        self.opacity, self.corner_radius = target["opacity"], target["corner_radius"]
+        self.theme_appearances[theme] = target
 
     def add(self, item: Item) -> bool:
         if any((i.kind, i.path) == (item.kind, item.path) for i in self.items):
