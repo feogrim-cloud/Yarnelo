@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -15,6 +16,10 @@ using System.Diagnostics;
 using Forms = System.Windows.Forms;
 
 namespace Polka {
+    internal sealed class ThemeColorValue : DependencyObject {
+        public static readonly DependencyProperty ColorProperty=DependencyProperty.Register("Color",typeof(Color),typeof(ThemeColorValue));
+        public Color Color { get { return (Color)GetValue(ColorProperty); } set { SetValue(ColorProperty,value); } }
+    }
     internal sealed class ThemePalette {
         static readonly Dictionary<string,ThemePalette> cache=new Dictionary<string,ThemePalette>();
         internal string Id;
@@ -27,6 +32,25 @@ namespace Polka {
         }
         internal static SolidColorBrush Brush(Color color) { return new SolidColorBrush(color); }
         internal Color AccentText { get { return Id=="frost"?Colors.White:Surface; } }
+        internal Color Role(string role) {
+            switch(role) {
+                case "Surface": return Surface; case "Foreground": return Foreground; case "Accent": return Accent; case "Muted": return Muted;
+                case "Stroke": return Stroke; case "Menu": return Menu; case "MenuStroke": return MenuStroke; case "Hint": return Hint; case "HintStroke": return HintStroke;
+                case "Highlight": return Highlight; case "Choice": return Choice; case "Selected": return Selected; case "SelectedBorder": return SelectedBorder;
+                case "Handle": return Handle; case "Empty": return Empty; case "Plus": return Plus; case "Divider": return Divider;
+                case "FocusFill": return Original?Hex("#405E9BFF"):Color.FromArgb(64,Accent.R,Accent.G,Accent.B);
+                case "HoverBorder": return Original?Hex("#8BAEFF"):Accent; case "FocusBorder": return Original?Hex("#C5D7FF"):Accent;
+                case "Notice": return Original?Color.FromArgb(245,30,33,44):Color.FromArgb(245,Menu.R,Menu.G,Menu.B);
+                case "SliderFill": case "SliderThumb": return Accent;
+                case "SliderTrack": return Stroke;
+                case "CheckFill": return Accent; case "CheckMark": return AccentText;
+                case "CheckOff": return Choice;
+                case "GlassStroke": return Original?Color.FromArgb(75,255,255,255):Color.FromArgb(95,Accent.R,Accent.G,Accent.B);
+                case "Dialog": return Original?Color.FromRgb(30,34,45):Surface;
+                case "Separator": return Original?Hex("#454F65"):Stroke;
+                default: throw new ArgumentException("Unknown theme brush: "+role);
+            }
+        }
         internal static ThemePalette For(string theme) {
             string id=ThemeCatalog.Normalize(theme);
             lock(cache) { ThemePalette palette; if(!cache.TryGetValue(id,out palette)) { palette=Create(id); cache.Add(id,palette); } return palette; }
@@ -64,6 +88,24 @@ namespace Polka {
         DesktopShortcutWatcher desktopWatcher;
         DispatcherTimer desktopWatcherTimer;
         bool desktopWatcherInjected, desktopLimitNotice;
+        readonly Dictionary<string,SolidColorBrush> themeBrushes=new Dictionary<string,SolidColorBrush>();
+        readonly Dictionary<string,ThemeColorValue> themeColors=new Dictionary<string,ThemeColorValue>();
+        readonly ResourceDictionary themeResources=new ResourceDictionary();
+        readonly ThemeProgress themeProgress=new ThemeProgress();
+        readonly Dictionary<string,Color> themeStartColors=new Dictionary<string,Color>(), themeTargetColors=new Dictionary<string,Color>();
+        static readonly string[] ThemeRoles={"Surface","Foreground","Accent","Muted","Stroke","Menu","MenuStroke","Hint","HintStroke","Highlight","Choice","Selected","SelectedBorder","Handle","Empty","Plus","Divider","FocusFill","HoverBorder","FocusBorder","Notice","SliderFill","SliderThumb","SliderTrack","CheckFill","CheckMark","CheckOff","GlassStroke","Dialog","Separator"};
+        LinearGradientBrush transitionBackground;
+        Color startTop,startBottom,targetTop,targetBottom;
+        double startRadius,targetRadius,auraWeight,startAura,targetAura;
+        bool themePolarityChanges;
+        readonly SolidColorBrush displayedGlassStroke=new SolidColorBrush();
+        internal bool ThemeTransitionsEnabled { get; set; }
+        internal bool ThemeTransitionActive { get { return themeProgress.Active; } }
+        internal ResourceDictionary ThemeResources { get { return themeResources; } }
+        internal static string ThemeResource(string role) { return "YarneloTheme"+role; }
+        internal SolidColorBrush ThemeBrush(string role) { return themeBrushes[role]; }
+        internal Color DisplayedThemeColor(string role) { return ThemeBrush(role).Color; }
+        void SetDisplayedThemeColor(string role,Color color) { themeColors[role].Color=color; }
         double effectiveSize, slot, rowPitch;
         int layoutRows, layoutColumns;
         DockLayout layout;
@@ -141,7 +183,7 @@ namespace Polka {
             get {
                 var palette=Palette; ResourceDictionary result;
                 if(!menuThemes.TryGetValue(palette.Id,out result)) {
-                    string source=MenuThemeSource.Replace("#232733",ThemePalette.Text(palette.Menu)).Replace("#484F63",ThemePalette.Text(palette.MenuStroke)).Replace("#3B527B",ThemePalette.Text(palette.Highlight)).Replace("#454F65",ThemePalette.Text(palette.Original?ThemePalette.Hex("#454F65"):palette.Stroke));
+                    string source=MenuThemeSource.Replace("#232733","{DynamicResource YarneloThemeMenu}").Replace("#484F63","{DynamicResource YarneloThemeMenuStroke}").Replace("#3B527B","{DynamicResource YarneloThemeHighlight}").Replace("#454F65","{DynamicResource YarneloThemeSeparator}");
                     result=(ResourceDictionary)System.Windows.Markup.XamlReader.Parse(source); menuThemes.Add(palette.Id,result);
                 }
                 return result;
@@ -165,6 +207,20 @@ namespace Polka {
 
         public DockWindow(Store store) {
             Store=store;
+            ThemeTransitionsEnabled=!Program.TestMode && SystemParameters.ClientAreaAnimation;
+            var initialPalette=Palette;
+            foreach(string role in ThemeRoles) {
+                var color=new ThemeColorValue { Color=initialPalette.Role(role) };
+                var brush=new SolidColorBrush();
+                // WPF may freeze resource brushes while sealing templates.
+                // A bound color source deliberately keeps these per-window
+                // shared brushes mutable without touching catalog endpoints.
+                BindingOperations.SetBinding(brush,SolidColorBrush.ColorProperty,new Binding("Color") { Source=color, Mode=BindingMode.OneWay });
+                themeColors.Add(role,color); themeBrushes.Add(role,brush); themeResources.Add(ThemeResource(role),brush);
+            }
+            Resources.MergedDictionaries.Add(themeResources);
+            auraWeight=initialPalette.Id=="aurora"?1:0;
+            displayedGlassStroke.Color=initialPalette.Role("GlassStroke");
             L10n.SetLanguage(Store.Settings.Language);
             Title=L10n.T("DockTitle");
             WindowStyle=WindowStyle.None; AllowsTransparency=true; Background=Brushes.Transparent;
@@ -235,6 +291,7 @@ namespace Polka {
             LocationChanged += delegate { if(ready && !moving && IsVisible) { Store.Settings.Left=Left; Store.Settings.Top=Top; } };
             Closing += delegate(object sender,System.ComponentModel.CancelEventArgs e) {
                 if(helperRunning) { e.Cancel=true; return; }
+                CancelThemeTransition();
                 StopDesktopWatcher();
                 if(internalDrag) EndInternalDrag(false);
                 if(!exiting) { exiting=true; SaveQuietly(); }
@@ -242,35 +299,96 @@ namespace Polka {
             Closed += delegate { StopDesktopWatcher(); StopRendering(); if(internalDrag) Mouse.Capture(null); if(host!=null) host.Dispose(); if(recycleTimer!=null) recycleTimer.Stop(); noticeTimer.Stop(); if(tray!=null) tray.Dispose(); Application.Current.Shutdown(); };
         }
 
-        SolidColorBrush NormalStroke() { var p=Palette; return ThemePalette.Brush(p.Original?Color.FromArgb(75,255,255,255):Color.FromArgb(95,p.Accent.R,p.Accent.G,p.Accent.B)); }
+        SolidColorBrush NormalStroke() { return displayedGlassStroke; }
         internal static Button PlainButton(object content,string help) {
             return PlainButton(content,help,ThemePalette.For("dusk"));
         }
-        internal static Button PlainButton(object content,string help,ThemePalette palette) {
+        internal static Button PlainButton(object content,string help,ThemePalette palette,DockWindow owner=null) {
             var button=new Button { Content=content, Background=Brushes.Transparent, BorderThickness=new Thickness(0),
-                Foreground=ThemePalette.Brush(palette.Foreground), Cursor=Cursors.Hand, Padding=new Thickness(0), ToolTip=help,
+                Foreground=owner==null?ThemePalette.Brush(palette.Foreground):owner.ThemeBrush("Foreground"), Cursor=Cursors.Hand, Padding=new Thickness(0), ToolTip=help,
                 FocusVisualStyle=null, HorizontalContentAlignment=HorizontalAlignment.Center, VerticalContentAlignment=VerticalAlignment.Center };
             button.Template=(ControlTemplate)System.Windows.Markup.XamlReader.Parse(
-                "<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'><Border x:Name='body' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' Background='{TemplateBinding Background}' CornerRadius='9' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='{TemplateBinding VerticalContentAlignment}'/></Border><ControlTemplate.Triggers><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='body' Property='Background' Value='"+(palette.Original?"#405E9BFF":ThemePalette.Text(Color.FromArgb(64,palette.Accent.R,palette.Accent.G,palette.Accent.B)))+"'/></Trigger></ControlTemplate.Triggers></ControlTemplate>");
+                "<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'><Border x:Name='body' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' Background='{TemplateBinding Background}' CornerRadius='9' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='{TemplateBinding VerticalContentAlignment}'/></Border><ControlTemplate.Triggers><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='body' Property='Background' Value='"+(owner!=null?"{DynamicResource YarneloThemeFocusFill}":palette.Original?"#405E9BFF":ThemePalette.Text(Color.FromArgb(64,palette.Accent.R,palette.Accent.G,palette.Accent.B)))+"'/></Trigger></ControlTemplate.Triggers></ControlTemplate>");
             ToolTipService.SetInitialShowDelay(button,250); ToolTipService.SetBetweenShowDelay(button,80);
-            button.ToolTip=new ToolTip { Content=help, Background=ThemePalette.Brush(palette.Hint), Foreground=ThemePalette.Brush(palette.Foreground),
-                BorderBrush=ThemePalette.Brush(palette.HintStroke), Padding=new Thickness(10,6,10,6), FontSize=12 };
+            button.ToolTip=new ToolTip { Content=help, Background=owner==null?ThemePalette.Brush(palette.Hint):owner.ThemeBrush("Hint"), Foreground=owner==null?ThemePalette.Brush(palette.Foreground):owner.ThemeBrush("Foreground"),
+                BorderBrush=owner==null?ThemePalette.Brush(palette.HintStroke):owner.ThemeBrush("HintStroke"), Padding=new Thickness(10,6,10,6), FontSize=12 };
             ToolTipService.SetPlacement(button,System.Windows.Controls.Primitives.PlacementMode.Top);
             ToolTipService.SetVerticalOffset(button,-9);
             System.Windows.Automation.AutomationProperties.SetName(button,help);
             return button;
         }
-        Button DockButton(object content,string help) { return PlainButton(content,help,Palette); }
+        Button DockButton(object content,string help) { return PlainButton(content,help,Palette,this); }
+
+        static Color Blend(Color start,Color end,double amount) {
+            if(amount>=1) return end;
+            return Color.FromArgb((byte)Math.Round(start.A+(end.A-start.A)*amount),(byte)Math.Round(start.R+(end.R-start.R)*amount),(byte)Math.Round(start.G+(end.G-start.G)*amount),(byte)Math.Round(start.B+(end.B-start.B)*amount));
+        }
+        static bool LightSurface(Color color) { return (.2126*color.R+.7152*color.G+.0722*color.B)/255>.5; }
+        static bool ForegroundRole(string role) { return role=="Foreground" || role=="Muted" || role=="Empty" || role=="Handle" || role=="Plus"; }
+        void BackgroundColors(ThemePalette palette,out Color top,out Color bottom) {
+            byte alpha=(byte)(Store.Settings.Opacity*255);
+            top=palette.Original?Color.FromArgb(alpha,43,47,60):Color.FromArgb(alpha,palette.Surface.R,palette.Surface.G,palette.Surface.B);
+            bottom=palette.Original?Color.FromArgb(alpha,21,24,34):top;
+        }
+        double BackgroundRadius() { return Store.Settings.CornerRadius>=100?Math.Min(Width,Height)/2:Store.Settings.CornerRadius; }
+        void EndpointBackground() {
+            var palette=Palette; Color top,bottom; BackgroundColors(palette,out top,out bottom);
+            glass.Background=palette.Original?(Brush)new LinearGradientBrush(top,bottom,verticalDock?0:90):new SolidColorBrush(top);
+            glass.CornerRadius=new CornerRadius(BackgroundRadius());
+        }
+        void SyncThemeEndpoint() {
+            themeProgress.Cancel(); transitionBackground=null;
+            var palette=Palette;
+            foreach(string role in ThemeRoles) SetDisplayedThemeColor(role,palette.Role(role));
+            auraWeight=palette.Id=="aurora"?1:0;
+            displayedGlassStroke.Color=ThemeBrush("GlassStroke").Color;
+            foreach(var view in views) {
+                if(auraWeight==0 && view.HoverGlow!=null) { view.Image.Effect=null; view.HoverGlow=null; }
+            }
+        }
+        void BeginThemeTransition() {
+            themeStartColors.Clear(); themeTargetColors.Clear();
+            var palette=Palette;
+            foreach(string role in ThemeRoles) { themeStartColors.Add(role,ThemeBrush(role).Color); themeTargetColors.Add(role,palette.Role(role)); }
+            themePolarityChanges=LightSurface(themeStartColors["Surface"])!=LightSurface(themeTargetColors["Surface"]);
+            var currentGradient=glass.Background as LinearGradientBrush;
+            var currentSolid=glass.Background as SolidColorBrush;
+            if(currentGradient!=null) { startTop=currentGradient.GradientStops[0].Color; startBottom=currentGradient.GradientStops[currentGradient.GradientStops.Count-1].Color; }
+            else { startTop=startBottom=currentSolid==null?themeStartColors["Surface"]:currentSolid.Color; }
+            BackgroundColors(palette,out targetTop,out targetBottom);
+            startRadius=glass.CornerRadius.TopLeft; targetRadius=BackgroundRadius();
+            startAura=auraWeight; targetAura=palette.Id=="aurora"?1:0;
+            transitionBackground=new LinearGradientBrush(startTop,startBottom,verticalDock?0:90);
+            glass.Background=transitionBackground;
+            if(startAura>0 || targetAura>0) foreach(var view in views) if(view.HoverGlow==null) {
+                view.HoverGlow=new DropShadowEffect { Color=ThemeBrush("Accent").Color, BlurRadius=15, ShadowDepth=0, Opacity=0 }; view.Image.Effect=view.HoverGlow;
+            }
+            themeProgress.Start(); StartRendering();
+        }
+        internal void AdvanceThemeTransition(double dt) {
+            if(!themeProgress.Active) return;
+            themeProgress.Advance(dt); double amount=themeProgress.Amount;
+            double foregroundAmount=ThemeProgress.ForegroundAmount(amount,themePolarityChanges);
+            foreach(string role in ThemeRoles) SetDisplayedThemeColor(role,Blend(themeStartColors[role],themeTargetColors[role],ForegroundRole(role)?foregroundAmount:amount));
+            if(transitionBackground!=null) { transitionBackground.GradientStops[0].Color=Blend(startTop,targetTop,amount); transitionBackground.GradientStops[1].Color=Blend(startBottom,targetBottom,amount); }
+            glass.CornerRadius=new CornerRadius(startRadius+(targetRadius-startRadius)*amount);
+            auraWeight=startAura+(targetAura-startAura)*amount;
+            if(!themeProgress.Active) { SyncThemeEndpoint(); EndpointBackground(); }
+        }
+        internal void CancelThemeTransition() { themeProgress.Cancel(); transitionBackground=null; StopRendering(); }
 
         internal void ApplySettings() {
             ApplySettings(Native.WorkingArea(this));
         }
         internal void ApplySettings(Rect area) {
+            // Direct background edits, resize and language changes finish to
+            // the current model, never to an obsolete animation endpoint.
+            SyncThemeEndpoint();
             var palette=Palette;
-            Foreground=ThemePalette.Brush(palette.Foreground);
+            Foreground=ThemeBrush("Foreground");
             glass.BorderBrush=NormalStroke();
-            notice.Foreground=ThemePalette.Brush(palette.Foreground);
-            notice.Background=ThemePalette.Brush(palette.Original?Color.FromArgb(245,30,33,44):Color.FromArgb(245,palette.Menu.R,palette.Menu.G,palette.Menu.B));
+            notice.Foreground=ThemeBrush("Foreground");
+            notice.Background=ThemeBrush("Notice");
             bool wasVertical=verticalDock;
             verticalDock=Store.Settings.Placement=="left" || Store.Settings.Placement=="right";
             layout=DockLayout.Create(Store.Settings.Items.Count,Store.Settings.Rows,Store.Settings.IconSize,Store.Settings.Zoom,
@@ -289,14 +407,12 @@ namespace Polka {
             strip.HorizontalAlignment=verticalDock?HorizontalAlignment.Left:HorizontalAlignment.Stretch;
             glass.VerticalAlignment=verticalDock?VerticalAlignment.Stretch:Store.Settings.Placement=="top"?VerticalAlignment.Top:VerticalAlignment.Bottom;
             glass.HorizontalAlignment=verticalDock?(Store.Settings.Placement=="right"?HorizontalAlignment.Right:HorizontalAlignment.Left):HorizontalAlignment.Stretch;
-            glass.CornerRadius=new CornerRadius(Store.Settings.CornerRadius>=100?Math.Min(Width,Height)/2:Store.Settings.CornerRadius);
             if(ready && Store.Settings.Placement=="free") {
                 Left=center-Width/2;
                 if(wasVertical && !double.IsNaN(centerY) && !double.IsInfinity(centerY)) Top=centerY-Height/2;
                 else if(!double.IsNaN(bottom) && !double.IsInfinity(bottom)) Top=bottom-Height;
             }
-            glass.Background=palette.Original?(Brush)new LinearGradientBrush(Color.FromArgb((byte)(Store.Settings.Opacity*255),43,47,60),
-                Color.FromArgb((byte)(Store.Settings.Opacity*255),21,24,34),verticalDock?0:90):ThemePalette.Brush(Color.FromArgb((byte)(Store.Settings.Opacity*255),palette.Surface.R,palette.Surface.G,palette.Surface.B));
+            EndpointBackground();
             Topmost=Store.Settings.AlwaysOnTop;
             RenderIcons();
             ContextMenu=BuildDockMenu();
@@ -375,7 +491,7 @@ namespace Polka {
             strip.Children.Clear(); views.Clear(); pressed=null;
             var palette=Palette;
             var motion=Motion;
-            var handle=DockButton(new TextBlock { Text="⠿", FontSize=21, Foreground=ThemePalette.Brush(palette.Handle) },L10n.T("MoveDock"));
+            var handle=DockButton(new TextBlock { Text="⠿", FontSize=21, Foreground=ThemeBrush("Handle") },L10n.T("MoveDock"));
             handle.Width=verticalDock?effectiveSize+8:19; handle.Height=verticalDock?19:effectiveSize+8;
             handle.VerticalAlignment=VerticalAlignment.Center; handle.HorizontalAlignment=HorizontalAlignment.Center;
             handle.PreviewMouseLeftButtonDown += delegate(object s,MouseButtonEventArgs e) { MoveDock(e); };
@@ -385,7 +501,7 @@ namespace Polka {
             if(Store.Settings.Items.Count==0) {
                 var emptyText=new TextBlock { Text=L10n.T("DropShortcuts"), FontSize=12, TextAlignment=TextAlignment.Center,
                     TextWrapping=TextWrapping.Wrap, TextTrimming=TextTrimming.CharacterEllipsis,
-                    Foreground=ThemePalette.Brush(palette.Empty) };
+                    Foreground=ThemeBrush("Empty") };
                 var empty=DockButton(emptyText,L10n.T("AddShortcuts"));
                 empty.Width=verticalDock?effectiveSize+10:Math.Max(24,Width-122);
                 empty.Height=effectiveSize+8;
@@ -441,13 +557,13 @@ namespace Polka {
             }
             var divider=new Border { Width=verticalDock?effectiveSize*.62:1, Height=verticalDock?1:effectiveSize*.62,
                 Margin=verticalDock?new Thickness(0,6,0,10):new Thickness(6,0,10,0),
-                Background=ThemePalette.Brush(palette.Divider), VerticalAlignment=VerticalAlignment.Center, HorizontalAlignment=HorizontalAlignment.Center };
+                Background=ThemeBrush("Divider"), VerticalAlignment=VerticalAlignment.Center, HorizontalAlignment=HorizontalAlignment.Center };
             strip.Children.Add(divider);
             double glyphSize=Math.Max(12,Math.Min(18,effectiveSize*.30));
             var plusGlyph=new System.Windows.Shapes.Path { Data=Geometry.Parse("M 0,6 L 12,6 M 6,0 L 6,12"),
                 Width=glyphSize, Height=glyphSize, Stretch=Stretch.Uniform, StrokeThickness=1.7,
                 StrokeStartLineCap=PenLineCap.Round, StrokeEndLineCap=PenLineCap.Round,
-                Stroke=ThemePalette.Brush(palette.Plus), IsHitTestVisible=false };
+                Stroke=ThemeBrush("Plus"), IsHitTestVisible=false };
             var plus=DockButton(plusGlyph,L10n.T("AddAndSettings"));
             double available=verticalDock?Height-root.Margin.Top-root.Margin.Bottom-glass.BorderThickness.Top-glass.BorderThickness.Bottom-strip.Margin.Top-strip.Margin.Bottom:
                 Width-root.Margin.Left-root.Margin.Right-glass.BorderThickness.Left-glass.BorderThickness.Right-strip.Margin.Left-strip.Margin.Right;
@@ -536,9 +652,10 @@ namespace Polka {
             AdvanceAnimations(Math.Max(.001,Math.Min(.05,dt)));
         }
         internal void AdvanceAnimations(double dt) {
+            AdvanceThemeTransition(dt);
             var motion=Motion;
-            bool active=internalDrag || dragLanding;
-            double accentActivity=active?.8:0;
+            bool active=internalDrag || dragLanding || themeProgress.Active;
+            double accentActivity=internalDrag || dragLanding?.8:0;
             double now=animationClock.Elapsed.TotalSeconds;
             foreach(var v in views) {
                 double pop=0, hop=0;
@@ -555,7 +672,7 @@ namespace Polka {
                 active|=still;
                 v.Scale.ScaleX=v.Scale.ScaleY=v.SizeMotion.Value;
                 accentActivity=Math.Max(accentActivity,v.Pressing?1:Math.Max(0,v.SizeMotion.Value-1)/Math.Max(.01,Store.Settings.Zoom-1));
-                if(v.HoverGlow!=null) v.HoverGlow.Opacity=Math.Max(0,Math.Min(.34,(v.SizeMotion.Value-1)*.65));
+                if(v.HoverGlow!=null) { v.HoverGlow.Color=ThemeBrush("Accent").Color; v.HoverGlow.Opacity=auraWeight*Math.Max(0,Math.Min(.34,(v.SizeMotion.Value-1)*.65)); }
                 v.Translate.X=verticalDock?(Store.Settings.Placement=="left"?-v.LiftMotion.Value:v.LiftMotion.Value):0;
                 v.Translate.Y=verticalDock?0:Store.Settings.Placement=="top"?-v.LiftMotion.Value:v.LiftMotion.Value;
                 if(v.LabelTranslate!=null) {
@@ -565,11 +682,11 @@ namespace Polka {
                 }
                 v.Shift.X=v.ShiftMotion.Value; v.Shift.Y=v.ShiftYMotion.Value; v.Button.Opacity=v.AlphaMotion.Value;
             }
-            if(Store.Settings.Theme=="aurora" && !externalDragFeedback) {
-                var palette=Palette;
-                byte alpha=(byte)(95+60*Math.Min(1,accentActivity));
-                var current=glass.BorderBrush as SolidColorBrush;
-                if(current==null || current.Color.A!=alpha) glass.BorderBrush=ThemePalette.Brush(Color.FromArgb(alpha,palette.Accent.R,palette.Accent.G,palette.Accent.B));
+            if(!externalDragFeedback) {
+                var edge=ThemeBrush("GlassStroke").Color;
+                byte alpha=(byte)Math.Min(255,edge.A+60*auraWeight*Math.Min(1,accentActivity));
+                displayedGlassStroke.Color=Color.FromArgb(alpha,edge.R,edge.G,edge.B);
+                glass.BorderBrush=displayedGlassStroke;
             }
             if(dragView!=null && dragGhost!=null) {
                 ghostX.Step(dt,motion.DragResponse); ghostY.Step(dt,motion.DragResponse); ghostScale.Step(dt,motion.DragScaleResponse); ghostAlpha.Step(dt,motion.DragAlphaResponse); placeholderX.Step(dt,motion.PlaceholderResponse); placeholderY.Step(dt,motion.PlaceholderResponse);
@@ -728,11 +845,12 @@ namespace Polka {
             if(Store.Settings.MoveDesktopShortcuts && Store.Settings.Items.Count(x=>x.PendingPublicMove)>pendingBefore) MovePublicShortcuts();
         }
 
-        MenuItem Menu(string text,Action action) { var m=new MenuItem { Header=text, Foreground=ThemePalette.Brush(Palette.Foreground), Background=Brushes.Transparent }; m.Click+=delegate { action(); }; return m; }
+        MenuItem Menu(string text,Action action) { var m=new MenuItem { Header=text, Foreground=ThemeBrush("Foreground"), Background=Brushes.Transparent }; m.Click+=delegate { action(); }; return m; }
         Separator MenuDivider() { return new Separator { Style=(Style)MenuTheme[typeof(Separator)] }; }
         ContextMenu NewMenu() {
             var palette=Palette;
-            var menu=new ContextMenu { FontFamily=FontFamily, FontSize=13, Background=ThemePalette.Brush(palette.Menu), Foreground=ThemePalette.Brush(palette.Foreground), BorderBrush=ThemePalette.Brush(palette.MenuStroke), BorderThickness=new Thickness(1), Padding=new Thickness(5), SnapsToDevicePixels=true };
+            var menu=new ContextMenu { FontFamily=FontFamily, FontSize=13, Background=ThemeBrush("Menu"), Foreground=ThemeBrush("Foreground"), BorderBrush=ThemeBrush("MenuStroke"), BorderThickness=new Thickness(1), Padding=new Thickness(5), SnapsToDevicePixels=true };
+            menu.Resources.MergedDictionaries.Add(themeResources);
             menu.Template=(ControlTemplate)MenuTheme["MenuSurface"];
             menu.Resources[typeof(MenuItem)]=MenuTheme[typeof(MenuItem)];
             menu.Resources[typeof(Separator)]=MenuTheme[typeof(Separator)];
@@ -892,9 +1010,14 @@ namespace Polka {
         }
         internal void SetTheme(string theme) {
             if(helperRunning) return;
+            if(ThemeCatalog.Normalize(theme)==ThemeCatalog.Normalize(Store.Settings.Theme)) return;
+            if(glass.Background==null) ApplySettings();
             try { Store.SetTheme(theme); }
-            catch(Exception ex) { if(settingsWindow!=null) settingsWindow.RefreshLanguage(); Toast(L10n.T("SaveSettingsFailed")+ex.Message); return; }
-            RefreshLanguageUi();
+            catch(Exception ex) { if(settingsWindow!=null) settingsWindow.ApplyThemeSelection(); Toast(L10n.T("SaveSettingsFailed")+ex.Message); return; }
+            if(!ThemeTransitionsEnabled) { RefreshLanguageUi(); return; }
+            foreach(var menu in openMenus.ToArray()) menu.IsOpen=false;
+            BeginThemeTransition();
+            if(settingsWindow!=null) settingsWindow.ApplyThemeSelection();
         }
         void RefreshLanguageUi() {
             // An open popup retains old strings, so close it before replacing menus.
@@ -906,7 +1029,7 @@ namespace Polka {
             if(settingsWindow!=null) settingsWindow.RefreshLanguage();
         }
         MenuItem BuildLanguageMenu() {
-            var languageMenu=new MenuItem { Header=L10n.T("Language"), Foreground=ThemePalette.Brush(Palette.Foreground), Background=Brushes.Transparent };
+            var languageMenu=new MenuItem { Header=L10n.T("Language"), Foreground=ThemeBrush("Foreground"), Background=Brushes.Transparent };
             foreach(string code in new[]{"en","ru"}) {
                 string choice=code;
                 var item=Menu(code=="en"?"English":"Русский",delegate { SetLanguage(choice); });
@@ -916,7 +1039,7 @@ namespace Polka {
             return languageMenu;
         }
         MenuItem BuildPlacementMenu() {
-            var placementMenu=new MenuItem { Header=L10n.T("Placement"), Foreground=ThemePalette.Brush(Palette.Foreground), Background=Brushes.Transparent };
+            var placementMenu=new MenuItem { Header=L10n.T("Placement"), Foreground=ThemeBrush("Foreground"), Background=Brushes.Transparent };
             foreach(string placement in new[]{"bottom","top","left","right","free"}) {
                 string choice=placement;
                 string key="Placement"+Char.ToUpperInvariant(choice[0])+choice.Substring(1);

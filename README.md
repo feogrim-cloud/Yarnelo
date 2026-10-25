@@ -30,6 +30,7 @@ Windows interface demonstrations rendered by Yarnelo with example shortcuts on a
 - Up to **30 shortcuts**, with one to four preferred rows and automatic wrapping when the screen fills up.
 - Adjustable background opacity and corner rounding, from square corners to a capsule; icon size and hover magnification.
 - Five themes for the dock, menus and settings: **Dusk**, **Frost**, **Graphite**, **Ember** and **Aurora**. Each remembers its own opacity and corner rounding; Dusk keeps your original dock colors, motion and background settings. All five share modern settings controls.
+- Smooth theme changes blend colors, background opacity and corner rounding. Quick repeated choices continue from the current appearance toward the latest selection.
 - Optional compact one-line captions: **Show icon labels** on Windows or **Show labels** on Linux. Hovering an icon shows its name.
 - Center the dock at the top, bottom, left or right. Side docks run vertically with upright icons; dragging the handle enables free positioning.
 - Wider, two-column settings with every control on one page and no vertical scrolling.
@@ -70,7 +71,7 @@ Windows x64/x86 requires **.NET Framework 4.8 or 4.8.1**; native Windows ARM64 r
 3. Right-click the dock for **Settings**, **Language** and **Exit**. Drag its handle to reposition it freely.
 4. In **Settings**, choose an edge, preferred rows, background opacity and corner rounding, icon size and magnification. The dock adds rows (columns at the sides) when needed to keep shortcuts on screen.
 
-Choose **Settings → Theme** for the original dark **Dusk**, light ice **Frost**, matte charcoal **Graphite**, warm bronze **Ember** or indigo **Aurora**. Windows applies and saves the choice immediately; Linux applies it with **OK**, while **Cancel** keeps the saved settings. Returning to a theme restores its own opacity and rounding. Icon size, magnification, rows, position, compact labels, startup and automatic desktop-shortcut preferences remain yours. Themes also tune hover, click and drag motion; Aurora's edge accent appears during interaction, with no idle flare.
+Choose **Settings → Theme** for the original dark **Dusk**, light ice **Frost**, matte charcoal **Graphite**, warm bronze **Ember** or indigo **Aurora**. Windows saves the choice immediately and transitions toward it; Linux applies it with **OK**, while **Cancel** keeps the saved settings. Returning to a theme restores its own opacity and rounding. Icon size, magnification, rows, position, compact labels, startup and automatic desktop-shortcut preferences remain yours. Themes also tune hover, click and drag motion; Aurora's edge accent appears during interaction, with no idle flare.
 
 Enable **Settings → Automatically add new desktop shortcuts** if you want future desktop launchers added while Yarnelo is running. Switching it on leaves existing icons alone. Duplicates are skipped; if all 30 places are occupied, the original stays on the desktop and is not queued for later. On Windows, personal shortcuts follow the desktop-transfer setting; shared shortcuts never trigger an administrator prompt automatically. Linux keeps originals in place. Manual drag-and-drop and **+** remain available in either mode.
 

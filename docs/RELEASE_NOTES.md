@@ -1,12 +1,16 @@
-# Yarnelo 1.8.1 — Modern Dusk controls / Современные элементы Dusk
+# Yarnelo 1.9.0 — Smooth theme transitions / Плавное переключение тем
 
 ## English
 
-This release updates **Dusk's settings and menu controls to match the common style of the other themes**. Windows has thin accent sliders with round thumbs and rounded checkboxes; Linux uses the same slider, button and menu styling as the other four themes. Dusk retains its dock colors, motion, default opacity and saved backgrounds. All five themes, shortcut profiles, compact labels, startup and automatic addition of new desktop shortcuts are preserved; all 14 Intel/AMD and native ARM64 packages remain available.
+This release adds **smooth theme transitions on Windows and Linux**. Palette colors, background opacity and corner rounding change gradually; a rapid new selection continues from the currently displayed colors toward your latest choice. All five themes, their saved backgrounds, modern controls, shortcut profiles, compact labels, startup and automatic addition of new desktop shortcuts are preserved; all 14 Intel/AMD and native ARM64 packages remain available.
+
+### Smooth switching
+
+Choose another theme in **Settings → Theme** to blend gradually into its appearance. Quick repeated choices retarget the active transition without jumping back to an earlier color. Transitions leave icons, icon size, magnification, rows and position unchanged; each theme still remembers its own background. The dock's appearance stays still when there is no interaction. On Windows, Yarnelo uses the system UI-animation preference read at startup; with animations disabled, theme changes apply immediately.
 
 ### Themes
 
-Choose **Settings → Theme**. Windows applies and saves changes immediately; Linux applies them when you choose **OK**, while **Cancel** leaves the saved settings unchanged.
+Choose **Settings → Theme**. Windows saves your choice immediately and transitions toward it. Linux previews the palette inside Settings and applies the choice to the dock when you choose **OK**, while **Cancel** leaves the saved settings unchanged.
 
 | Theme | Appearance | First-use background opacity / corner rounding |
 | --- | --- | --- |
@@ -85,11 +89,15 @@ Windows installers run per user and retain `Data` on update/removal. Update a po
 
 ## Русский
 
-**Элементы настроек и меню Dusk приведены к общему стилю остальных тем**. В Windows используются тонкие акцентные ползунки с круглыми бегунками и скруглённые галочки; в Linux — то же оформление ползунков, кнопок и меню, что у остальных четырёх тем. Цвета панели Dusk, анимации, непрозрачность по умолчанию и сохранённый фон остаются прежними. Все пять тем, профили ярлыков, компактные подписи, автозапуск и автоматическое добавление новых ярлыков сохраняются; доступны все 14 пакетов Intel/AMD и нативных ARM64.
+В Windows и Linux добавлено **плавное переключение тем**. Цвета палитры, непрозрачность фона и скругление постепенно меняются; при быстром новом выборе переход продолжается от текущих видимых цветов к последней выбранной теме. Все пять тем, их сохранённый фон, современные элементы управления, профили ярлыков, компактные подписи, автозапуск и автоматическое добавление новых ярлыков сохраняются; доступны все 14 пакетов Intel/AMD и нативных ARM64.
+
+### Плавное переключение
+
+Выберите другую тему в **Настройки → Тема**, чтобы оформление постепенно перешло к её виду. Быстрый повторный выбор меняет направление текущего перехода без скачка к прежнему цвету. Значки, их размер, увеличение, ряды и положение сохраняются; у каждой темы по-прежнему запоминается собственный фон. В покое оформление панели остаётся неподвижным. В Windows Yarnelo учитывает настройку системных анимаций, прочитанную при запуске; если анимации отключены, тема применяется сразу.
 
 ### Темы
 
-Выберите **Настройки → Тема**. В Windows изменения применяются и сохраняются сразу. В Linux нажмите **OK** для применения; **«Отмена»** оставляет сохранённые настройки без изменений.
+Выберите **Настройки → Тема**. В Windows выбор сохраняется сразу, а оформление постепенно переходит к нему. В Linux палитра предварительно показывается внутри настроек; нажмите **OK**, чтобы применить её к панели. **«Отмена»** оставляет сохранённые настройки без изменений.
 
 | Тема | Вид | Непрозрачность / скругление при первом выборе |
 | --- | --- | --- |

@@ -12,7 +12,7 @@ import sys
 from yarnelo_i18n import LANGUAGES, error_text, resolve_language, text
 from yarnelo_autostart import AutostartManager, resolve_startup_command
 from yarnelo_desktop_watch import DesktopShortcutTracker
-from yarnelo_themes import THEMES, THEME_IDS, default_appearance, stylesheet
+from yarnelo_themes import THEMES, THEME_IDS, appearance, blend_appearance, blend_color, default_appearance, foreground_progress, stylesheet
 
 from yarnelo_model import (
     VERSION, PLACEMENTS, Item, ModelError, Settings, config_path, desktop_metadata, dock_layout,
@@ -32,7 +32,11 @@ def arguments() -> argparse.Namespace:
     parser.add_argument("--startup", action="store_true", help=text("help_startup", requested.language))
     parser.add_argument("--smoke-test", action="store_true", help=text("help_smoke", requested.language))
     parser.add_argument("--smoke-output", type=Path, help=text("help_smoke_output", requested.language))
-    return parser.parse_args()
+    parser.add_argument("--smoke-theme-transitions", action="store_true", help=argparse.SUPPRESS)
+    result = parser.parse_args()
+    if result.smoke_theme_transitions and not result.smoke_test:
+        parser.error("--smoke-theme-transitions requires --smoke-test")
+    return result
 
 
 def external_environment(environment: dict[str, str], bundle_root: Path) -> dict[str, str]:
@@ -69,8 +73,8 @@ def main() -> int:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
     from PySide6.QtCore import (
-        QCoreApplication, QEvent, QEasingCurve, QFileInfo, QLibraryInfo, QLocale, QLockFile, QPoint, QPointF, QProcess, QProcessEnvironment, Property,
-        QRect, QRectF, QSize, QStandardPaths, Qt, QTimer, QPropertyAnimation, QTranslator,
+        QCoreApplication, QEvent, QEasingCurve, QFileInfo, QLibraryInfo, QLocale, QLockFile, QObject, QPoint, QPointF, QProcess, QProcessEnvironment, Property,
+        QRect, QRectF, QSize, QStandardPaths, Qt, QTimer, QPropertyAnimation, QTranslator, QVariantAnimation,
     )
     from PySide6.QtGui import (
         QActionGroup, QColor, QFont, QFontDatabase, QIcon, QImage, QLinearGradient, QPainter, QPalette, QPen, QPixmap,
@@ -163,6 +167,68 @@ def main() -> int:
             palette.setColor(role, QColor(color))
         return palette
 
+    def blend_palette(first, second, amount, text_amount=None):
+        if amount <= 0:
+            return QPalette(first)
+        if amount >= 1:
+            return QPalette(second)
+        result = QPalette(first)
+        text_roles = (QPalette.ColorRole.WindowText, QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText,
+                      QPalette.ColorRole.ToolTipText, QPalette.ColorRole.PlaceholderText)
+        for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive, QPalette.ColorGroup.Disabled):
+            for role in QPalette.ColorRole:
+                if role in (QPalette.ColorRole.NoRole, QPalette.ColorRole.NColorRoles):
+                    continue
+                start, end = first.color(group, role).getRgb(), second.color(group, role).getRgb()
+                progress = text_amount if text_amount is not None and role in text_roles else amount
+                result.setColor(group, role, QColor(*(round(a + (b - a) * progress) for a, b in zip(start, end))))
+        return result
+
+    class ThemeTransition(QObject):
+        """One short, interruptible color animation owned by its visible host."""
+        def __init__(self, parent, initial, palette, apply_frame):
+            super().__init__(parent)
+            self.current = self.target = self.start = initial
+            self.palette = QPalette(palette)
+            self.start_palette = QPalette(palette)
+            self.target_palette = QPalette(palette)
+            self.apply_frame = apply_frame
+            self.enabled = not args.smoke_test
+            self.animation = QVariantAnimation(self)
+            self.animation.setDuration(300)
+            self.animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+            self.animation.valueChanged.connect(self.advance)
+            self.animation.finished.connect(self.finish)
+
+        def running(self):
+            return self.animation.state() == QVariantAnimation.State.Running
+
+        def retarget(self, target, palette, animate=False):
+            if animate and self.running() and target == self.target and palette == self.target_palette:
+                return
+            self.animation.stop()
+            self.start, self.start_palette = self.current, QPalette(self.palette)
+            self.target, self.target_palette = target, QPalette(palette)
+            if not animate or not self.enabled or (target == self.current and palette == self.palette):
+                self.finish()
+                return
+            self.animation.setStartValue(0.0)
+            self.animation.setEndValue(1.0)
+            self.animation.start()
+
+        def advance(self, amount):
+            self.current = blend_appearance(self.start, self.target, float(amount))
+            text_amount = foreground_progress(self.start.palette, self.target.palette, float(amount))
+            self.palette = blend_palette(self.start_palette, self.target_palette, float(amount), text_amount)
+            self.apply_frame(self.current, self.palette)
+
+        def finish(self):
+            self.current, self.palette = self.target, QPalette(self.target_palette)
+            self.apply_frame(self.current, self.palette)
+
+        def stop(self):
+            self.animation.stop()
+
     class Tile(QWidget):
         def __init__(self, dock: "Dock", item: Item | None):
             super().__init__(dock)
@@ -196,7 +262,7 @@ def main() -> int:
         def set_hover(self, value):
             self.progress = value
             self.update()
-            if self.dock.settings.theme == "aurora":
+            if self.dock.displayed_theme.edge != self.dock.displayed_theme.hovered_edge:
                 self.dock.update()
 
         hover = Property(float, get_hover, set_hover)
@@ -295,14 +361,14 @@ def main() -> int:
                     image_target = QRectF(center.x() - image_width / 2, center.y() - image_height / 2, image_width, image_height)
                     painter.drawPixmap(image_target, self.pixmap, QRectF(self.pixmap.rect()))
             else:
-                glyph = QColor(224, 230, 250) if self.dock.settings.theme == "dusk" else QColor(theme.foreground)
+                glyph = QColor(self.dock.displayed_theme.glyph)
                 glyph.setAlpha(int(175 + 65 * self.progress))
                 painter.setPen(QPen(glyph, max(1.6, base / 20), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
                 arm = max(4.0, base * 0.17 * scale)
                 painter.drawLine(QPointF(center.x() - arm, center.y()), QPointF(center.x() + arm, center.y()))
                 painter.drawLine(QPointF(center.x(), center.y() - arm), QPointF(center.x(), center.y() + arm))
             if label_height:
-                painter.setPen(QColor(242, 244, 255) if self.dock.settings.theme == "dusk" else QColor(theme.foreground))
+                painter.setPen(QColor(self.dock.displayed_theme.caption))
                 painter.setFont(QFont("", 8))
                 text = painter.fontMetrics().elidedText(self.label, Qt.TextElideMode.ElideRight, self.width() - 5)
                 painter.drawText(QRect(2, self.height() - 18, self.width() - 4, 16), Qt.AlignmentFlag.AlignCenter, text)
@@ -470,10 +536,29 @@ def main() -> int:
             self.buttons.accepted.connect(self.accept)
             self.buttons.rejected.connect(self.reject)
             layout.addWidget(self.buttons)
+            self.compact_style = ""
+            initial = appearance(self.preview_theme, dock.settings.opacity, dock.settings.corner_radius)
+            self.theme_transition = ThemeTransition(self, initial, theme_palette(self.preview_theme), self.apply_preview_frame)
             self.retranslate()
             self.theme_choice.currentIndexChanged.connect(self.choose_theme)
-            self.opacity.valueChanged.connect(lambda: self.background_dirty.add("opacity") if not self.loading_background else None)
-            self.corners.valueChanged.connect(lambda: self.background_dirty.add("corner_radius") if not self.loading_background else None)
+            self.opacity.valueChanged.connect(lambda: self.background_changed("opacity"))
+            self.corners.valueChanged.connect(lambda: self.background_changed("corner_radius"))
+
+        def apply_preview_frame(self, frame, palette):
+            self.setPalette(palette)
+            sheet = stylesheet(frame.palette) + self.compact_style
+            if self.styleSheet() != sheet:
+                self.setStyleSheet(sheet)
+
+        def refresh_preview(self, animate=False):
+            value = self.remember_background()
+            self.theme_transition.retarget(appearance(self.preview_theme, value["opacity"], value["corner_radius"]),
+                                           theme_palette(self.preview_theme), animate)
+
+        def background_changed(self, key):
+            if not self.loading_background:
+                self.background_dirty.add(key)
+                self.refresh_preview(animate=self.theme_transition.running())
 
         def remember_background(self):
             value = dict(self.appearance_drafts[self.preview_theme])
@@ -496,6 +581,7 @@ def main() -> int:
                 self.loading_background = False
             self.background_dirty.clear()
             self.fit_available_screen()
+            self.refresh_preview(animate=True)
 
         def restore_theme(self, settings):
             self.preview_theme = settings.theme
@@ -511,12 +597,17 @@ def main() -> int:
             self.loading_background = False
             self.background_dirty.clear()
             self.fit_available_screen()
+            self.refresh_preview()
 
         def accept(self):
             # Applying before accepting keeps a failed change visible and lets
             # the user retry or cancel without losing the previous settings.
             if self.dock.apply_settings_dialog(self):
                 super().accept()
+
+        def done(self, result):
+            self.theme_transition.stop()
+            super().done(result)
 
         def fit_available_screen(self):
             screen = self.dock.current_screen()
@@ -527,9 +618,8 @@ def main() -> int:
             # both columns visible, reducing spacing/font only on small areas.
             small = bounds.width() < 720 or bounds.height() < 500
             compact = bounds.height() < 380
-            compact_style = "QLabel, QCheckBox, QSpinBox, QDoubleSpinBox, QComboBox, QPushButton { font-size: 10px; } QSpinBox, QDoubleSpinBox, QComboBox { padding: 2px; } QPushButton { padding: 3px 10px; }" if compact else ""
-            self.setPalette(theme_palette(self.preview_theme))
-            self.setStyleSheet(stylesheet(self.preview_theme) + compact_style)
+            self.compact_style = "QLabel, QCheckBox, QSpinBox, QDoubleSpinBox, QComboBox, QPushButton { font-size: 10px; } QSpinBox, QDoubleSpinBox, QComboBox { padding: 2px; } QPushButton { padding: 3px 10px; }" if compact else ""
+            self.apply_preview_frame(self.theme_transition.current, self.theme_transition.palette)
             font = QFont(self.base_font)
             if small:
                 font.setPointSizeF(7.0 if compact else max(7.0, min(9.0, font.pointSizeF())))
@@ -581,6 +671,7 @@ def main() -> int:
         def __init__(self, settings: Settings, store: Path | None, invalid: bool = False, autostart=None, startup_error=None, desktop_directory=None):
             super().__init__()
             self.settings, self.store, self.invalid_settings = settings, store, invalid
+            self.displayed_theme = appearance(settings.theme, settings.opacity, settings.corner_radius)
             self.autostart, self.startup_error = autostart, startup_error
             # Tests supply their own directory and poll manually. A smoke test
             # must never inspect the real Desktop or start a real monitor.
@@ -634,6 +725,7 @@ def main() -> int:
                 self.tray.setContextMenu(menu)
                 self.tray.activated.connect(lambda reason: self.show_passive() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
                 self.tray.show()
+            self.theme_transition = ThemeTransition(self, self.displayed_theme, theme_palette(settings.theme), self.apply_theme_frame)
             self.apply_theme()
             self.apply_language()
             # A bound QObject method is disconnected with its receiver. Avoid
@@ -644,6 +736,7 @@ def main() -> int:
             self.configure_desktop_tracking()
 
         def shutdown(self):
+            self.theme_transition.stop()
             self.stop_desktop_tracking()
             if self.shutting_down:
                 return
@@ -680,13 +773,21 @@ def main() -> int:
         def describe_error(self, error):
             return error_text(error, self.settings.language)
 
-        def apply_theme(self):
-            app.setPalette(theme_palette(self.settings.theme))
-            app.setStyleSheet(stylesheet(self.settings.theme))
+        def apply_theme_frame(self, frame, palette):
+            self.displayed_theme = frame
+            app.setPalette(palette)
+            sheet = stylesheet(frame.palette)
+            if app.styleSheet() != sheet:
+                app.setStyleSheet(sheet)
             for tile in [*self.tiles.values(), self.add_tile]:
-                tile.configure_theme()
                 tile.update()
             self.update()
+
+        def apply_theme(self, animate=False):
+            self.theme_transition.retarget(appearance(self.settings.theme, self.settings.opacity, self.settings.corner_radius),
+                                           theme_palette(self.settings.theme), animate)
+            for tile in [*self.tiles.values(), self.add_tile]:
+                tile.configure_theme()
 
         def add_action(self, menu, key, callback):
             action = menu.addAction(self.t(key), callback)
@@ -824,30 +925,22 @@ def main() -> int:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             rect = QRectF(self.rect()).adjusted(1, 1, -1, -1)
             background = QLinearGradient(rect.topLeft(), rect.bottomRight())
-            alpha = round(255 * self.settings.opacity)
-            theme = THEMES[self.settings.theme]
+            frame = self.displayed_theme
+            theme = frame.palette
+            alpha = round(255 * theme.opacity)
             top, bottom = QColor(theme.surface), QColor(theme.bottom)
             top.setAlpha(alpha)
             bottom.setAlpha(alpha)
             background.setColorAt(0, top)
             background.setColorAt(1, bottom)
             painter.setBrush(background)
-            edge = QColor(222, 232, 255, max(35, alpha // 2))
-            if self.settings.theme != "dusk":
-                edge = QColor(theme.edge)
-                edge.setAlpha(max(75, alpha // 2))
-                if self.settings.theme == "aurora":
-                    influence = max((tile.progress for tile in [*self.tiles.values(), self.add_tile]), default=0)
-                    edge = QColor(theme.accent)
-                    edge.setAlpha(round(60 + 95 * min(1, max(0, influence))))
+            influence = max((tile.progress for tile in [*self.tiles.values(), self.add_tile]), default=0)
+            edge = QColor(blend_color(frame.edge, frame.hovered_edge, min(1, max(0, influence))))
             painter.setPen(QPen(edge, 1))
-            radius = min(rect.width(), rect.height()) / 2 if self.settings.corner_radius >= 100 else min(self.settings.corner_radius, min(rect.width(), rect.height()) / 2)
+            radius = frame.radius(min(rect.width(), rect.height()) / 2)
             painter.drawRoundedRect(rect, radius, radius)
             painter.setPen(Qt.PenStyle.NoPen)
-            handle = QColor(221, 229, 255, 95) if self.settings.theme == "dusk" else QColor(theme.foreground)
-            if self.settings.theme != "dusk":
-                handle.setAlpha(110)
-            painter.setBrush(handle)
+            painter.setBrush(QColor(frame.handle))
             if self.layout_geometry.vertical:
                 for x in (-7, 0, 7):
                     for y in (11, 17):
@@ -860,13 +953,8 @@ def main() -> int:
                 dragged = next((tile for tile in self.tiles.values() if tile.dragging), None)
                 if dragged:
                     placeholder = QRectF(dragged.rect()).translated(self.positions[dragged.item.id]).adjusted(6, 6, -6, -6)
-                    fill, stroke = QColor(143, 163, 240, 22), QColor(180, 198, 250, 110)
-                    if self.settings.theme != "dusk":
-                        fill, stroke = QColor(theme.accent), QColor(theme.accent)
-                        fill.setAlpha(26)
-                        stroke.setAlpha(145)
-                    painter.setBrush(fill)
-                    painter.setPen(QPen(stroke, 1, Qt.PenStyle.DashLine))
+                    painter.setBrush(QColor(frame.placeholder))
+                    painter.setPen(QPen(QColor(frame.placeholder_edge), 1, Qt.PenStyle.DashLine))
                     painter.drawRoundedRect(placeholder, 12, 12)
 
         def begin_drag(self, tile):
@@ -1141,7 +1229,7 @@ def main() -> int:
                 self.settings.placement = dialog.placement.currentData()
                 if self.persist():
                     dialog.startup_initial = self.settings.launch_at_login
-                    self.apply_theme()
+                    self.apply_theme(animate=previous.theme != self.settings.theme or self.theme_transition.running())
                     self.relayout(True)
                     if previous.auto_add_desktop_shortcuts != self.settings.auto_add_desktop_shortcuts:
                         self.configure_desktop_tracking()
@@ -1380,6 +1468,120 @@ def main() -> int:
             def discard_dialog(current):
                 dock.settings_dialog = None
                 current.deleteLater()
+
+            if args.smoke_theme_transitions:
+                # Opt-in source-only checks drive Qt's real animation clock
+                # deterministically; ordinary/package smoke keeps exact snaps.
+                initial_profile, initial_bytes = settings.to_dict(), dock.store.read_bytes()
+                dock.theme_transition.enabled = True
+                dialog = startup_dialog()
+                dialog.theme_transition.enabled = True
+                dialog_size = dialog.size()
+                old_frame, old_palette = dialog.theme_transition.current, QPalette(dialog.theme_transition.palette)
+                dialog.theme_choice.setCurrentIndex(THEME_IDS.index("frost"))
+                if settings.theme != "dusk" or dock.theme_transition.running() or dialog.theme_transition.current != old_frame:
+                    raise RuntimeError("A local theme transition changed the live dock or jumped at its start")
+                dialog.theme_transition.animation.setCurrentTime(150)
+                expected = blend_appearance(old_frame, appearance("frost"), .5)
+                if dialog.theme_transition.current != expected or dialog.theme_transition.palette != blend_palette(old_palette, theme_palette("frost"), .5) or dialog.size() != dialog_size:
+                    raise RuntimeError("The settings palette did not interpolate at its midpoint without relayout")
+                visible = dialog.theme_transition.current
+                dialog.theme_choice.setCurrentIndex(THEME_IDS.index("ember"))
+                if dialog.theme_transition.current != visible or dialog.theme_transition.start != visible:
+                    raise RuntimeError("A rapid preview selection restarted from an old endpoint")
+                dialog.opacity.setValue(61)
+                dialog.corners.setValue(100)
+                if dialog.theme_transition.target.palette.opacity != .61 or dialog.theme_transition.target.radius_fraction != 1:
+                    raise RuntimeError("A slider edit lost its draft target during a preview transition")
+                dialog.theme_transition.animation.setCurrentTime(300)
+                if dialog.theme_transition.current != appearance("ember", .61, 100) or dialog.theme_transition.running():
+                    raise RuntimeError("The settings transition did not finish at the exact edited endpoint")
+                dialog.theme_choice.setCurrentIndex(THEME_IDS.index("aurora"))
+                if not dialog.theme_transition.running():
+                    raise RuntimeError("The Cancel fixture did not start its local animation")
+                preview_objects = [dialog.theme_transition, dialog.theme_transition.animation]
+                dialog.reject()
+                if dialog.theme_transition.running() or settings.to_dict() != initial_profile or dock.store.read_bytes() != initial_bytes:
+                    raise RuntimeError("Cancel did not stop its local animation without saving")
+                discard_dialog(dialog)
+                QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+                if any(isValid(value) for value in preview_objects):
+                    raise RuntimeError("Closing settings did not dispose its theme animation")
+
+                # A successful OK starts one live transition; painting does not
+                # rebuild icons, move controls, or fade the whole window.
+                dialog = startup_dialog()
+                dialog.theme_choice.setCurrentIndex(THEME_IDS.index("frost"))
+                dialog.accept()
+                discard_dialog(dialog)
+                transition = dock.theme_transition
+                image_key = next(iter(dock.tiles.values())).pixmap.cacheKey()
+                tile_objects, dock_bounds = tuple(dock.tiles.values()), dock.geometry()
+                if not transition.running():
+                    raise RuntimeError("A successful theme save did not start the live transition")
+                transition.animation.setCurrentTime(150)
+                if transition.current != blend_appearance(appearance("dusk", initial_profile["opacity"], initial_profile["corner_radius"]), appearance("frost"), .5):
+                    raise RuntimeError("The live dock did not interpolate colors and background at its midpoint")
+                if dock.geometry() != dock_bounds or tuple(dock.tiles.values()) != tile_objects or next(iter(dock.tiles.values())).pixmap.cacheKey() != image_key or dock.windowOpacity() != 1:
+                    raise RuntimeError("A color transition rebuilt/moved/faded the dock or its icons")
+                visible = transition.current
+                dialog = startup_dialog()
+                dialog.theme_choice.setCurrentIndex(THEME_IDS.index("graphite"))
+                dialog.accept()
+                discard_dialog(dialog)
+                if transition.start != visible or transition.current != visible:
+                    raise RuntimeError("The live dock did not retarget from its visible colors")
+                transition.animation.setCurrentTime(90)
+                visible, target, clock = transition.current, transition.target, transition.animation.currentTime()
+                saved_bytes = dock.store.read_bytes()
+                dialog = startup_dialog()
+                dialog.theme_transition.enabled = True
+                dialog.theme_choice.setCurrentIndex(THEME_IDS.index("aurora"))
+                dock.persist = lambda: False
+                try:
+                    dialog.accept()
+                finally:
+                    dock.persist = original_persist
+                if transition.current != visible or transition.target != target or transition.animation.currentTime() != clock or not transition.running() or dock.store.read_bytes() != saved_bytes:
+                    raise RuntimeError("A failed save altered the live transition's frame, target or clock")
+                if dialog.theme_choice.currentData() != "graphite":
+                    raise RuntimeError("A failed animated selection did not retain the established picker rollback")
+                dialog.reject()
+                discard_dialog(dialog)
+                if not transition.running() or transition.target != target:
+                    raise RuntimeError("Cancel incorrectly stopped the independent live dock animation")
+                transition.animation.setCurrentTime(300)
+                if transition.running() or transition.current != appearance("graphite") or app.styleSheet() != stylesheet("graphite"):
+                    raise RuntimeError("The live theme transition did not settle at its exact endpoint")
+
+                # A tall four-row dock exercises the full-rounding sentinel
+                # beyond 100px, where raw 0→100 interpolation used to jump.
+                previous_items, previous_rows = settings.items, settings.rows
+                settings.items = [Item(f"capsule-{index}", "computer") for index in range(30)]
+                settings.rows = 4
+                dock.rebuild()
+                maximum = min(dock.width() - 2, dock.height() - 2) / 2
+                if maximum <= 100:
+                    raise RuntimeError("The capsule animation fixture did not create a tall multirow dock")
+                transition.retarget(appearance("graphite", corner_radius=0), theme_palette("graphite"))
+                transition.retarget(appearance("graphite", corner_radius=100), theme_palette("graphite"), True)
+                transition.animation.setCurrentTime(150)
+                if abs(transition.current.radius(maximum) - maximum / 2) > .001:
+                    raise RuntimeError("Capsule rounding was not a physical-radius interpolation")
+                transition.animation.setCurrentTime(299)
+                penultimate = transition.current.radius(maximum)
+                transition.animation.setCurrentTime(300)
+                if transition.current.radius(maximum) != maximum or maximum - penultimate > .01:
+                    raise RuntimeError("Capsule rounding jumped at its final frame")
+                settings.items, settings.rows = previous_items, previous_rows
+                settings.__dict__.update(Settings.from_dict(initial_profile).__dict__)
+                transition.enabled = False
+                dock.rebuild()
+                dock.apply_theme()
+                dock.persist()
+                if dock.store.read_bytes() != initial_bytes:
+                    raise RuntimeError("Theme animation checks did not restore their isolated profile")
+                print("Qt theme transitions: midpoint, retarget, capsule, Cancel, failed save and disposal passed", flush=True)
 
             # Theme drafts belong to this dialog until OK. Switching back must
             # retain unsaved per-theme sliders without touching the live dock.
@@ -1744,6 +1946,7 @@ def main() -> int:
             app.processEvents()
         for radius in (0, 23, 100):
             settings.corner_radius = radius
+            dock.apply_theme()
             dock.update()
             app.processEvents()
             preview = QImage(dock.size(), QImage.Format.Format_ARGB32)
@@ -1803,6 +2006,8 @@ def main() -> int:
         dock.close()
         print(f"Qt smoke before shutdown: None={sys.getrefcount(None)}", flush=True)
         shutdown_widgets = [widget for widget in app.allWidgets() if isinstance(widget, (Dock, Tile, SettingsDialog))]
+        shutdown_animations = [value for widget in shutdown_widgets if isinstance(widget, (Dock, SettingsDialog))
+                               for value in (widget.theme_transition, widget.theme_transition.animation)]
         # Run the real event-loop exit path, including aboutToQuit and queued
         # DeferredDelete events. Returning from main with live widgets does not
         # exercise this lifecycle and leaves teardown to interpreter finalizers.
@@ -1810,7 +2015,7 @@ def main() -> int:
         exit_code = app.exec()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         app.processEvents()
-        if exit_code != 0 or any(isValid(widget) for widget in shutdown_widgets):
+        if exit_code != 0 or any(isValid(widget) for widget in shutdown_widgets) or any(isValid(value) for value in shutdown_animations):
             raise RuntimeError("Qt did not destroy the dock and tiles during normal shutdown")
         if dock.desktop_tracker is not None:
             raise RuntimeError("Qt did not stop desktop monitoring during normal shutdown")

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -10,6 +11,9 @@ namespace Polka {
         readonly DockWindow dock;
         SolidColorBrush muted;
         ThemePalette palette;
+        readonly Dictionary<string,Button> themeChoices=new Dictionary<string,Button>();
+        readonly Dictionary<string,Slider> appearanceSliders=new Dictionary<string,Slider>();
+        bool refreshingThemeValues;
         public SettingsWindow(DockWindow parent) {
             dock=parent;
             Title=L10n.T("SettingsTitle"); Width=DesignWidth; Height=DesignHeight; ResizeMode=ResizeMode.NoResize;
@@ -32,15 +36,17 @@ namespace Polka {
             Width=DesignWidth*scale; Height=DesignHeight*scale;
         }
         internal void RefreshLanguage() {
-            palette=dock.Palette; muted=ThemePalette.Brush(palette.Muted); Foreground=ThemePalette.Brush(palette.Foreground);
+            palette=dock.Palette; muted=dock.ThemeBrush("Muted"); Foreground=dock.ThemeBrush("Foreground");
+            themeChoices.Clear(); appearanceSliders.Clear();
+            if(!Resources.MergedDictionaries.Contains(dock.ThemeResources)) Resources.MergedDictionaries.Add(dock.ThemeResources);
             var hintStyle=new Style(typeof(ToolTip));
-            hintStyle.Setters.Add(new Setter(Control.BackgroundProperty,ThemePalette.Brush(palette.Hint)));
-            hintStyle.Setters.Add(new Setter(Control.ForegroundProperty,ThemePalette.Brush(palette.Foreground)));
-            hintStyle.Setters.Add(new Setter(Control.BorderBrushProperty,ThemePalette.Brush(palette.HintStroke)));
+            hintStyle.Setters.Add(new Setter(Control.BackgroundProperty,new DynamicResourceExtension(DockWindow.ThemeResource("Hint"))));
+            hintStyle.Setters.Add(new Setter(Control.ForegroundProperty,new DynamicResourceExtension(DockWindow.ThemeResource("Foreground"))));
+            hintStyle.Setters.Add(new Setter(Control.BorderBrushProperty,new DynamicResourceExtension(DockWindow.ThemeResource("HintStroke"))));
             Resources[typeof(ToolTip)]=hintStyle;
             Title=L10n.T("SettingsTitle");
             var frame=new Border { Width=DesignWidth, Height=DesignHeight, CornerRadius=new CornerRadius(20), Padding=new Thickness(26,20,26,18),
-                Background=ThemePalette.Brush(palette.Surface), BorderBrush=ThemePalette.Brush(palette.Stroke), BorderThickness=new Thickness(1) };
+                Background=dock.ThemeBrush("Surface"), BorderBrush=dock.ThemeBrush("Stroke"), BorderThickness=new Thickness(1) };
             var grid=new Grid();
             grid.RowDefinitions.Add(new RowDefinition { Height=GridLength.Auto });
             grid.RowDefinitions.Add(new RowDefinition { Height=GridLength.Auto });
@@ -51,7 +57,7 @@ namespace Polka {
             heading.Children.Add(new TextBlock { Text="Yarnelo", FontSize=27, FontWeight=FontWeights.SemiBold });
             heading.Children.Add(Help("Tagline",new Thickness(0,5,0,0)));
             header.Children.Add(heading);
-            var close=DockWindow.PlainButton(new TextBlock { Text="×", FontSize=27 },L10n.T("CloseSettings"),palette);
+            var close=DockWindow.PlainButton(new TextBlock { Text="×", FontSize=27 },L10n.T("CloseSettings"),palette,dock);
             close.HorizontalAlignment=HorizontalAlignment.Right; close.VerticalAlignment=VerticalAlignment.Top;
             close.Width=32; close.Height=35; close.Tag="settings-close"; close.Click+=delegate { Close(); }; header.Children.Add(close);
             header.MouseLeftButtonDown+=delegate(object s,MouseButtonEventArgs e) { if(e.LeftButton==MouseButtonState.Pressed) DragMove(); };
@@ -101,6 +107,16 @@ namespace Polka {
             frame.Child=grid;
             Content=new Viewbox { Stretch=Stretch.Uniform, StretchDirection=StretchDirection.DownOnly, Child=frame };
         }
+        internal void ApplyThemeSelection() {
+            palette=dock.Palette;
+            foreach(var pair in themeChoices) Select(pair.Value,pair.Key==dock.Store.Settings.Theme);
+            refreshingThemeValues=true;
+            try {
+                Slider opacity,corners;
+                if(appearanceSliders.TryGetValue("Opacity",out opacity)) opacity.Value=dock.Store.Settings.Opacity*100;
+                if(appearanceSliders.TryGetValue("CornerRadius",out corners)) corners.Value=dock.Store.Settings.CornerRadius;
+            } finally { refreshingThemeValues=false; }
+        }
         FrameworkElement ThemeChoices() {
             var body=new StackPanel { Margin=new Thickness(0,0,0,18), Tag="settings-themes" };
             body.Children.Add(new TextBlock { Text=L10n.T("Theme"), FontSize=13, Margin=new Thickness(0,0,0,8) });
@@ -120,6 +136,7 @@ namespace Polka {
                 System.Windows.Automation.AutomationProperties.SetName(button,"Theme: "+id);
                 button.ToolTip=L10n.T("ThemeDescription_"+id)+" · "+L10n.T("ThemeHelp");
                 button.Click+=delegate { dock.SetTheme(choice); };
+                themeChoices[id]=button;
                 Grid.SetColumn(button,column); choices.Children.Add(button);
             }
             body.Children.Add(choices); return body;
@@ -133,14 +150,14 @@ namespace Polka {
         }
         Button Choice(string text,bool selected) {
             var button=new Button { Content=new TextBlock { Text=text, TextWrapping=TextWrapping.Wrap, TextAlignment=TextAlignment.Center },
-                Height=33, Padding=new Thickness(4,0,4,0), Foreground=ThemePalette.Brush(palette.Foreground), BorderThickness=new Thickness(1), Cursor=Cursors.Hand };
+                Height=33, Padding=new Thickness(4,0,4,0), Foreground=dock.ThemeBrush("Foreground"), BorderThickness=new Thickness(1), Cursor=Cursors.Hand };
             button.Template=(ControlTemplate)System.Windows.Markup.XamlReader.Parse(
-                ("<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='Button'><Border x:Name='body' CornerRadius='8' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/></Border><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='body' Property='BorderBrush' Value='#8BAEFF'/></Trigger><Trigger Property='IsPressed' Value='True'><Setter TargetName='body' Property='Opacity' Value='.75'/></Trigger><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='body' Property='BorderBrush' Value='#C5D7FF'/></Trigger></ControlTemplate.Triggers></ControlTemplate>").Replace("#8BAEFF",palette.Original?"#8BAEFF":ThemePalette.Text(palette.Accent)).Replace("#C5D7FF",palette.Original?"#C5D7FF":ThemePalette.Text(palette.Accent)));
+                ("<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='Button'><Border x:Name='body' CornerRadius='8' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/></Border><ControlTemplate.Triggers><Trigger Property='IsMouseOver' Value='True'><Setter TargetName='body' Property='BorderBrush' Value='#8BAEFF'/></Trigger><Trigger Property='IsPressed' Value='True'><Setter TargetName='body' Property='Opacity' Value='.75'/></Trigger><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='body' Property='BorderBrush' Value='#C5D7FF'/></Trigger></ControlTemplate.Triggers></ControlTemplate>").Replace("#8BAEFF","{DynamicResource YarneloThemeHoverBorder}").Replace("#C5D7FF","{DynamicResource YarneloThemeFocusBorder}"));
             Select(button,selected); return button;
         }
         void Select(Button button,bool selected) {
-            button.Background=ThemePalette.Brush(selected?palette.Selected:palette.Choice);
-            button.BorderBrush=ThemePalette.Brush(selected?palette.SelectedBorder:palette.Stroke);
+            button.Background=dock.ThemeBrush(selected?"Selected":"Choice");
+            button.BorderBrush=dock.ThemeBrush(selected?"SelectedBorder":"Stroke");
             button.FontWeight=selected?FontWeights.SemiBold:FontWeights.Normal;
         }
         void AddLanguage(Panel target) {
@@ -215,15 +232,16 @@ namespace Polka {
             var label=new TextBlock { Text=Math.Round(value)+unit, Foreground=muted, FontSize=12, Margin=new Thickness(8,0,0,0) };
             Grid.SetColumn(label,1); row.Children.Add(label); target.Children.Add(row);
             var slider=new Slider { Minimum=min, Maximum=max, Value=value, TickFrequency=1, IsSnapToTickEnabled=true,
-                Margin=new Thickness(0,7,0,16), Foreground=ThemePalette.Brush(palette.Accent), Tag="setting-"+key };
+                Margin=new Thickness(0,7,0,16), Foreground=dock.ThemeBrush("Accent"), Tag="setting-"+key };
             slider.Template=SliderTemplate();
             System.Windows.Automation.AutomationProperties.SetName(slider,L10n.T(key));
-            slider.ValueChanged+=delegate { set(slider.Value); label.Text=Math.Round(slider.Value)+unit; dock.ApplySettings(); dock.SaveQuietly(); };
+            appearanceSliders[key]=slider;
+            slider.ValueChanged+=delegate { label.Text=Math.Round(slider.Value)+unit; if(refreshingThemeValues) return; set(slider.Value); dock.ApplySettings(); dock.SaveQuietly(); };
             target.Children.Add(slider); return slider;
         }
         CheckBox AddCheck(Panel target,string key,bool value,Action<bool> set) {
             var box=new CheckBox { Content=new TextBlock { Text=L10n.T(key), TextWrapping=TextWrapping.Wrap }, IsChecked=value,
-                FontSize=12, Foreground=ThemePalette.Brush(palette.Foreground), Margin=new Thickness(0,0,0,12), Cursor=Cursors.Hand, Tag="setting-"+key };
+                FontSize=12, Foreground=dock.ThemeBrush("Foreground"), Margin=new Thickness(0,0,0,12), Cursor=Cursors.Hand, Tag="setting-"+key };
             box.Template=CheckTemplate();
             System.Windows.Automation.AutomationProperties.SetName(box,L10n.T(key));
             bool updating=false, accepted=value;
@@ -239,7 +257,7 @@ namespace Polka {
             box.Checked+=change; box.Unchecked+=change; target.Children.Add(box); return box;
         }
         ControlTemplate SliderTemplate() {
-            string accent=ThemePalette.Text(palette.Accent),track=ThemePalette.Text(palette.Stroke),surface=ThemePalette.Text(palette.Surface);
+            string accent="{DynamicResource YarneloThemeSliderFill}",track="{DynamicResource YarneloThemeSliderTrack}",surface="{DynamicResource YarneloThemeSurface}";
             return (ControlTemplate)System.Windows.Markup.XamlReader.Parse(@"<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='Slider'>
                 <Grid Height='18'><Track x:Name='PART_Track' Minimum='{TemplateBinding Minimum}' Maximum='{TemplateBinding Maximum}' Value='{TemplateBinding Value}' IsDirectionReversed='{TemplateBinding IsDirectionReversed}'>
                     <Track.DecreaseRepeatButton><RepeatButton Command='{x:Static Slider.DecreaseLarge}' Focusable='False'><RepeatButton.Template><ControlTemplate TargetType='RepeatButton'><Grid Background='Transparent'><Border Height='3' CornerRadius='1.5' Background='"+accent+@"'/></Grid></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
@@ -250,10 +268,10 @@ namespace Polka {
         ControlTemplate CheckTemplate() {
             return (ControlTemplate)System.Windows.Markup.XamlReader.Parse(@"<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='CheckBox'>
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width='21'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>
-                    <Border x:Name='box' Width='14' Height='14' VerticalAlignment='Top' Margin='0,1,0,0' CornerRadius='3' Background='"+ThemePalette.Text(palette.Choice)+@"' BorderBrush='"+ThemePalette.Text(palette.Stroke)+@"' BorderThickness='1'/>
-                    <Path x:Name='mark' Data='M 2,7 L 5,10 L 11,3' Stroke='"+ThemePalette.Text(palette.AccentText)+@"' StrokeThickness='1.7' Width='13' Height='13' VerticalAlignment='Top' Margin='0,1,0,0' Visibility='Collapsed'/>
+                    <Border x:Name='box' Width='14' Height='14' VerticalAlignment='Top' Margin='0,1,0,0' CornerRadius='3' Background='{DynamicResource YarneloThemeCheckOff}' BorderBrush='{DynamicResource YarneloThemeStroke}' BorderThickness='1'/>
+                    <Path x:Name='mark' Data='M 2,7 L 5,10 L 11,3' Stroke='{DynamicResource YarneloThemeCheckMark}' StrokeThickness='1.7' Width='13' Height='13' VerticalAlignment='Top' Margin='0,1,0,0' Visibility='Collapsed'/>
                     <ContentPresenter Grid.Column='1' RecognizesAccessKey='True'/></Grid>
-                <ControlTemplate.Triggers><Trigger Property='IsChecked' Value='True'><Setter TargetName='box' Property='Background' Value='"+ThemePalette.Text(palette.Accent)+@"'/><Setter TargetName='mark' Property='Visibility' Value='Visible'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='.45'/></Trigger><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='box' Property='BorderBrush' Value='"+ThemePalette.Text(palette.Accent)+@"'/></Trigger></ControlTemplate.Triggers></ControlTemplate>");
+                <ControlTemplate.Triggers><Trigger Property='IsChecked' Value='True'><Setter TargetName='box' Property='Background' Value='{DynamicResource YarneloThemeCheckFill}'/><Setter TargetName='mark' Property='Visibility' Value='Visible'/></Trigger><Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='.45'/></Trigger><Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='box' Property='BorderBrush' Value='{DynamicResource YarneloThemeAccent}'/></Trigger></ControlTemplate.Triggers></ControlTemplate>");
         }
     }
 }

@@ -1,5 +1,19 @@
 # Changelog / Изменения
 
+## 1.9.0 — 2026-10-25
+
+### English
+
+- Added smooth theme transitions on Windows and Linux: palette colors, background opacity and corner rounding change gradually between the five themes.
+- Rapid theme choices continue from the currently displayed colors toward the latest choice, keeping transitions continuous. Idle appearance remains still.
+- Preserved per-theme backgrounds, icon size, magnification, rows, position, compact labels, startup and automatic desktop-shortcut settings. Windows still saves theme choices immediately; Linux still applies them with **OK**, while **Cancel** leaves saved settings unchanged.
+
+### Русский
+
+- В Windows и Linux добавлено плавное переключение пяти тем: цвета палитры, непрозрачность фона и скругление постепенно переходят к новым значениям.
+- При быстром выборе другой темы переход продолжается от текущих видимых цветов к последнему выбору. В покое оформление остаётся неподвижным.
+- Сохранены отдельный фон каждой темы, размер значков, увеличение, ряды, положение, компактные подписи, автозапуск и автоматическое добавление ярлыков. Windows по-прежнему сохраняет выбор темы сразу; в Linux изменения применяются по **OK**, а **«Отмена»** не меняет сохранённые настройки.
+
 ## 1.8.1 — 2026-10-25
 
 ### English

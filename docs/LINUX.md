@@ -177,6 +177,8 @@ Choose **Language / Язык → English / Русский** in the dock's contex
 
 Choose **Settings → Theme**, then **OK**, for **Dusk** (the original dark appearance), **Frost** (light ice), **Graphite** (matte charcoal), **Ember** (warm bronze) or **Aurora** (indigo with an edge accent). **Cancel** leaves the saved theme and settings unchanged. Menus and settings follow the palette; Frost uses contrasting dark text on light surfaces.
 
+Theme changes blend palette colors, background opacity and corner rounding gradually. The Settings picker previews colors locally; the dock changes only after a successful **OK**. Choosing another theme during a transition continues from the current visible colors toward the latest choice. **Cancel** closes the preview and leaves the saved theme unchanged. Icons, their size, magnification, rows and position stay in place, and there is no idle color animation.
+
 Dusk uses the same shared control style as the other four themes, including accent sliders, themed buttons and menus. It keeps its original dock colors and motion.
 
 Each theme remembers its own background opacity and corner rounding. On first use, Frost starts at **76% / 22**, Graphite at **96% / 12**, Ember at **85% / 16** and Aurora at **88% / 24**. Upgrading keeps the original appearance as Dusk with your current background settings. Returning to Dusk, or another theme you adjusted, restores that theme's saved background. Theme changes preserve icon size, magnification, rows, placement, compact labels, startup and automatic desktop-shortcut preferences.

@@ -2,6 +2,33 @@ using System;
 using System.Collections.Generic;
 
 namespace Polka {
+    // Deterministic time-based easing, separate from icon springs. Retargeting
+    // captures current visual values in the caller and starts a fresh interval.
+    internal sealed class ThemeProgress {
+        internal const double Duration=.30;
+        internal bool Active { get; private set; }
+        internal double Elapsed { get; private set; }
+        internal double Amount { get; private set; }
+        internal static double ForegroundAmount(double amount,bool polarityChanges) {
+            if(!polarityChanges) return amount;
+            // Algebraically (.35,.65), written to keep amount=.5 exactly .5
+            // before byte rounding the displayed color channels.
+            double t=Math.Max(0,Math.Min(1,(amount*20-7)/6));
+            return t*t*(3-2*t);
+        }
+        internal void Start() { Active=true; Elapsed=0; Amount=0; }
+        internal void Advance(double dt) {
+            if(!Active || !Store.IsFinite(dt) || dt<=0) return;
+            Elapsed=Math.Min(Duration,Elapsed+dt);
+            if(Duration-Elapsed<1e-12) Elapsed=Duration;
+            double t=Elapsed/Duration;
+            if(Math.Abs(t-.5)<1e-12) t=.5;
+            Amount=t*t*(3-2*t);
+            if(Elapsed>=Duration) { Amount=1; Active=false; }
+        }
+        internal void Cancel() { Active=false; }
+    }
+
     internal sealed class ThemeMotion {
         static readonly Dictionary<string,ThemeMotion> cache=new Dictionary<string,ThemeMotion>();
         internal double Response=25, HoverLift=6, ClickPop=.19, ClickHop=12, ClickDuration=.43, PopDuration=.36,

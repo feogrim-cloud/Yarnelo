@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Optional version to publish after all checks, for example v1.8.1
+        description: Optional version to publish after all checks, for example v1.9.0
         type: string
         default: ''
 
@@ -112,7 +112,7 @@ jobs:
           python -m unittest discover -s linux/tests -v
           python -m unittest discover -s scripts/tests -v
           bash -n scripts/Package-Linux.sh linux/packaging/AppRun
-          python linux/yarnelo.py --smoke-test --smoke-output work/linux-preview.png
+          python linux/yarnelo.py --smoke-test --smoke-theme-transitions --smoke-output work/linux-preview.png
       - name: Download and verify official AppImage tools
         env:
           GITHUB_TOKEN: ${{ github.token }}

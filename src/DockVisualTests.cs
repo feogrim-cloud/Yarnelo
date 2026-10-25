@@ -146,6 +146,76 @@ namespace Polka {
             }
             Check(Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null && !dock.IsVisible,"theme rendering never starts a real desktop host or visible window");
         }
+        static void CheckThemeTransitions(string directory) {
+            string desktop=Path.Combine(directory,"BlendDesktop"); Directory.CreateDirectory(desktop);
+            var store=new Store(Path.Combine(directory,"BlendData"),desktop,desktop);
+            store.Settings.Opacity=.43; store.Settings.CornerRadius=7;
+            store.Settings.Items.Add(new DockItem { Id="blend-icon",Name="Original full-color shortcut",Path="fixture:blend" }); store.Save();
+            var dock=new DockWindow(store);
+            var source=new DrawingImage(new GeometryDrawing(Brushes.OrangeRed,null,new RectangleGeometry(new Rect(0,0,48,48)))); source.Freeze();
+            Field<Dictionary<string,ImageSource>>(dock,"iconCache")["fixture:blend"]=source;
+            dock.ApplySettings(new Rect(0,0,1920,1040));
+            Check(!dock.ThemeTransitionsEnabled,"unshown endpoint tests default to immediate theme application");
+            var settings=new SettingsWindow(dock); typeof(DockWindow).GetField("settingsWindow",Private).SetValue(dock,settings);
+            var settingsTree=settings.Content;
+            var originalView=Field<List<DockWindow.IconView>>(dock,"views")[0];
+            var originalButton=originalView.Button;
+            dock.ThemeTransitionsEnabled=true;
+            dock.SetTheme("frost");
+            var glass=Field<Border>(dock,"glass");
+            Check(dock.ThemeTransitionActive && dock.DisplayedThemeColor("Foreground")==Colors.White,"successful selection starts at the currently displayed colors without a flash");
+            Check(Object.ReferenceEquals(settingsTree,settings.Content) && Object.ReferenceEquals(originalButton,Field<List<DockWindow.IconView>>(dock,"views")[0].Button),"theme switching retains the settings and icon trees instead of rebuilding them");
+            Check(((LinearGradientBrush)glass.Background).GradientStops[0].Color.A==(byte)(.43*255) && glass.CornerRadius.TopLeft==7,"transition begins at the visible custom background opacity and radius");
+            dock.AdvanceAnimations(.10);
+            Check(dock.DisplayedThemeColor("Foreground")==Colors.White && dock.DisplayedThemeColor("Surface")!=ThemePalette.For("dusk").Surface,"a dark-to-light transition keeps text readable before its short contrast-crossing interval");
+            dock.AdvanceAnimations(.05);
+            Check(dock.ThemeTransitionActive && dock.DisplayedThemeColor("Foreground")==Color.FromRgb(144,153,160),"300ms ease-in-out transition reaches the exact halfway foreground");
+            Check(((SolidColorBrush)settings.Foreground).Color==dock.DisplayedThemeColor("Foreground"),"settings text shares the currently displayed foreground");
+            Check(((LinearGradientBrush)glass.Background).GradientStops[0].Color.A==151 && Math.Abs(glass.CornerRadius.TopLeft-14.5)<.00001,"background alpha and corner radius interpolate at the same midpoint");
+            var midMenu=(ContextMenu)typeof(DockWindow).GetMethod("BuildDockMenu",Private).Invoke(dock,new object[0]);
+            Check(((SolidColorBrush)midMenu.Background).Color==dock.DisplayedThemeColor("Menu"),"menus created during a transition start with the current displayed palette");
+            Check(((SolidColorBrush)((ToolTip)originalButton.ToolTip).Foreground).Color==dock.DisplayedThemeColor("Foreground"),"an existing icon tooltip follows the same interpolated palette");
+            Color beforeRetarget=dock.DisplayedThemeColor("Foreground"), beforeTop=((LinearGradientBrush)glass.Background).GradientStops[0].Color;
+            double beforeRadius=glass.CornerRadius.TopLeft;
+            dock.SetTheme("ember");
+            Check(dock.DisplayedThemeColor("Foreground")==beforeRetarget && ((LinearGradientBrush)glass.Background).GradientStops[0].Color==beforeTop && glass.CornerRadius.TopLeft==beforeRadius,"rapid re-selection retargets from the exact displayed frame without a jump");
+            var frostMemory=store.Settings.ThemeAppearances.Single(value=>value.Theme=="frost");
+            Check(frostMemory.Opacity==.76 && frostMemory.CornerRadius==22,"intermediate visual values never overwrite per-theme background preferences");
+            dock.AdvanceAnimations(.15);
+            Check(dock.DisplayedThemeColor("Foreground")==Color.FromRgb(192,189,184),"retargeted midpoint starts from the previous displayed color");
+            dock.AdvanceAnimations(.15);
+            Check(!dock.ThemeTransitionActive && !Field<bool>(dock,"rendering") && dock.DisplayedThemeColor("Foreground")==ThemePalette.For("ember").Foreground,"transition reaches the exact endpoint and stops its rendering subscription");
+            Check(glass.Background is SolidColorBrush && ((SolidColorBrush)glass.Background).Color.A==(byte)(.85*255) && glass.CornerRadius.TopLeft==16,"finished transition restores the exact catalog background type and values");
+            Check(((SolidColorBrush)midMenu.Background).Color==ThemePalette.For("ember").Menu,"a menu created midway also reaches the final palette");
+            Check(Object.ReferenceEquals(source,originalView.Image.Source) && originalButton.Opacity==1 && dock.Opacity==1,"theme animation never fades the window, icon or an old screenshot");
+            dock.SetTheme("aurora"); dock.AdvanceAnimations(.10); dock.SetTheme("aurora"); dock.AdvanceAnimations(.20);
+            Check(!dock.ThemeTransitionActive && dock.DisplayedThemeColor("Foreground")==ThemePalette.For("aurora").Foreground,"choosing the already selected theme does not restart its transition");
+            dock.SetTheme("frost"); dock.AdvanceAnimations(.10);
+            string profile=Path.Combine(store.DataDirectory,"settings.json"); byte[] bytes=File.ReadAllBytes(profile);
+            Color beforeFailure=dock.DisplayedThemeColor("Foreground"), backgroundBeforeFailure=((LinearGradientBrush)glass.Background).GradientStops[0].Color;
+            double radiusBeforeFailure=glass.CornerRadius.TopLeft;
+            using(var locked=new FileStream(profile,FileMode.Open,FileAccess.Read,FileShare.Read)) dock.SetTheme("graphite");
+            Check(store.Settings.Theme=="frost" && dock.ThemeTransitionActive && dock.DisplayedThemeColor("Foreground")==beforeFailure && ((LinearGradientBrush)glass.Background).GradientStops[0].Color==backgroundBeforeFailure && glass.CornerRadius.TopLeft==radiusBeforeFailure,"failed persistence leaves the active animation and displayed frame unchanged");
+            Check(bytes.SequenceEqual(File.ReadAllBytes(profile)),"failed animated selection preserves the exact profile bytes");
+            dock.AdvanceAnimations(.20);
+            Check(!dock.ThemeTransitionActive && dock.DisplayedThemeColor("Foreground")==ThemePalette.For("frost").Foreground,"an interrupted failed request does not restart or replace the prior transition");
+            dock.SetTheme("ember"); dock.AdvanceAnimations(.10);
+            Descendants<Slider>((DependencyObject)settings.Content).Single(slider=>Object.Equals(slider.Tag,"setting-Opacity")).Value=29;
+            Descendants<Slider>((DependencyObject)settings.Content).Single(slider=>Object.Equals(slider.Tag,"setting-CornerRadius")).Value=3;
+            dock.AdvanceAnimations(.5);
+            Check(!dock.ThemeTransitionActive && ((SolidColorBrush)glass.Background).Color.A==(byte)(.29*255) && glass.CornerRadius.TopLeft==3,"direct background edits finish cleanly to current settings instead of reviving an obsolete endpoint");
+            var reloaded=new Store(store.DataDirectory,desktop,desktop);
+            Check(reloaded.Settings.Theme=="ember" && reloaded.Settings.Opacity==.29 && reloaded.Settings.CornerRadius==3,"background changes during a transition persist their actual requested values");
+            Check(dock.DisplayedThemeColor("SliderFill")==dock.Palette.Accent && dock.DisplayedThemeColor("CheckFill")==dock.Palette.Accent,"modern slim-slider and rounded-checkbox endpoints are preserved for every theme");
+            dock.SetTheme("dusk"); dock.AdvanceAnimations(.30);
+            Check(dock.DisplayedThemeColor("SliderFill")==ThemePalette.For("dusk").Accent && dock.DisplayedThemeColor("CheckFill")==ThemePalette.For("dusk").Accent,"Dusk retains its modern 1.8.1 blue controls after animation");
+            dock.SetTheme("graphite"); dock.AdvanceAnimations(.10);
+            Check(dock.DisplayedThemeColor("Foreground")!=Colors.White && dock.DisplayedThemeColor("Foreground")!=ThemePalette.For("graphite").Foreground,"dark-to-dark themes retain the normal gradual foreground progress");
+            dock.CancelThemeTransition();
+            Check(!dock.ThemeTransitionActive && !Field<bool>(dock,"rendering"),"closing cancellation releases transition work and the rendering callback");
+            Check(ThemePalette.For("frost").Foreground==Color.FromRgb(32,51,64),"animation never mutates the cached endpoint palette");
+            Check(!dock.IsVisible && !settings.IsVisible && Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null,"animation tests create no visible window, desktop host or installed state");
+        }
         [STAThread] public static int Main(string[] args) {
             var app=new Application { ShutdownMode=ShutdownMode.OnExplicitShutdown };
             try {
@@ -236,6 +306,7 @@ namespace Polka {
                 Check(Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null && !dock.IsVisible,"visual tests never create a desktop host, tray or visible window");
                 CheckAutomaticDesktopAdding(directory);
                 CheckThemeRendering(directory);
+                CheckThemeTransitions(directory);
                 Console.WriteLine("PASS: "+assertions+" dock visual assertions; own-control renders: "+directory);
                 return 0;
             } catch(Exception ex) { Console.WriteLine(ex); return 1; }
