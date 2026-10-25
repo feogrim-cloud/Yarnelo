@@ -109,3 +109,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\Package.ps1 -Archi
 ```
 
 Results are written to `dist`: ZIP, Setup.exe and SHA-256 files. Use `-IsccPath 'C:\path\ISCC.exe'` for a nonstandard compiler location. Packaging creates a clean directory and rejects profile data, imported shortcuts and unrelated files.
+
+### Launching from automation
+
+An assistant or terminal can manage its children in a Windows job with `KILL_ON_JOB_CLOSE`. A normal child-process launch can make Yarnelo exit when that host closes. Use the independent launcher for a stopped copy:
+
+```powershell
+.\scripts\windows\Start-Independent.ps1 -Executable (Resolve-Path .\build\x64\Yarnelo.exe).Path -PassThru
+```
+
+The helper asks Task Scheduler to launch the exact executable in the current user's interactive session with normal rights. Its temporary task has no triggers and is removed after startup is verified. It does not enable startup at sign-in or change an existing startup task. An optional `-ReadyLog` waits for Yarnelo's `pid=N ready` receipt. Expansion expressions such as `%PATH%` or `$(...)` in executable paths, working directories or arguments are rejected before registration because Task Scheduler interprets them.
+
+Run `scripts/windows/Test-IndependentLaunch.ps1` to check this behavior using disposable processes and a private kill-on-close job. The test closes only its own job and verifies that the independently launched process continues and its temporary task has been removed. It never closes the assistant or an installed Yarnelo instance. [Windows job lifetimes](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).

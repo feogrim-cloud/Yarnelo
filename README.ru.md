@@ -102,7 +102,7 @@ Yarnelo — полупрозрачная панель ярлыков для **Wi
 
 ```powershell
 .\src\Build.ps1 -Architecture x64 -Output .\build
-.\build\Yarnelo.exe
+.\scripts\windows\Start-Independent.ps1 -Executable (Resolve-Path .\build\Yarnelo.exe).Path
 .\scripts\Test.ps1
 ```
 

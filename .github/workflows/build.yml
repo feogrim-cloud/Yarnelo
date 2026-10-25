@@ -44,6 +44,8 @@ jobs:
       - name: Run storage checks and compile UI tests
         if: matrix.arch != 'arm64'
         run: ./scripts/Test.ps1 -CompileUiTests
+      - name: Verify independent launch survives its caller exiting
+        run: ./scripts/windows/Test-IndependentLaunch.ps1
       - name: Install official Inno Setup compiler
         run: |
           $installer = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'

@@ -1,5 +1,12 @@
 # Changelog / Изменения
 
+## Developer tooling / Инструменты разработчика — 2026-10-26
+
+- Added an independent Windows launcher for automation: a temporary current-user task starts Yarnelo outside the calling assistant's process lifetime, then its definition is removed. Startup preferences and installed profiles are preserved.
+- Added an isolated regression check that closes a disposable caller's kill-on-close job and verifies the launched process survives. Application binaries and release version remain 1.9.0.
+- Добавлен независимый запуск Windows из автоматизации: временная задача текущего пользователя запускает Yarnelo отдельно от времени жизни ассистента, затем её определение удаляется. Выбор автозапуска и установленные профили сохраняются.
+- Добавлена изолированная проверка: закрытие собственной тестовой группы завершает обычного потомка, а независимо запущенный процесс продолжает работать. Исполняемые файлы приложения и версия релиза остаются 1.9.0.
+
 ## 1.9.0 — 2026-10-25
 
 ### English
