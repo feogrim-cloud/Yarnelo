@@ -69,6 +69,21 @@ if($LASTEXITCODE -ne 0) { throw 'Desktop shortcut watcher test compilation faile
 & $watcherBinary (Join-Path $run 'desktop-watch')
 if($LASTEXITCODE -ne 0) { throw 'Desktop shortcut watcher tests failed.' }
 
+# Desktop visibility policy uses synthetic shell metadata/monitor rectangles.
+# No native window, live desktop enumeration, installed profile or task is used.
+$desktopHostBinary=Join-Path $run 'DesktopHostTests.exe'
+$desktopHostArgs=@(
+    '/nologo','/target:exe','/platform:x64','/optimize+','/codepage:65001',
+    ('/out:'+$desktopHostBinary),'/reference:System.dll','/reference:System.Core.dll','/reference:System.Xaml.dll',
+    ('/reference:'+(Join-Path $framework 'WPF\WindowsBase.dll')),
+    ('/reference:'+(Join-Path $framework 'WPF\PresentationCore.dll')),
+    ('/reference:'+(Join-Path $framework 'WPF\PresentationFramework.dll'))
+)
+& $compiler @desktopHostArgs (Join-Path $sources 'DesktopHost.cs') (Join-Path $sources 'DesktopHostTests.cs')
+if($LASTEXITCODE -ne 0) { throw 'Desktop visibility policy test compilation failed.' }
+& $desktopHostBinary
+if($LASTEXITCODE -ne 0) { throw 'Desktop visibility policy tests failed.' }
+
 # Localization renders only its own unshown WPF visual trees. No native dock,
 # desktop integration, tray, installed profile or startup registry is used.
 $localizationSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','StartupRegistration.cs','DesktopHost.cs','DesktopShortcutWatcher.cs','SmoothMotion.cs','Store.cs','Localization.cs','LocalizationUiTests.cs') |

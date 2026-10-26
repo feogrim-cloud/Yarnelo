@@ -1,5 +1,19 @@
 # Changelog / Изменения
 
+## 1.9.1 — 2026-10-26
+
+### English
+
+- Fixed Windows 11 taskbar hover labels hiding the dock. Shell XAML popups are recognized separately from normal application windows.
+- Preserved hiding for fullscreen applications and ordinary windows covering the dock, including the existing multi-monitor behavior. Shortcut profiles, settings and startup preferences are unchanged.
+- Linux behavior is unchanged in this patch.
+
+### Русский
+
+- Исправлено исчезновение панели при появлении подписей над значками панели задач Windows 11. Всплывающие XAML-окна оболочки распознаются отдельно от обычных окон приложений.
+- Сохранено скрытие для полноэкранных приложений и обычных окон, перекрывающих панель, включая прежнее поведение на нескольких мониторах. Профили ярлыков, настройки и выбор автозапуска не изменены.
+- Поведение Linux в этом исправлении не изменено.
+
 ## Developer tooling / Инструменты разработчика — 2026-10-26
 
 - Added an independent Windows launcher for automation: a temporary current-user task starts Yarnelo outside the calling assistant's process lifetime, then its definition is removed. Startup preferences and installed profiles are preserved.

@@ -1,4 +1,4 @@
-YARNELO 1.9.0 — shortcut dock for Windows 10/11 x64,
+YARNELO 1.9.1 — shortcut dock for Windows 10/11 x64,
 Windows 10 x86 and Windows 11 ARM64
 
 Choose the package matching Settings → System → About → System type:

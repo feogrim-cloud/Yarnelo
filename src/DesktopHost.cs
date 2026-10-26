@@ -248,12 +248,21 @@ namespace Polka
             out bool blocked, out bool fullscreen)
         {
             bool foundBlocked = false, foundFullscreen = false;
+            // Resolve the current shell every pass, so restarting Explorer does
+            // not leave a cached process identity behind. Modern shell tooltips
+            // can be ownerless XAML popups rather than tooltips_class32 windows.
+            uint taskbarProcess, secondaryTaskbarProcess;
+            GetWindowThreadProcessId(FindWindow("Shell_TrayWnd", null), out taskbarProcess);
+            GetWindowThreadProcessId(FindWindow("Shell_SecondaryTrayWnd", null), out secondaryTaskbarProcess);
             EnumWindows(delegate(IntPtr candidate, IntPtr unused) {
                 if (!IsWindowVisible(candidate) || IsIconic(candidate) || BelongsToThisProcess(candidate)) return true;
                 string name = ClassName(candidate);
-                if (name == "Progman" || name == "WorkerW" || name == "Shell_TrayWnd" ||
-                    name == "Shell_SecondaryTrayWnd" || name == "tooltips_class32" || name == "#32768" ||
-                    IsDesktopWindow(RootOwner(candidate))) return true;
+                uint candidateProcess;
+                GetWindowThreadProcessId(candidate, out candidateProcess);
+                bool sameTaskbarProcess = candidateProcess != 0 &&
+                    ((taskbarProcess != 0 && candidateProcess == taskbarProcess) ||
+                    (secondaryTaskbarProcess != 0 && candidateProcess == secondaryTaskbarProcess));
+                if (IsShellObstruction(name, ClassName(RootOwner(candidate)), sameTaskbarProcess)) return true;
                 int cloaked;
                 try { if (DwmGetWindowAttribute(candidate, 14, out cloaked, sizeof(int)) == 0 && cloaked != 0) return true; }
                 catch (DllNotFoundException) { }
@@ -265,6 +274,17 @@ namespace Polka
                 return !foundFullscreen;
             }, IntPtr.Zero);
             blocked = foundBlocked; fullscreen = foundFullscreen;
+        }
+
+        internal static bool IsShellObstruction(string className, string rootOwnerClass, bool sameTaskbarProcess)
+        {
+            if (className == "Progman" || className == "WorkerW" || className == "Shell_TrayWnd" ||
+                className == "Shell_SecondaryTrayWnd" || className == "tooltips_class32" || className == "#32768" ||
+                rootOwnerClass == "Progman" || rootOwnerClass == "WorkerW") return true;
+            // Windows 11 taskbar hover labels use the shell's XAML popup class.
+            // The class alone is insufficient: other apps can use the same XAML
+            // window, and Explorer's file windows must still obstruct the dock.
+            return sameTaskbarProcess && className == "Xaml_WindowedPopupClass";
         }
 
         internal static bool Intersects(PixelRect a, PixelRect b)
@@ -322,6 +342,7 @@ namespace Polka
         [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr target, IntPtr after, int x, int y, int width, int height, uint flags);
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr target, StringBuilder name, int size);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindow(string className, string windowName);
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr target, out uint processId);
         [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr target);
         [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr target);

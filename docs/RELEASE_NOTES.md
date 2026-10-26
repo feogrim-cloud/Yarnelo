@@ -1,8 +1,8 @@
-# Yarnelo 1.9.0 — Smooth theme transitions / Плавное переключение тем
+# Yarnelo 1.9.1 — Taskbar tooltip fix / Исправление подсказок панели задач
 
 ## English
 
-This release adds **smooth theme transitions on Windows and Linux**. Palette colors, background opacity and corner rounding change gradually; a rapid new selection continues from the currently displayed colors toward your latest choice. All five themes, their saved backgrounds, modern controls, shortcut profiles, compact labels, startup and automatic addition of new desktop shortcuts are preserved; all 14 Intel/AMD and native ARM64 packages remain available.
+This patch fixes **Windows 11 taskbar hover labels hiding Yarnelo**. Shell XAML popups are recognized separately from ordinary application windows, while fullscreen hiding, normal window overlap and multi-monitor behavior are preserved. Shortcut profiles, settings, startup preferences and smooth transitions between all five themes remain unchanged. Linux behavior is unchanged; the package formats and supported architectures remain the same.
 
 ### Smooth switching
 
@@ -89,7 +89,7 @@ Windows installers run per user and retain `Data` on update/removal. Update a po
 
 ## Русский
 
-В Windows и Linux добавлено **плавное переключение тем**. Цвета палитры, непрозрачность фона и скругление постепенно меняются; при быстром новом выборе переход продолжается от текущих видимых цветов к последней выбранной теме. Все пять тем, их сохранённый фон, современные элементы управления, профили ярлыков, компактные подписи, автозапуск и автоматическое добавление новых ярлыков сохраняются; доступны все 14 пакетов Intel/AMD и нативных ARM64.
+В этом исправлении устранено **исчезновение Yarnelo при появлении подписей над значками панели задач Windows 11**. Всплывающие XAML-окна оболочки распознаются отдельно от обычных окон приложений; скрытие в полноэкранном режиме, перекрытие обычными окнами и работа с несколькими мониторами сохранены. Профили ярлыков, настройки, выбор автозапуска и плавное переключение пяти тем не изменены. Поведение Linux, форматы пакетов и поддерживаемые архитектуры остаются прежними.
 
 ### Плавное переключение
 
