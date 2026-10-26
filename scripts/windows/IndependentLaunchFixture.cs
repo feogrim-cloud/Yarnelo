@@ -45,6 +45,43 @@ internal static class IndependentLaunchFixture {
     [DllImport("advapi32.dll",SetLastError=true)] static extern bool GetTokenInformation(IntPtr token,int kind,out int value,int size,out int returned);
 
     static void Check(bool value,string message) { if(!value) throw new InvalidOperationException(message+" (Win32="+Marshal.GetLastWin32Error()+")"); }
+    struct TokenElevation { internal int Elevated,Type; }
+    static TokenElevation ReadElevation(Process process) {
+        IntPtr handle; Check(OpenProcessToken(process.Handle,8,out handle),"Cannot read fixture token");
+        var value=new TokenElevation(); int returned;
+        try {
+            Check(GetTokenInformation(handle,20,out value.Elevated,4,out returned) && returned==4,"Cannot read token elevation");
+            Check(GetTokenInformation(handle,18,out value.Type,4,out returned) && returned==4,"Cannot read token elevation type");
+        } finally { CloseHandle(handle); }
+        return value;
+    }
+    static bool ValidElevation(TokenElevation token) {
+        return (token.Elevated==0 || token.Elevated==1) &&
+            (token.Type==1 || token.Type==(token.Elevated==1?2:3));
+    }
+    static bool PermittedScheduledToken(TokenElevation caller,TokenElevation child) {
+        if(!ValidElevation(caller) || !ValidElevation(child)) return false;
+        if(child.Elevated==0) return true;
+        // Default means there is no linked/filtered token. GitHub Windows VMs
+        // run administrators with UAC disabled, so LeastPrivilege cannot lower
+        // that existing single token. A split-token or standard caller must
+        // always produce a non-elevated child. No HighestAvailable is allowed.
+        return caller.Elevated==1 && caller.Type==1 && child.Type==1;
+    }
+    static void VerifyElevationPolicy() {
+        var standard=new TokenElevation {Elevated=0,Type=1};
+        var limited=new TokenElevation {Elevated=0,Type=3};
+        var full=new TokenElevation {Elevated=1,Type=2};
+        var unsplit=new TokenElevation {Elevated=1,Type=1};
+        foreach(var caller in new[]{standard,limited,full,unsplit}) {
+            Check(PermittedScheduledToken(caller,standard),"Policy rejected a standard child");
+            Check(PermittedScheduledToken(caller,limited),"Policy rejected a filtered child");
+            Check(!PermittedScheduledToken(caller,full),"Policy permitted a UAC-elevated child");
+            Check(PermittedScheduledToken(caller,unsplit)==(caller.Elevated==1 && caller.Type==1),"Policy permitted elevation beyond an existing unsplit admin token");
+        }
+        Check(!PermittedScheduledToken(standard,new TokenElevation {Elevated=1,Type=3}),"Policy accepted inconsistent child token metadata");
+        Check(!PermittedScheduledToken(new TokenElevation {Elevated=0,Type=2},standard),"Policy accepted inconsistent caller token metadata");
+    }
     static string Exe { get { return Path.GetFullPath(Process.GetCurrentProcess().MainModule.FileName); } }
     static string Sid { get { using(var identity=WindowsIdentity.GetCurrent()) return identity.User.Value; } }
     static string CheckedRoot(string root,string token) {
@@ -83,15 +120,14 @@ internal static class IndependentLaunchFixture {
         root=CheckedRoot(root,token);
         Check(mode=="direct"||mode=="scheduled","Unexpected sentinel mode");
         Check(Path.GetFileName(Exe)==(mode=="scheduled"?"Yarnelo.exe":"DirectControl.exe"),"Sentinel has the wrong fixture executable");
-        IntPtr handle; Check(OpenProcessToken(Process.GetCurrentProcess().Handle,8,out handle),"Cannot read fixture token");
-        int elevated,returned;
-        try { Check(GetTokenInformation(handle,20,out elevated,4,out returned),"Cannot read token elevation"); }
-        finally { CloseHandle(handle); }
+        var elevation=ReadElevation(Process.GetCurrentProcess());
         var document=new XmlDocument(); var receipt=document.CreateElement("Receipt"); document.AppendChild(receipt);
         Action<string,string> add=delegate(string name,string value) { var e=document.CreateElement(name); e.InnerText=value; receipt.AppendChild(e); };
         add("Token",token); add("ProcessId",Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture));
         add("Executable",Exe); add("Directory",Path.GetFullPath(Environment.CurrentDirectory)); add("UserSid",Sid);
-        add("SessionId",Process.GetCurrentProcess().SessionId.ToString(CultureInfo.InvariantCulture)); add("Elevated",elevated.ToString(CultureInfo.InvariantCulture));
+        add("SessionId",Process.GetCurrentProcess().SessionId.ToString(CultureInfo.InvariantCulture));
+        add("Elevated",elevation.Elevated.ToString(CultureInfo.InvariantCulture));
+        add("ElevationType",elevation.Type.ToString(CultureInfo.InvariantCulture));
         var arguments=document.CreateElement("Arguments"); receipt.AppendChild(arguments);
         for(int i=4;i<args.Length;i++) { var a=document.CreateElement("Argument"); a.InnerText=args[i]; arguments.AppendChild(a); }
         AtomicWrite(Path.Combine(root,mode+"-receipt.xml"),document.OuterXml);
@@ -119,10 +155,22 @@ internal static class IndependentLaunchFixture {
         Check(Value(receipt,"Token")==token && String.Equals(Value(receipt,"Executable"),executable,StringComparison.OrdinalIgnoreCase) &&
             String.Equals(Value(receipt,"Directory"),root,StringComparison.OrdinalIgnoreCase) && Value(receipt,"UserSid")==Sid &&
             Value(receipt,"SessionId")==Process.GetCurrentProcess().SessionId.ToString(CultureInfo.InvariantCulture),"Wrong sentinel identity/directory/session");
-        if(scheduled) Check(Value(receipt,"Elevated")=="0","The scheduled sentinel must run without elevation");
         var process=Process.GetProcessById(Int32.Parse(Value(receipt,"ProcessId"),CultureInfo.InvariantCulture));
-        Check(String.Equals(process.MainModule.FileName,executable,StringComparison.OrdinalIgnoreCase),"Receipt PID targets another executable");
-        return process;
+        try {
+            Check(String.Equals(process.MainModule.FileName,executable,StringComparison.OrdinalIgnoreCase),"Receipt PID targets another executable");
+            var child=ReadElevation(process);
+            Check(Value(receipt,"Elevated")==child.Elevated.ToString(CultureInfo.InvariantCulture) &&
+                Value(receipt,"ElevationType")==child.Type.ToString(CultureInfo.InvariantCulture),"Sentinel token receipt disagrees with native token readback");
+            var caller=ReadElevation(Process.GetCurrentProcess());
+            if(scheduled) {
+                Check(PermittedScheduledToken(caller,child),"Scheduled sentinel elevated beyond the caller's least available token");
+                AtomicWrite(Path.Combine(root,"token-policy.txt"),
+                    "Passed\nHarnessElevated="+caller.Elevated+"\nHarnessElevationType="+caller.Type+
+                    "\nScheduledElevated="+child.Elevated+"\nScheduledElevationType="+child.Type+
+                    "\nMode="+(child.Elevated==0?"NonElevated":"ExistingUnsplitAdministrator")+"\nPolicyAssertions=18\n");
+            } else Check(caller.Elevated==child.Elevated && caller.Type==child.Type,"Direct sentinel did not retain the harness token");
+            return process;
+        } catch { process.Dispose(); throw; }
     }
     static bool MissingTask(Exception error) {
         while(error.InnerException!=null) error=error.InnerException;
@@ -145,6 +193,7 @@ internal static class IndependentLaunchFixture {
     static int Harness(string root,string token,string caller,string shell,string helper) {
         root=CheckedRoot(root,token);
         Check(Path.GetFileName(Exe)=="LifetimeHarness.exe","Wrong native harness executable");
+        VerifyElevationPolicy();
         IntPtr job=IntPtr.Zero; ProcessInfo child=new ProcessInfo(); Process direct=null,scheduled=null; bool assigned=false;
         try {
             job=CreateJobObject(IntPtr.Zero,null); Check(job!=IntPtr.Zero,"Cannot create disposable job");

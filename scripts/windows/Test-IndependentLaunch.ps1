@@ -105,7 +105,12 @@ try {
     $report['ArgumentRoundTrip']='Passed'
     $report['LifetimeIsolation']='Passed'
     $report['TemporaryTaskRemoval']='Passed'
-    Write-Host 'PASS: exact quoted/empty/Unicode arguments, same user/session, normal token, temporary task removal and post-parent-job heartbeat verified.'
+    $tokenPolicy=@([IO.File]::ReadAllLines((Join-Path $run 'token-policy.txt')))
+    if($tokenPolicy.Count -ne 7 -or $tokenPolicy[0] -cne 'Passed' -or $tokenPolicy[6] -cne 'PolicyAssertions=18') {throw 'The native elevation-policy proof is missing.'}
+    $report['TokenPolicy']='Passed'
+    $report['TokenPolicyDetails']=$tokenPolicy[1..6]
+    Write-Host 'PASS: exact quoted/empty/Unicode arguments, same user/session, no token elevation beyond the caller, temporary task removal and post-parent-job heartbeat verified.'
+    Write-Host ($tokenPolicy[1..6] -join '; ')
 } catch { $report['Result']='Failed'; $report['Error']=$_.Exception.Message; throw }
 finally {
     [IO.File]::WriteAllText((Join-Path $run 'test-result.json'),(ConvertTo-Json -InputObject $report -Depth 4),[Text.UTF8Encoding]::new($false))
