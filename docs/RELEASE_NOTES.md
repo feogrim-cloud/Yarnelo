@@ -1,53 +1,26 @@
-# Yarnelo 1.9.1 — Taskbar tooltip fix / Исправление подсказок панели задач
+# Yarnelo 1.9.2 — Reliability and security fixes / Исправления устойчивости и безопасности
 
 ## English
 
-This patch fixes **Windows 11 taskbar hover labels hiding Yarnelo**. Shell XAML popups are recognized separately from ordinary application windows, while fullscreen hiding, normal window overlap and multi-monitor behavior are preserved. Shortcut profiles, settings, startup preferences and smooth transitions between all five themes remain unchanged. Linux behavior is unchanged; the package formats and supported architectures remain the same.
+This release fixes **all six audit findings**, improves transfer of installer-created Windows desktop shortcuts, and includes the Windows taskbar-tooltip fix from 1.9.1. Valid existing profiles keep their shortcuts, settings, five themes, smooth transitions and startup choice.
 
-### Smooth switching
+### Fixed
 
-Choose another theme in **Settings → Theme** to blend gradually into its appearance. Quick repeated choices retarget the active transition without jumping back to an earlier color. Transitions leave icons, icon size, magnification, rows and position unchanged; each theme still remembers its own background. The dock's appearance stays still when there is no interaction. On Windows, Yarnelo uses the system UI-animation preference read at startup; with animations disabled, theme changes apply immediately.
+1. **Windows icon memory:** removed shortcuts no longer remain in an ever-growing cache. Pending paths are bounded, one extraction runs at a time, and stale results cannot repopulate removed items.
+2. **Windows shared-shortcut safety:** the elevated helper no longer saves user-profile settings. The ordinary dock journals and reconciles changes with normal permissions, removing the elevated profile-write path exposed by directory substitution. The audit did not establish remote code execution or a UAC bypass.
+3. **Windows over-capacity profiles:** damaged or edited profiles containing more than 30 items no longer create controls outside the supported layout.
+4. **Windows duplicate item IDs:** invalid duplicate-ID profiles are detected instead of allowing removal of a different item; item lookup prefers the exact selected object.
+5. **Linux invalid settings:** wrong field types, excessively large numbers and malformed JSON follow the settings-error path instead of escaping as uncaught startup exceptions.
+6. **Linux launcher output:** unused stdout goes to the null device and stderr is drained into a bounded diagnostic tail, preventing long-lived launchers from retaining unlimited output.
+7. **Installer-created Windows shortcuts:** personal transfers retry temporary locks and matching recreated copies; changed copies stay on the desktop with a notice. With transfer enabled, new shared imports added automatically or manually queue approval only for those newly added shortcuts. The request waits for a visible dock and active desktop/Yarnelo, outside fullscreen apps, settings, menus and dragging. Canceled or failed requests require **+ → Move shared shortcuts into the dock** to retry; older pending shared transfers are not automatically enrolled.
 
-### Themes
+Invalid Windows profiles are preserved for recovery, including managed shortcut files. Yarnelo tries a valid settings backup; if none is usable, it opens defaults with a notice. It does not silently truncate excess entries or renumber ownership IDs. Normal profiles retain their IDs, paths, order, background and other preferences.
 
-Choose **Settings → Theme**. Windows saves your choice immediately and transitions toward it. Linux previews the palette inside Settings and applies the choice to the dock when you choose **OK**, while **Cancel** leaves the saved settings unchanged.
+### Preserved behavior
 
-| Theme | Appearance | First-use background opacity / corner rounding |
-| --- | --- | --- |
-| **Dusk** | The original translucent dark dock | Your existing settings and the original defaults |
-| **Frost** | Light ice tones | 76% / 22 |
-| **Graphite** | Matte charcoal | 96% / 12 |
-| **Ember** | Warm bronze | 85% / 16 |
-| **Aurora** | Indigo with a colored edge accent | 88% / 24 |
+Windows 11 taskbar hover labels no longer hide the dock. Normal overlap, fullscreen hiding and multi-monitor behavior remain intact. All five themes, smooth transitions, compact labels, rows, placement and automatic desktop-shortcut preferences remain available.
 
-Each theme remembers its own opacity and corner rounding. Returning to Dusk brings back the background you had before trying another theme. Switching themes preserves icon size, magnification, rows, position, label visibility, startup and automatic desktop-shortcut settings. Menus and settings use the selected palette, including readable dark text on Frost's light surfaces.
-
-Hover, click and drag motion follows each theme's feel. Aurora highlights its edge during interaction; the dock has no idle flare. The themes use native colors, translucency, borders and shadows. Local concept previews are design references; app screenshots show the actual native interface.
-
-### Compact labels
-
-Compact one-line captions from 1.7.3 remain available through **Settings → Show icon labels** on Windows or **Show labels** on Linux. Long captions are shortened to fit; hovering an icon shows its name. Themes preserve the compact icon spacing and your saved label preference.
-
-### Linux startup
-
-- Right-click the dock → **Settings → Start when signing in → OK**. The option is off by default. Clearing it and choosing **OK** disables startup; **Cancel** leaves the registration unchanged.
-- Yarnelo uses `yarnelo.desktop` in your XDG autostart folder: `$XDG_CONFIG_HOME/autostart`, or `~/.config/autostart` by default. No administrator rights are needed, and system configuration and other applications' entries are preserved.
-- The entry starts this copy of Yarnelo. AppImage uses its permanent outer file, not a temporary mount. Keep AppImage, TAR.GZ and source copies in a permanent location before enabling startup. Before moving a copy, turn the option off and choose **OK** from the original location; then move it, enable the option from the new location and choose **OK**.
-- XDG-compliant desktops such as GNOME, KDE Plasma and Xfce generally support this mechanism. Timing depends on the desktop; Linux has no fixed 10-second delay. Automated registration and interface checks do not establish actual sign-in behavior on every desktop environment.
-
-Before removing a Linux portable copy or package, turn the checkbox off and choose **OK**. Package removal preserves user configuration. Remove any duplicate startup commands you previously added manually. [Linux startup instructions](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/LINUX.md#startup-at-sign-in).
-
-### New desktop shortcuts
-
-**Settings → Automatically add new desktop shortcuts** is off by default, so adding stays manual unless you opt in. It watches only new Windows `.lnk` / `.url` or Linux `.desktop` launchers appearing while Yarnelo is running; switching it on does not import existing desktop icons. Ordinary files and folders are ignored. Files being written are allowed to settle before import, and existing dock items are not duplicated.
-
-The dock still holds at most 30 icons. A shortcut found when it is full stays on the desktop and is not queued for later; add it manually after making space. Windows follows **Move desktop shortcuts into the dock** for personal shortcuts. Shared desktop shortcuts are copied without an automatic administrator prompt; use the explicit menu action for moving them. Linux adds references and leaves originals untouched.
-
-### Windows startup
-
-Windows retains the 1.7.1 current-user Task Scheduler registration: a **10-second logon delay**, the exact executable path and working directory, ordinary account permissions, battery support and no execution time limit. Manage it through **Settings → Start when signing in to Windows**. Enabled legacy registrations belonging to this installation migrate after the new task is verified; disabled choices and other installations are preserved.
-
-The task is named `Yarnelo.Logon.<SID>` in **Task Scheduler Library**. Scheduled tasks do not normally appear in **Task Manager → Startup apps**. [Windows startup instructions](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/WINDOWS.md#startup-at-sign-in). Corner rounding, two-column settings, edge placement and automatic shortcut wrapping remain available on both platforms.
+Startup stays a separate setting: Windows uses `Yarnelo.Logon.<SID>` with a 10-second sign-in delay and ordinary permissions; Linux uses its owned XDG `yarnelo.desktop` entry. Keep AppImage/TAR.GZ/portable files in their permanent location before enabling startup. Installed copies should be opened through their normal shortcuts or sign-in task; automation can use the independent launcher.
 
 ### Downloads
 
@@ -83,58 +56,33 @@ chmod +x ./Yarnelo-Linux-aarch64.AppImage
 
 If FUSE is unavailable, use `APPIMAGE_EXTRACT_AND_RUN=1 ./Yarnelo-Linux-aarch64.AppImage`. AppImage still needs the matching CPU architecture and glibc version.
 
-Windows installers run per user and retain `Data` on update/removal. Update a portable copy in its original folder and preserve `Data`; a new installer does not import a separate portable profile. Windows EXE files are currently unsigned. Right-click the dock → **Language / Язык → English / Русский** to change the interface language.
+New Windows Setup installations default to **Program Files** and request administrator approval; current-user installation is also available. An update reuses the existing scope/folder, closes that copy gracefully, and preserves native `%LOCALAPPDATA%\PolkaDock` or an existing portable marker and `Data`. Keep the original folder selected. A separate portable profile is not imported automatically. Update a portable ZIP in its original folder and preserve `Data` and `portable.mode`.
+
+Uninstall restores this installation's owned moved `.lnk` / `.url` shortcuts without overwriting desktop files and stops before deleting program files if restoration fails. The profile and library remain; after successful restoration, only this installation's startup registration is removed. Windows EXE files are currently unsigned; compare downloads against **SHA256SUMS**. Right-click the dock → **Language / Язык → English / Русский** to change the interface language.
 
 **[Installation and update](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/INSTALL.md)** · [Windows](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/WINDOWS.md) · [Linux](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/LINUX.md)
 
 ## Русский
 
-В этом исправлении устранено **исчезновение Yarnelo при появлении подписей над значками панели задач Windows 11**. Всплывающие XAML-окна оболочки распознаются отдельно от обычных окон приложений; скрытие в полноэкранном режиме, перекрытие обычными окнами и работа с несколькими мониторами сохранены. Профили ярлыков, настройки, выбор автозапуска и плавное переключение пяти тем не изменены. Поведение Linux, форматы пакетов и поддерживаемые архитектуры остаются прежними.
+Выпуск исправляет **все шесть замечаний аудита**, улучшает перенос созданных установщиками ярлыков Windows и включает исправление подсказок панели задач Windows из 1.9.1. В корректных существующих профилях сохраняются ярлыки, настройки, пять тем, плавные переходы и выбор автозапуска.
 
-### Плавное переключение
+### Исправлено
 
-Выберите другую тему в **Настройки → Тема**, чтобы оформление постепенно перешло к её виду. Быстрый повторный выбор меняет направление текущего перехода без скачка к прежнему цвету. Значки, их размер, увеличение, ряды и положение сохраняются; у каждой темы по-прежнему запоминается собственный фон. В покое оформление панели остаётся неподвижным. В Windows Yarnelo учитывает настройку системных анимаций, прочитанную при запуске; если анимации отключены, тема применяется сразу.
+1. **Память иконок Windows:** удалённые ярлыки больше не остаются в растущем кэше. Ожидающие пути ограничены, загрузка выполняется по одной, а запоздалые результаты не возвращают удалённые элементы.
+2. **Безопасность общих ярлыков Windows:** повышенный помощник больше не сохраняет настройки пользовательского профиля. Обычная панель ведёт журнал и согласует изменения без повышения прав, исключая выявленный путь записи в подменённую папку с повышенными правами. Аудит не доказал удалённое выполнение кода или обход UAC.
+3. **Переполненные профили Windows:** повреждённый или отредактированный профиль с более чем 30 элементами больше не создаёт значки за пределами поддерживаемой раскладки.
+4. **Повторяющиеся ID Windows:** некорректные профили с одинаковыми ID распознаются, чтобы удаление одного элемента не затрагивало другой; поиск сначала учитывает точный выбранный объект.
+5. **Некорректные настройки Linux:** ошибочные типы полей, чрезмерные числа и повреждённый JSON обрабатываются механизмом ошибок настроек вместо необработанного исключения при запуске.
+6. **Вывод запускателей Linux:** ненужный stdout направляется в нулевое устройство, stderr читается по мере поступления с сохранением ограниченного хвоста диагностики. Длительно работающий запускатель больше не накапливает неограниченный вывод в памяти Yarnelo.
+7. **Ярлыки установщиков Windows:** перенос личных ярлыков повторяется после временной блокировки и для заново созданных совпадающих копий; изменённые файлы остаются на рабочем столе с уведомлением. При включённом переносе запрос прав ставится в очередь только для новых общих ярлыков, добавленных автоматически или вручную. Он ждёт видимой панели и активного рабочего стола/Yarnelo, вне полноэкранных приложений, настроек, меню и перетаскивания. Отменённые или неудачные запросы повторяются через **+ → Перенести общие ярлыки в панель**; прежние ожидающие общие ярлыки автоматически не включаются.
 
-### Темы
+Некорректные профили Windows сохраняются для восстановления вместе с файлами управляемых ярлыков. Yarnelo пробует корректную резервную копию настроек; если её нет, открывает настройки по умолчанию с уведомлением. Лишние записи не обрезаются безвозвратно, ID принадлежности не перенумеровываются. В обычном профиле сохраняются ID, пути, порядок, фон и остальные предпочтения.
 
-Выберите **Настройки → Тема**. В Windows выбор сохраняется сразу, а оформление постепенно переходит к нему. В Linux палитра предварительно показывается внутри настроек; нажмите **OK**, чтобы применить её к панели. **«Отмена»** оставляет сохранённые настройки без изменений.
+### Сохранённое поведение
 
-| Тема | Вид | Непрозрачность / скругление при первом выборе |
-| --- | --- | --- |
-| **Dusk («Сумерки», базовая)** | Прежняя полупрозрачная тёмная панель | Ваши текущие настройки и прежние значения по умолчанию |
-| **Frost («Матовое стекло»)** | Светлые ледяные оттенки | 76% / 22 |
-| **Graphite («Матовый графит»)** | Матовый угольный фон | 96% / 12 |
-| **Ember («Тёмная бронза»)** | Тёплая бронза | 85% / 16 |
-| **Aurora («Ночной индиго»)** | Индиго с цветным акцентом по краю | 88% / 24 |
+Подписи при наведении на значки панели задач Windows 11 больше не скрывают панель. Обработка обычных перекрывающих окон, полноэкранных приложений и нескольких мониторов сохранена. По-прежнему доступны пять тем, плавные переходы, компактные подписи, ряды, положения панели и автоматическое добавление новых ярлыков.
 
-Каждая тема запоминает собственные непрозрачность и скругление. Возврат к Dusk восстанавливает фон, который был выбран до знакомства с другими темами. Переключение сохраняет размер значков, увеличение, ряды, положение, показ подписей, автозапуск и автоматическое добавление ярлыков. Меню и настройки используют выбранную палитру; на светлых поверхностях Frost остаётся контрастный тёмный текст.
-
-Характер анимаций наведения, нажатия и перетаскивания зависит от темы. Край Aurora подсвечивается при взаимодействии; в покое панель не переливается. Для оформления используются нативные цвета, полупрозрачность, границы и тени. Локальные концепты служат примерами дизайна; скриншоты приложения показывают настоящий нативный интерфейс.
-
-### Компактные подписи
-
-Компактные однострочные подписи из 1.7.3 доступны через **Настройки → Подписи под значками** в Windows или **«Показывать подписи»** в Linux. Длинные подписи сокращаются по ширине; название также видно при наведении на значок. Темы сохраняют компактные отступы и выбранный показ подписей.
-
-### Автозапуск Linux
-
-- Правая кнопка по панели → **Настройки → Запускать при входе в систему → OK**. По умолчанию галочка выключена. Чтобы отключить автозапуск, снимите её и нажмите **OK**; **«Отмена»** оставляет регистрацию без изменений.
-- Yarnelo использует `yarnelo.desktop` в вашей папке автозапуска XDG: `$XDG_CONFIG_HOME/autostart` или по умолчанию `~/.config/autostart`. Права администратора не нужны; системные настройки и записи других приложений сохраняются.
-- Запись запускает именно эту копию Yarnelo. Для AppImage используется постоянный внешний файл, а не временная папка монтирования. Перед включением разместите AppImage, TAR.GZ или исходную версию в постоянной папке. Перед переносом снимите галочку и нажмите **OK** из прежнего места; затем переместите программу, включите галочку из нового места и нажмите **OK**.
-- Механизм обычно поддерживается окружениями с автозапуском XDG, в том числе GNOME, KDE Plasma и Xfce. Момент запуска зависит от окружения; фиксированной задержки 10 секунд в Linux нет. Автоматические проверки регистрации и интерфейса не подтверждают вход в систему во всех окружениях рабочего стола.
-
-Перед удалением переносной версии или пакета Linux снимите галочку и нажмите **OK**. Удаление пакета сохраняет пользовательские настройки. Если ранее вы вручную добавляли отдельные команды автозапуска, удалите дубликаты. [Инструкция автозапуска Linux](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/LINUX.ru.md#автозапуск-при-входе).
-
-### Новые ярлыки рабочего стола
-
-Галочка **Настройки → Автоматически добавлять новые ярлыки с рабочего стола** по умолчанию выключена: добавление остаётся ручным, пока вы не включите её. Учитываются только новые `.lnk` / `.url` Windows или `.desktop` Linux, появившиеся во время работы Yarnelo; включение не импортирует прежние значки. Обычные файлы и папки игнорируются. Программа дожидается окончания записи ярлыка и не создаёт дубликаты уже добавленных значков.
-
-Лимит остаётся прежним — 30 значков. Если панель заполнена, новый ярлык остаётся на рабочем столе и не откладывается в очередь; после освобождения места добавьте его вручную. Для личных ярлыков Windows действует настройка **«Переносить ярлыки с рабочего стола в панель»**. Общие ярлыки копируются без автоматического запроса прав администратора; для их переноса используйте отдельную команду меню. Linux добавляет ссылки и оставляет оригиналы на месте.
-
-### Автозапуск Windows
-
-В Windows сохранён механизм 1.7.1: задача планировщика текущего пользователя с **задержкой входа 10 секунд**, точным путём к программе и рабочей папкой, обычными правами, работой от батареи и без ограничения времени выполнения. Управление — **Настройки → Запускать при входе в Windows**. Включённые прежние записи этой установки переносятся после проверки новой задачи; отключённый выбор и другие установки сохраняются.
-
-В **Библиотеке планировщика заданий** задача называется `Yarnelo.Logon.<SID>`. Задачи планировщика обычно не отображаются в **Диспетчере задач → Автозагрузка приложений**. [Инструкция автозапуска Windows](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/WINDOWS.ru.md#автозапуск-при-входе). Скругление фона, настройки в два столбца, положения у краёв и автоматический перенос ярлыков сохранены на обеих платформах.
+Автозапуск включается отдельно: Windows использует `Yarnelo.Logon.<SID>` с задержкой входа 10 секунд и обычными правами; Linux — принадлежащую Yarnelo запись XDG `yarnelo.desktop`. AppImage/TAR.GZ/переносные файлы нужно заранее поместить в постоянную папку. Установленную копию открывайте её обычным ярлыком или задачей входа; для автоматизации доступен независимый запускатель.
 
 ### Что скачать
 
@@ -170,7 +118,9 @@ chmod +x ./Yarnelo-Linux-aarch64.AppImage
 
 Без FUSE используйте `APPIMAGE_EXTRACT_AND_RUN=1 ./Yarnelo-Linux-aarch64.AppImage`. AppImage всё равно требует подходящую архитектуру процессора и версию glibc.
 
-Установщики Windows работают без прав администратора и сохраняют `Data` при обновлении и удалении. Переносную версию обновляйте в прежней папке, сохраняя `Data`; новый установщик не импортирует отдельный профиль автоматически. EXE пока не подписаны сертификатом разработчика. Язык интерфейса: правая кнопка по панели → **Язык / Language → Русский / English**.
+Новая установка Windows через Setup по умолчанию использует **Program Files** и запрашивает права администратора; доступна установка только для текущего пользователя. Обновление использует прежний вариант и папку, мягко закрывает эту копию и сохраняет обычный профиль `%LOCALAPPDATA%\PolkaDock` либо существующий переносной маркер и `Data`. Оставьте прежнюю папку выбранной. Отдельный переносной профиль автоматически не импортируется. ZIP обновляйте в прежней папке, сохраняя `Data` и `portable.mode`.
+
+Удаление возвращает принадлежащие установке перемещённые ярлыки `.lnk` / `.url`, не перезаписывает файлы рабочего стола и останавливается до удаления программы при ошибке восстановления. Прежний профиль и библиотека остаются; после успешного восстановления удаляется только автозапуск этой установки. EXE пока не подписаны сертификатом разработчика; сверяйте загрузки с **SHA256SUMS**. Язык интерфейса: правая кнопка по панели → **Язык / Language → Русский / English**.
 
 **[Установка и обновление](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/INSTALL.ru.md)** · [Windows](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/WINDOWS.ru.md) · [Linux](https://github.com/feogrim-cloud/Yarnelo/blob/main/docs/LINUX.ru.md)
 

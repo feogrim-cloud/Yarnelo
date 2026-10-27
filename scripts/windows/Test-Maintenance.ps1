@@ -42,7 +42,7 @@ New-Item -ItemType Directory -Path $run | Out-Null
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe'
 $helper = Join-Path $run 'Yarnelo.SetupMaintenance.exe'
 $fixture = Join-Path $run 'FixtureTemplate.exe'
-& $compiler /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 "/out:$helper" /reference:System.dll /reference:System.Core.dll /reference:System.Xml.dll (Join-Path $PSScriptRoot 'SetupMaintenance.cs') (Join-Path $PSScriptRoot '..\..\src\StartupRegistration.cs')
+& $compiler /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 "/out:$helper" /reference:System.dll /reference:System.Core.dll /reference:System.Xml.dll /reference:System.Runtime.Serialization.dll (Join-Path $PSScriptRoot 'SetupMaintenance.cs') (Join-Path $PSScriptRoot 'UninstallProfile.cs') (Join-Path $PSScriptRoot '..\..\src\StartupRegistration.cs')
 if($LASTEXITCODE -ne 0) { throw 'Maintenance helper compilation failed.' }
 if($Architecture -eq 'arm64') {
     & (Join-Path $PSScriptRoot 'Invoke-Arm64Build.ps1') -Project (Join-Path $PSScriptRoot 'MaintenanceFixture.Arm64.csproj') -OutputDirectory $run

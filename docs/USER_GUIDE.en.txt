@@ -1,4 +1,4 @@
-YARNELO 1.9.1 — shortcut dock for Windows 10/11 x64,
+YARNELO 1.9.2 — shortcut dock for Windows 10/11 x64,
 Windows 10 x86 and Windows 11 ARM64
 
 Choose the package matching Settings → System → About → System type:
@@ -100,12 +100,21 @@ At the 30-icon limit the original stays on the desktop; it is not queued
 for later. Make room and add it manually with + or drag-and-drop.
 Turning the option off keeps all adding manual.
 
+If a personal shortcut is still locked by its installer, Yarnelo retries
+its transfer. An installer-recreated matching copy is moved again;
+a changed copy is left on the desktop with a notice.
+
 Shared desktop shortcuts (C:\Users\Public\Desktop) are copied first.
-Windows asks for administrator rights to change the shared desktop.
-Canceling leaves the originals in place. To retry, choose
-+ → Move shared shortcuts into the dock.
-Automatic addition copies shared shortcuts without opening an
-administrator prompt. Use that explicit menu action to move them.
+With desktop transfer enabled, new shared shortcuts added automatically
+or manually are queued for approval to move only those new copies.
+Windows may request administrator rights once the dock is visible,
+with the desktop or Yarnelo active and no fullscreen app, settings,
+menu or drag interaction.
+Canceling leaves originals in place. A canceled or failed request is not
+repeated automatically. To retry, choose
++ → Move shared shortcuts into the dock. Older pending shared transfers
+found when Yarnelo starts are left for this explicit menu command.
+Linux continues to keep original desktop launchers in place.
 
 Right-click an icon → Remove and restore shortcut to desktop restores
 a moved shortcut. Existing files are never overwritten.
@@ -117,16 +126,20 @@ The Windows notification-area icon also provides Show dock, Settings
 and Exit. Exiting saves the dock's contents.
 
 Program: Yarnelo.exe
-Settings and imported shortcuts: Data beside the program.
-The portable.mode marker keeps data beside the executable. Pick a
-permanent location before adding shortcuts: profiles use absolute paths.
-To update, replace program files in the same folder and retain Data.
+Standard Setup profile: %LOCALAPPDATA%\PolkaDock, including Library.
+Portable ZIP profile: Data beside the program, selected by portable.mode.
+An update retains the existing storage mode, profile and installation folder.
+Keep portable.mode and Data for an existing portable installation.
+Pick a permanent folder before adding shortcuts: library paths are absolute.
 Settings: settings.json; backup: settings.json.bak.
 A new installer does not automatically import a separate portable copy.
 
-Before removing Yarnelo, restore required shortcuts through icon menus,
-disable startup at sign-in and exit the app. Keep Data as a backup.
-The installer also preserves Data during update and removal.
+For an installed copy, uninstall through Windows Settings or run
+Uninstall\unins000.exe inside the program folder. Before removing files,
+it returns moved desktop shortcuts, keeps existing same-name files safe,
+and stops if restoration fails. It retains the profile and library.
+For manual removal of a portable copy, restore shortcuts through icon menus,
+disable startup and exit first. Keep Data until restoration is complete.
 
 Yarnelo works locally and does not send your data to a server.
 Requires .NET Framework 4.8 or 4.8.1 on x64/x86,

@@ -171,11 +171,17 @@ namespace Polka
         // the running dock can exclude that deliberate restore from auto-add.
         [DataMember(Name = "LastRestoredPath", Order = 9, EmitDefaultValue = false)]
         internal string LastRestoredPath;
+        // Written by the ordinary dock before requesting a shared restore.
+        // The helper may create exactly LastRestoredPath and never rewrites
+        // this profile. The dock reconciles the intent after exit or restart.
+        [DataMember(Name = "PendingPublicRestore", Order = 10, EmitDefaultValue = false)]
+        internal bool PendingPublicRestore;
     }
 
     public sealed class Store
     {
         public const int MaximumItems = 30;
+        internal enum PersonalTransferResult { NotApplicable, Completed, Retry, Preserved }
         private readonly string settingsPath;
         private readonly string backupPath;
         private readonly string libraryDirectory;
@@ -188,6 +194,8 @@ namespace Polka
         public DockSettings Settings { get; private set; }
         public string LastNotice { get; private set; }
         internal string LastRestoredPath { get; private set; }
+        internal string LastPersonalTransferPath { get; private set; }
+        internal PersonalTransferResult LastPersonalTransferResult { get; private set; }
         public bool IsFirstRun { get; private set; }
         internal string DesktopDirectory { get { return desktopDirectory; } }
         internal string PublicDesktopDirectory { get { return publicDesktopDirectory; } }
@@ -207,18 +215,20 @@ namespace Polka
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory));
             LastNotice = String.Empty;
             if (secureReads) RejectReparsePoints(DataDirectory);
-            Directory.CreateDirectory(DataDirectory);
+            if (!secureReads) Directory.CreateDirectory(DataDirectory);
             if (secureReads)
             {
                 RejectReparsePoints(DataDirectory);
                 RejectReparsePoints(libraryDirectory);
             }
-            Directory.CreateDirectory(libraryDirectory);
+            if (!secureReads) Directory.CreateDirectory(libraryDirectory);
             if (secureReads)
             {
                 RejectReparsePoints(libraryDirectory);
                 RejectReparsePoints(settingsPath);
                 RejectReparsePoints(backupPath);
+                if (!Directory.Exists(DataDirectory) || !Directory.Exists(libraryDirectory) || !File.Exists(settingsPath))
+                    throw new IOException(L10n.T("SharedFoldersFailed"));
             }
             IsFirstRun = !File.Exists(settingsPath) && !File.Exists(backupPath);
             bool repair = Load();
@@ -227,9 +237,9 @@ namespace Polka
             string placement = (Settings.Placement ?? "free").ToLowerInvariant();
             Settings.Placement = new[] { "free", "bottom", "top", "left", "right" }.Contains(placement) ? placement : "free";
             L10n.SetLanguage(Settings.Language);
-            repair = RecoverInterruptedImports() || repair;
+            if (!secureReads) repair = RecoverInterruptedImports() || repair;
             SanitizeSettings();
-            if (repair)
+            if (repair && !secureReads)
             {
                 try { Save(); }
                 catch (Exception ex)
@@ -242,6 +252,7 @@ namespace Polka
 
         public void Save()
         {
+            if (secureReads) throw new IOException(L10n.T("SharedHelperReadOnly"));
             SanitizeSettings();
             string temporaryPath = System.IO.Path.Combine(DataDirectory,
                 "settings." + Guid.NewGuid().ToString("N") + ".tmp");
@@ -287,14 +298,22 @@ namespace Polka
 
         public DockItem Add(string path)
         {
+            if (secureReads) throw new IOException(L10n.T("SharedHelperReadOnly"));
             LastNotice = String.Empty;
+            LastPersonalTransferPath = null;
+            LastPersonalTransferResult = PersonalTransferResult.NotApplicable;
             string shellPath = CanonicalShellPath(path);
             string source = shellPath ?? NormalizePath(path);
             DockItem duplicate = Settings.Items.FirstOrDefault(delegate(DockItem item)
             {
                 return SamePath(item.OriginalPath, source) || SamePath(item.Path, source);
             });
-            if (duplicate != null) return duplicate;
+            if (duplicate != null)
+            {
+                RetryPersonalDesktopTransfer(source);
+                RefreshPublicDuplicate(duplicate, source);
+                return duplicate;
+            }
             if (Settings.Items.Count >= MaximumItems)
                 throw new InvalidOperationException(L10n.T("DockFull"));
 
@@ -326,7 +345,7 @@ namespace Polka
                     added.Path = imported;
                     added.ManagedShortcut = true;
                     added.PendingSourceDelete = Settings.MoveDesktopShortcuts && !publicShortcut;
-                    added.DesktopSourceMoved = Settings.MoveDesktopShortcuts && !publicShortcut;
+                    added.DesktopSourceMoved = false;
                     added.PendingPublicMove = Settings.MoveDesktopShortcuts && publicShortcut;
                     if (added.PendingPublicMove)
                         AddNotice(L10n.T("SharedCopyNotice"));
@@ -352,32 +371,134 @@ namespace Polka
 
             if (added.PendingSourceDelete)
             {
-                try
-                {
-                    // The imported bytes and the record needed to recover them
-                    // are already durable before the source can be removed.
-                    if (File.Exists(source) && !FilesEqual(source, added.Path))
-                        throw new IOException(L10n.T("ImportChanged"));
-                    File.Delete(source);
-                    if (File.Exists(source)) throw new IOException(L10n.T("SourceStillExists"));
-                    added.DesktopSourceMoved = true;
-                }
-                catch (Exception ex)
-                {
-                    if (!IsFileError(ex)) throw;
-                    added.DesktopSourceMoved = false;
-                    AddNotice(L10n.T("ImportRemoveFailed") + ex.Message);
-                }
-                added.PendingSourceDelete = false;
-                try { Save(); }
-                catch (Exception ex)
-                {
-                    if (!IsFileError(ex)) throw;
-                    // The first saved record deliberately remains recoverable.
-                    AddNotice(L10n.T("FinalSavePending") + ex.Message);
-                }
+                LastPersonalTransferPath = source;
+                LastPersonalTransferResult = FinishPersonalDesktopTransfer(added);
             }
             return added;
+        }
+
+        private void RefreshPublicDuplicate(DockItem item, string source)
+        {
+            if (!Settings.MoveDesktopShortcuts || !item.ManagedShortcut || !IsOwnedLibraryFile(item) ||
+                item.PendingPublicRestore || !IsPublicDesktopShortcut(source) || !SamePath(item.OriginalPath, source)) return;
+            bool pending = item.PendingPublicMove;
+            bool matches = false, verified = false;
+            try
+            {
+                ValidatePublicStorage(item);
+                matches = ReadVerifiedShortcut(item.Path).SequenceEqual(ReadVerifiedShortcut(source));
+                verified = true;
+            }
+            catch (Exception ex)
+            {
+                if (!IsFileError(ex)) throw;
+                AddNotice(L10n.T("ImportRemoveFailed") + ex.Message);
+            }
+            item.PendingPublicMove = matches;
+            try { if (pending != matches) Save(); }
+            catch { item.PendingPublicMove = pending; throw; }
+            if (matches) AddNotice(L10n.T("SharedCopyNotice"));
+            else if (verified) AddNotice(L10n.T("ImportChanged"));
+        }
+
+        internal PersonalTransferResult RetryPersonalDesktopTransfer(string path)
+        {
+            if (secureReads) throw new IOException(L10n.T("SharedHelperReadOnly"));
+            LastPersonalTransferPath = null;
+            LastPersonalTransferResult = PersonalTransferResult.NotApplicable;
+            if (!Settings.MoveDesktopShortcuts || !IsUserDesktopShortcut(path)) return LastPersonalTransferResult;
+            DockItem item = Settings.Items.FirstOrDefault(value => value.ManagedShortcut &&
+                !value.PendingPublicRestore && SamePath(value.OriginalPath, path) && IsOwnedLibraryFile(value));
+            if (item == null) return LastPersonalTransferResult;
+            LastPersonalTransferPath = NormalizePath(path);
+            LastPersonalTransferResult = FinishPersonalDesktopTransfer(item);
+            return LastPersonalTransferResult;
+        }
+
+        private PersonalTransferResult FinishPersonalDesktopTransfer(DockItem item)
+        {
+            bool previousMoved = item.DesktopSourceMoved;
+            byte[] bytes;
+            try
+            {
+                bytes = ReadVerifiedShortcut(item.Path);
+                if (File.Exists(item.OriginalPath) && !bytes.SequenceEqual(ReadVerifiedShortcut(item.OriginalPath)))
+                {
+                    item.PendingSourceDelete = false;
+                    SavePersonalTransferState();
+                    AddNotice(L10n.T("ImportChanged"));
+                    return PersonalTransferResult.Preserved;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!IsFileError(ex)) throw;
+                item.PendingSourceDelete = IsSharingFailure(ex);
+                SavePersonalTransferState();
+                AddNotice(L10n.T("ImportRemoveFailed") + ex.Message);
+                return item.PendingSourceDelete ? PersonalTransferResult.Retry : PersonalTransferResult.Preserved;
+            }
+
+            bool previousPending = item.PendingSourceDelete;
+            item.DesktopSourceMoved = true;
+            item.PendingSourceDelete = true;
+            try { Save(); }
+            catch (Exception ex)
+            {
+                item.DesktopSourceMoved = previousMoved;
+                item.PendingSourceDelete = previousPending;
+                if (!IsFileError(ex)) throw;
+                AddNotice(L10n.T("ImportRemoveFailed") + ex.Message);
+                return PersonalTransferResult.Retry;
+            }
+            try
+            {
+                // Ownership/restoration intent is durable before DELETE access
+                // is requested for the exact, same-byte desktop file handle.
+                if (File.Exists(item.OriginalPath)) DeleteVerifiedShortcut(item.OriginalPath, bytes);
+                if (File.Exists(item.OriginalPath))
+                {
+                    // The installer can immediately recreate the name after
+                    // our verified handle was deleted. Inspect it afresh on
+                    // another stable sample rather than consuming that event.
+                    SavePersonalTransferState();
+                    AddNotice(L10n.T("ImportRemoveFailed") + L10n.T("SourceStillExists"));
+                    return PersonalTransferResult.Retry;
+                }
+                item.PendingSourceDelete = false;
+                SavePersonalTransferState();
+                return PersonalTransferResult.Completed;
+            }
+            catch (Exception ex)
+            {
+                if (!IsFileError(ex)) throw;
+                item.DesktopSourceMoved = previousMoved;
+                item.PendingSourceDelete = IsSharingFailure(ex);
+                SavePersonalTransferState();
+                AddNotice(L10n.T("ImportRemoveFailed") + ex.Message);
+                return item.PendingSourceDelete ? PersonalTransferResult.Retry : PersonalTransferResult.Preserved;
+            }
+        }
+
+        private void SavePersonalTransferState()
+        {
+            try { Save(); }
+            catch (Exception ex)
+            {
+                if (!IsFileError(ex)) throw;
+                AddNotice(L10n.T("FinalSavePending") + ex.Message);
+            }
+        }
+
+        private static bool IsSharingFailure(Exception error)
+        {
+            for (Exception current = error; current != null; current = current.InnerException)
+            {
+                var native = current as Win32Exception;
+                int code = native == null ? current.HResult & 0xffff : native.NativeErrorCode;
+                if (code == 32 || code == 33) return true;
+            }
+            return false;
         }
 
         public bool IsPublicShortcut(DockItem item)
@@ -389,6 +510,7 @@ namespace Polka
         // user's icon order or identity. It never removes a shared source.
         public int PreparePublicCopies()
         {
+            if (secureReads) throw new IOException(L10n.T("SharedHelperReadOnly"));
             LastNotice = String.Empty;
             int prepared = 0;
             foreach (DockItem item in Settings.Items)
@@ -472,6 +594,7 @@ namespace Polka
         // from its explicitly requested helper for the shared desktop action.
         public bool CompletePublicMove(DockItem item)
         {
+            if (secureReads) return CompletePreparedPublicMove(item);
             LastNotice = String.Empty;
             DockItem stored = FindStoredItem(item);
             if (stored == null || !stored.ManagedShortcut || !IsOwnedLibraryFile(stored) ||
@@ -561,6 +684,7 @@ namespace Polka
         // the owned library bytes for the caller's subsequent Remove operation.
         public void RestorePublic(DockItem item)
         {
+            if (secureReads) { RestorePreparedPublic(item); return; }
             LastNotice = String.Empty;
             LastRestoredPath = null;
             DockItem stored = FindStoredItem(item);
@@ -606,8 +730,245 @@ namespace Polka
             LastNotice = L10n.T("SharedRestoredPrefix") + System.IO.Path.GetFileName(restoredPath);
         }
 
+        // Only the ordinary dock persists intent. The elevated helper receives
+        // a read-only snapshot and is limited to its verified shared shortcut.
+        internal void PreparePublicOperation(string operation, string itemId)
+        {
+            if (secureReads) throw new IOException(L10n.T("SharedHelperReadOnly"));
+            var targets = operation == "--public-move" ? SelectPublicMoveTargets(itemId, false) :
+                operation == "--public-restore" ? Settings.Items.Where(value => value.Id == itemId).ToArray() : new DockItem[0];
+            if (targets.Length == 0 || (operation == "--public-restore" && targets.Length != 1))
+                throw new IOException(L10n.T("SharedRestoreVerifyFailed"));
+            var before = targets.Select(value => new PublicIntentState(value)).ToArray();
+            try
+            {
+                foreach (DockItem item in targets)
+                {
+                    ValidatePublicStorage(item);
+                    if (operation == "--public-move")
+                    {
+                        item.DesktopSourceMoved = true;
+                        item.PendingSourceDelete = item.PendingPublicMove = true;
+                        item.PendingPublicRestore = false;
+                        item.LastRestoredPath = null;
+                    }
+                    else
+                    {
+                        if (!NeedsPublicRestore(item)) throw new IOException(L10n.T("SharedRestoreVerifyFailed"));
+                        item.LastRestoredPath = SelectPublicRestoreDestination(item);
+                        item.PendingPublicRestore = true;
+                        item.PendingSourceDelete = item.PendingPublicMove = false;
+                    }
+                }
+                Save();
+            }
+            catch { foreach (var state in before) state.Restore(); throw; }
+        }
+
+        internal DockItem[] GetPreparedPublicMoveItems(string itemIds)
+        {
+            if (!secureReads) throw new IOException(L10n.T("SharedHelperReadOnly"));
+            return SelectPublicMoveTargets(itemIds, true);
+        }
+
+        private DockItem[] SelectPublicMoveTargets(string itemIds, bool requirePrepared)
+        {
+            DockItem[] targets;
+            if (itemIds == null)
+                targets = Settings.Items.Where(value => value != null && value.PendingPublicMove).ToArray();
+            else
+            {
+                if (itemIds.Length == 0 || itemIds.Length > MaximumItems * 33 - 1)
+                    throw new IOException(L10n.T("SharedCopyVerifyFailed"));
+                string[] requested = itemIds.Split(',');
+                if (requested.Length > MaximumItems) throw new IOException(L10n.T("SharedCopyVerifyFailed"));
+                var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var selected = new List<DockItem>();
+                foreach (string id in requested)
+                {
+                    Guid parsed;
+                    if (!Guid.TryParseExact(id, "N", out parsed) || !known.Add(id))
+                        throw new IOException(L10n.T("SharedCopyVerifyFailed"));
+                    DockItem[] matching = Settings.Items.Where(value => value != null &&
+                        String.Equals(value.Id, id, StringComparison.OrdinalIgnoreCase)).ToArray();
+                    if (matching.Length != 1) throw new IOException(L10n.T("SharedCopyVerifyFailed"));
+                    selected.Add(matching[0]);
+                }
+                targets = selected.ToArray();
+            }
+            // Validate the whole batch before the caller can mutate an item or
+            // delete any source. An automatic import can request only its new
+            // IDs, leaving older pending/cancelled shortcuts untouched.
+            if (targets.Length == 0) throw new IOException(L10n.T("SharedCopyVerifyFailed"));
+            foreach (DockItem item in targets)
+            {
+                ValidatePublicStorage(item);
+                if (!item.PendingPublicMove || (requirePrepared &&
+                    (!item.DesktopSourceMoved || !item.PendingSourceDelete || item.PendingPublicRestore)))
+                    throw new IOException(L10n.T("SharedCopyVerifyFailed"));
+            }
+            return targets;
+        }
+
+        internal void CancelPublicRestoreIntent(string itemId)
+        {
+            if (secureReads) throw new IOException(L10n.T("SharedHelperReadOnly"));
+            DockItem item = Settings.Items.FirstOrDefault(value => value.Id == itemId && value.PendingPublicRestore);
+            if (item == null) return;
+            PublicIntentState before = new PublicIntentState(item);
+            item.PendingPublicRestore = false;
+            item.LastRestoredPath = null;
+            try { Save(); } catch { before.Restore(); throw; }
+        }
+
+        internal bool IsPendingPublicRestorePath(string path)
+        {
+            return Settings.Items.Any(value => value.PendingPublicRestore && SamePath(value.LastRestoredPath, path));
+        }
+
+        internal string[] ReconcilePublicRestoreIntents()
+        {
+            if (secureReads) throw new IOException(L10n.T("SharedHelperReadOnly"));
+            var pending = Settings.Items.Where(value => value.PendingPublicRestore).ToArray();
+            var before = pending.Select(value => new PublicIntentState(value)).ToArray();
+            var completed = new List<string>();
+            foreach (DockItem item in pending)
+                if (TryCompletePublicRestoreIntent(item)) completed.Add(item.LastRestoredPath);
+            if (completed.Count == 0) return new string[0];
+            try { Save(); return completed.ToArray(); }
+            catch (Exception ex)
+            {
+                foreach (var state in before) state.Restore();
+                if (!IsFileError(ex)) throw;
+                AddNotice(L10n.T("SharedRestoredSavePending"));
+                return new string[0];
+            }
+        }
+
+        private sealed class PublicIntentState
+        {
+            private readonly DockItem item;
+            private readonly bool moved, pendingDelete, pendingMove, pendingRestore;
+            private readonly string restoredPath;
+            internal PublicIntentState(DockItem item)
+            {
+                this.item = item; moved = item.DesktopSourceMoved; pendingDelete = item.PendingSourceDelete;
+                pendingMove = item.PendingPublicMove; pendingRestore = item.PendingPublicRestore; restoredPath = item.LastRestoredPath;
+            }
+            internal void Restore()
+            {
+                item.DesktopSourceMoved = moved; item.PendingSourceDelete = pendingDelete;
+                item.PendingPublicMove = pendingMove; item.PendingPublicRestore = pendingRestore; item.LastRestoredPath = restoredPath;
+            }
+        }
+
+        private bool CompletePreparedPublicMove(DockItem item)
+        {
+            LastNotice = String.Empty;
+            DockItem stored = FindStoredItem(item);
+            try
+            {
+                ValidatePublicStorage(stored);
+                if (!stored.DesktopSourceMoved || !stored.PendingSourceDelete || !stored.PendingPublicMove || stored.PendingPublicRestore)
+                    throw new IOException(L10n.T("SharedRestoreVerifyFailed"));
+                byte[] bytes = ReadVerifiedShortcut(stored.Path);
+                if (File.Exists(stored.OriginalPath)) DeleteVerifiedShortcut(stored.OriginalPath, bytes);
+                if (File.Exists(stored.OriginalPath)) throw new IOException(L10n.T("SharedSourceStillExists"));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (!IsFileError(ex)) throw;
+                LastNotice = L10n.T("SharedCopySafeFailed") + ex.Message;
+                return false;
+            }
+        }
+
+        private void RestorePreparedPublic(DockItem item)
+        {
+            LastNotice = String.Empty;
+            DockItem stored = FindStoredItem(item);
+            ValidatePublicStorage(stored);
+            if (!stored.DesktopSourceMoved || stored.PendingSourceDelete || stored.PendingPublicMove || !stored.PendingPublicRestore ||
+                !IsPublicDesktopShortcut(stored.LastRestoredPath))
+                throw new IOException(L10n.T("SharedRestoreVerifyFailed"));
+            string destination = NormalizePath(stored.LastRestoredPath);
+            RejectReparsePoints(destination);
+            byte[] bytes = ReadVerifiedShortcut(stored.Path);
+            if (File.Exists(destination))
+            {
+                if (!bytes.SequenceEqual(ReadVerifiedShortcut(destination)))
+                    throw new IOException(L10n.T("SharedChanged"));
+            }
+            else
+            {
+                // The ordinary dock already selected and journaled this exact
+                // name. A new collision fails; the helper never silently picks
+                // another destination or overwrites any existing namespace.
+                WriteNewPublicShortcut(destination, bytes);
+            }
+            LastRestoredPath = destination;
+        }
+
+        private static void WriteNewPublicShortcut(string destination, byte[] bytes)
+        {
+            SafeFileHandle handle = CreateFile(destination, 0x40010000u, 0, IntPtr.Zero, 1,
+                0x80200000u, IntPtr.Zero); // WRITE | DELETE; CREATE_NEW; WRITE_THROUGH | OPEN_REPARSE_POINT
+            if (handle.IsInvalid)
+            {
+                int error = Marshal.GetLastWin32Error(); handle.Dispose();
+                throw new IOException(L10n.T("SharedRestoreAdmin") + new Win32Exception(error).Message);
+            }
+            using (var stream = new FileStream(handle, FileAccess.Write, 4096, false))
+            {
+                try
+                {
+                    RequireRegularSingleFile(stream.SafeFileHandle);
+                    RequireFinalHandlePath(stream.SafeFileHandle, NormalizePath(destination));
+                    stream.Write(bytes, 0, bytes.Length); stream.Flush(true);
+                }
+                catch
+                {
+                    // Remove only our newly created incomplete file through
+                    // its exclusive handle, never a subsequent pathname.
+                    FileDispositionInformation disposition = new FileDispositionInformation { DeleteFile = 1 };
+                    SetFileInformationByHandle(stream.SafeFileHandle, 4, ref disposition,
+                        (uint)Marshal.SizeOf(typeof(FileDispositionInformation)));
+                    throw;
+                }
+            }
+        }
+
+        private string SelectPublicRestoreDestination(DockItem item)
+        {
+            byte[] bytes = ReadVerifiedShortcut(item.Path);
+            if (IsPublicDesktopShortcut(item.LastRestoredPath) && VerifiedFilesEqual(item.Path, item.LastRestoredPath))
+                return NormalizePath(item.LastRestoredPath);
+            string folder = System.IO.Path.GetDirectoryName(item.OriginalPath);
+            string stem = System.IO.Path.GetFileNameWithoutExtension(item.OriginalPath), extension = System.IO.Path.GetExtension(item.OriginalPath);
+            for (int number = 0; number < 10000; number++)
+            {
+                string destination = number == 0 ? item.OriginalPath : System.IO.Path.Combine(folder,
+                    stem + L10n.T("RestoredNamePrefix") + number.ToString() + ")" + extension);
+                RejectReparsePoints(destination);
+                if (!File.Exists(destination) && !Directory.Exists(destination)) return destination;
+                if (File.Exists(destination) && bytes.SequenceEqual(ReadVerifiedShortcut(destination))) return destination;
+            }
+            throw new IOException(L10n.T("SharedRestoreNameFailed"));
+        }
+
+        private bool TryCompletePublicRestoreIntent(DockItem item)
+        {
+            if (!item.PendingPublicRestore || !item.ManagedShortcut || !IsOwnedLibraryFile(item) || !IsPublicShortcut(item) ||
+                !IsPublicDesktopShortcut(item.LastRestoredPath) || !VerifiedFilesEqual(item.Path, item.LastRestoredPath)) return false;
+            item.DesktopSourceMoved = item.PendingSourceDelete = item.PendingPublicMove = item.PendingPublicRestore = false;
+            LastRestoredPath = item.LastRestoredPath;
+            return true;
+        }
+
         public void Remove(DockItem item)
         {
+            if (secureReads) throw new IOException(L10n.T("SharedHelperReadOnly"));
             LastNotice = String.Empty;
             LastRestoredPath = null;
             DockItem stored = FindStoredItem(item);
@@ -620,7 +981,8 @@ namespace Polka
                 LastNotice = L10n.T("SharedRestoreRequired");
                 throw new IOException(LastNotice);
             }
-            if (owned && stored.DesktopSourceMoved && File.Exists(stored.Path))
+            bool pendingPersonalTransfer = owned && stored.PendingSourceDelete && IsUserDesktopShortcut(stored.OriginalPath);
+            if (owned && (stored.DesktopSourceMoved || pendingPersonalTransfer) && File.Exists(stored.Path))
             {
                 if (!IsUserDesktopShortcut(stored.OriginalPath))
                     throw new IOException(L10n.T("OriginalLocationFailed"));
@@ -702,6 +1064,7 @@ namespace Polka
                     if (stream.Length > 4 * 1024 * 1024) throw new SerializationException(L10n.T("SettingsTooLarge"));
                     loaded = (DockSettings)new DataContractJsonSerializer(typeof(DockSettings)).ReadObject(stream);
                     if (loaded == null) throw new SerializationException(L10n.T("SettingsEmpty"));
+                    ValidateItemSet(loaded);
                 }
                 return true;
             }
@@ -718,6 +1081,7 @@ namespace Polka
 
         private void PreserveUnreadable(string path)
         {
+            if (secureReads) throw new IOException(L10n.T("SharedHelperReadOnly"));
             try
             {
                 string preserved = path + ".unreadable-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") +
@@ -748,8 +1112,18 @@ namespace Polka
                     item.ManagedShortcut = false;
                     item.DesktopSourceMoved = item.PendingSourceDelete = false;
                     item.PendingPublicMove = false;
+                    item.PendingPublicRestore = false;
+                    item.LastRestoredPath = null;
                     changed = true;
                     continue;
+                }
+                if (item.PendingPublicRestore)
+                {
+                    // A helper can finish after the dock has restarted. Keep a
+                    // missing intent so observation excludes its exact future
+                    // restore name; reconcile on startup or the next poll.
+                    if (TryCompletePublicRestoreIntent(item)) changed = true;
+                    if (item.PendingPublicRestore) continue;
                 }
                 if (!item.PendingSourceDelete) continue;
                 bool publicItem = IsPublicDesktopShortcut(item.OriginalPath);
@@ -787,6 +1161,7 @@ namespace Polka
         private void SanitizeSettings()
         {
             if (Settings == null) Settings = new DockSettings();
+            ValidateItemSet(Settings);
             Settings.Left = IsFinite(Settings.Left) ? Math.Max(-100000, Math.Min(100000, Settings.Left)) : Double.NaN;
             Settings.Top = IsFinite(Settings.Top) ? Math.Max(-100000, Math.Min(100000, Settings.Top)) : Double.NaN;
             Settings.Width = Clamp(Settings.Width, 160, 2400, 570);
@@ -810,6 +1185,23 @@ namespace Polka
                     catch (ArgumentException) { item.Name = L10n.T("Shortcut"); }
                 }
                 if (item.Name != null && item.Name.Length > 512) item.Name = item.Name.Substring(0, 512);
+            }
+        }
+
+        // An ambiguous or oversized persisted list follows normal recovery:
+        // retain the original JSON and library, then use a valid backup. Never
+        // truncate managed entries or change IDs tied to library filenames.
+        private static void ValidateItemSet(DockSettings settings)
+        {
+            if (settings.Items == null) return;
+            int count = 0;
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (DockItem item in settings.Items)
+            {
+                if (item == null || String.IsNullOrWhiteSpace(item.Path)) continue;
+                if (++count > MaximumItems) throw new SerializationException(L10n.T("SettingsItemLimit", MaximumItems));
+                if (!String.IsNullOrWhiteSpace(item.Id) && !ids.Add(item.Id))
+                    throw new SerializationException(L10n.T("SettingsDuplicateIds"));
             }
         }
 
@@ -911,11 +1303,19 @@ namespace Polka
         private DockItem FindStoredItem(DockItem item)
         {
             if (item == null) return null;
-            return Settings.Items.FirstOrDefault(delegate(DockItem candidate)
+            DockItem exact = Settings.Items.FirstOrDefault(delegate(DockItem candidate)
             {
-                return Object.ReferenceEquals(candidate, item) ||
-                    (!String.IsNullOrEmpty(item.Id) && candidate.Id == item.Id);
+                return Object.ReferenceEquals(candidate, item);
             });
+            if (exact != null || String.IsNullOrEmpty(item.Id)) return exact;
+            DockItem match = null;
+            foreach (DockItem candidate in Settings.Items)
+                if (candidate != null && String.Equals(candidate.Id, item.Id, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (match != null) throw new SerializationException(L10n.T("SettingsDuplicateIds"));
+                    match = candidate;
+                }
+            return match;
         }
 
         private bool IsOwnedLibraryFile(DockItem item)
@@ -1134,32 +1534,14 @@ namespace Polka
             {
                 int error = Marshal.GetLastWin32Error();
                 handle.Dispose();
-                throw new IOException(L10n.T("VerifyOpenFailed") + new Win32Exception(error).Message);
+                throw new IOException(L10n.T("VerifyOpenFailed") + new Win32Exception(error).Message, new Win32Exception(error));
             }
             try
             {
-                ByHandleFileInformation information;
-                if (!GetFileInformationByHandle(handle, out information))
-                    throw NativeFileError(L10n.T("VerifyPropertiesFailed"));
-                if ((information.FileAttributes & (0x00000400u | 0x00000010u)) != 0 || information.NumberOfLinks != 1)
-                    throw new IOException(L10n.T("SafeFileUnsupported"));
+                ByHandleFileInformation information = RequireRegularSingleFile(handle);
                 if (information.FileSizeHigh != 0 || information.FileSizeLow > 4 * 1024 * 1024)
                     throw new IOException(L10n.T("SafeFileTooLarge"));
-                StringBuilder finalPath = new StringBuilder(512);
-                uint length = GetFinalPathNameByHandle(handle, finalPath, (uint)finalPath.Capacity, 0);
-                if (length == 0) throw NativeFileError(L10n.T("VerifyFinalPathFailed"));
-                if (length >= finalPath.Capacity)
-                {
-                    finalPath.Capacity = checked((int)length + 1);
-                    length = GetFinalPathNameByHandle(handle, finalPath, (uint)finalPath.Capacity, 0);
-                    if (length == 0 || length >= finalPath.Capacity)
-                        throw new IOException(L10n.T("VerifyFullFinalPathFailed"));
-                }
-                string resolved = finalPath.ToString();
-                if (resolved.StartsWith("\\\\?\\UNC\\", StringComparison.OrdinalIgnoreCase)) resolved = "\\\\" + resolved.Substring(8);
-                else if (resolved.StartsWith("\\\\?\\", StringComparison.OrdinalIgnoreCase)) resolved = resolved.Substring(4);
-                if (!String.Equals(NormalizePath(resolved), expected, StringComparison.OrdinalIgnoreCase))
-                    throw new IOException(L10n.T("FinalPathMismatch"));
+                RequireFinalHandlePath(handle, expected);
                 FileStream stream = new FileStream(handle, FileAccess.Read);
                 handle = null;
                 return stream;
@@ -1167,9 +1549,40 @@ namespace Polka
             finally { if (handle != null) handle.Dispose(); }
         }
 
+        private static ByHandleFileInformation RequireRegularSingleFile(SafeFileHandle handle)
+        {
+            if (GetFileType(handle) != 1) throw new IOException(L10n.T("SafeFileUnsupported")); // FILE_TYPE_DISK
+            ByHandleFileInformation information;
+            if (!GetFileInformationByHandle(handle, out information))
+                throw NativeFileError(L10n.T("VerifyPropertiesFailed"));
+            if ((information.FileAttributes & (0x00000400u | 0x00000010u)) != 0 || information.NumberOfLinks != 1)
+                throw new IOException(L10n.T("SafeFileUnsupported"));
+            return information;
+        }
+
+        private static void RequireFinalHandlePath(SafeFileHandle handle, string expected)
+        {
+            StringBuilder finalPath = new StringBuilder(512);
+            uint length = GetFinalPathNameByHandle(handle, finalPath, (uint)finalPath.Capacity, 0);
+            if (length == 0) throw NativeFileError(L10n.T("VerifyFinalPathFailed"));
+            if (length >= finalPath.Capacity)
+            {
+                finalPath.Capacity = checked((int)length + 1);
+                length = GetFinalPathNameByHandle(handle, finalPath, (uint)finalPath.Capacity, 0);
+                if (length == 0 || length >= finalPath.Capacity)
+                    throw new IOException(L10n.T("VerifyFullFinalPathFailed"));
+            }
+            string resolved = finalPath.ToString();
+            if (resolved.StartsWith("\\\\?\\UNC\\", StringComparison.OrdinalIgnoreCase)) resolved = "\\\\" + resolved.Substring(8);
+            else if (resolved.StartsWith("\\\\?\\", StringComparison.OrdinalIgnoreCase)) resolved = resolved.Substring(4);
+            if (!String.Equals(NormalizePath(resolved), expected, StringComparison.OrdinalIgnoreCase))
+                throw new IOException(L10n.T("FinalPathMismatch"));
+        }
+
         private static IOException NativeFileError(string message)
         {
-            return new IOException(message + " " + new Win32Exception(Marshal.GetLastWin32Error()).Message);
+            var error = new Win32Exception(Marshal.GetLastWin32Error());
+            return new IOException(message + " " + error.Message, error);
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -1195,6 +1608,8 @@ namespace Polka
             IntPtr securityAttributes, uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile);
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool GetFileInformationByHandle(SafeFileHandle handle, out ByHandleFileInformation information);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint GetFileType(SafeFileHandle handle);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path, uint length, uint flags);
         [DllImport("kernel32.dll", SetLastError = true)]

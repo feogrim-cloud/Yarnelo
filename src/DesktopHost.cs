@@ -107,6 +107,28 @@ namespace Polka
 
         internal enum ForegroundState { Unknown, Desktop, OwnWindow, DesktopMenu, ForeignWindow }
 
+        internal static bool ShouldPromptDesktopOperation(bool nativeVisible, ForegroundState state, bool fullscreen)
+        {
+            return nativeVisible && !fullscreen &&
+                (state == ForegroundState.Desktop || state == ForegroundState.OwnWindow);
+        }
+
+        // A deferred permission request belongs to an actual desktop/dock
+        // interaction, never an active game, another display's app, or a menu.
+        internal bool CanPromptDesktopOperation()
+        {
+            if (disposed || !started || handle == IntPtr.Zero || !nativeVisible || !IsWindowVisible(handle)) return false;
+            ForegroundState state = ClassifyForeground(GetForegroundWindow());
+            if (!ShouldPromptDesktopOperation(true, state, false)) return false;
+            MonitorInfo monitor = new MonitorInfo(); monitor.Size = Marshal.SizeOf(typeof(MonitorInfo));
+            if (!GetMonitorInfo(MonitorFromWindow(handle, 2), ref monitor)) return false;
+            PixelRect bounds;
+            if (!GetWindowRect(handle, out bounds)) return false;
+            bool blocked, fullscreen;
+            FindLocalObstructions(monitor.Monitor, bounds, false, out blocked, out fullscreen);
+            return ShouldPromptDesktopOperation(true, state, fullscreen);
+        }
+
         internal static bool ShouldBeVisible(bool desktopOnly, ForegroundState state,
             bool fullscreenOnDockMonitor, bool managedVisible, bool localWindowOverDock)
         {

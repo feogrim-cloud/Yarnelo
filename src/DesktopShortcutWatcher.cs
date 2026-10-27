@@ -11,6 +11,7 @@ namespace Polka {
             internal int StableSamples;
             internal DateTime FirstSeen;
             internal bool Consumed;
+            internal bool ManagedTransfer;
         }
         sealed class Desktop {
             internal string Path;
@@ -73,7 +74,7 @@ namespace Polka {
                             observation=new Observation { FirstSeen=now };
                             known.Add(path,observation);
                         }
-                        if(now-observation.FirstSeen>=RetryPeriod) { observation.Consumed=true; continue; }
+                        if(!observation.ManagedTransfer && now-observation.FirstSeen>=RetryPeriod) { observation.Consumed=true; continue; }
                         try {
                             FileAttributes attributes=File.GetAttributes(path);
                             if((attributes&(FileAttributes.Directory|FileAttributes.ReparsePoint))!=0) {
@@ -120,6 +121,42 @@ namespace Polka {
             catch(UnauthorizedAccessException) { }
             catch(ArgumentException) { }
             catch(NotSupportedException) { }
+        }
+
+        // A verified transfer removed this exact source. Forget immediately,
+        // even if an installer has recreated it before the next directory scan.
+        // Deliberate desktop restores must use Acknowledge instead.
+        internal void ForgetTransferred(string path) {
+            if(disposed || String.IsNullOrWhiteSpace(path)) return;
+            try { string full; if(TryWatchedShortcut(path,out full)) known.Remove(full); }
+            catch(ArgumentException) { }
+            catch(NotSupportedException) { }
+        }
+
+        // Only a caller with a durable managed copy may extend this retry.
+        // Ordinary invalid/unhandled new files still expire after RetryPeriod.
+        internal void DeferManagedTransfer(string path) {
+            if(disposed || String.IsNullOrWhiteSpace(path)) return;
+            try {
+                string full; if(!TryWatchedShortcut(path,out full)) return;
+                Observation observation;
+                if(!known.TryGetValue(full,out observation)) {
+                    known[full]=new Observation {FirstSeen=utcNow(),ManagedTransfer=true};
+                } else {
+                    if(observation.Consumed) observation.StableSamples=0;
+                    observation.Consumed=false; observation.FirstSeen=utcNow(); observation.ManagedTransfer=true;
+                }
+            } catch(ArgumentException) { }
+            catch(NotSupportedException) { }
+        }
+
+        bool TryWatchedShortcut(string path,out string full) {
+            full=null;
+            if(!System.IO.Path.IsPathRooted(path) || !Supported(path)) return false;
+            full=System.IO.Path.GetFullPath(path);
+            string parent=System.IO.Path.GetDirectoryName(full);
+            foreach(Desktop desktop in desktops) if(String.Equals(parent,desktop.Path,StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
         }
 
         static bool Supported(string path) {

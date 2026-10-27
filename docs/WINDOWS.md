@@ -23,7 +23,7 @@ Choose a centered **Top, Bottom, Left or Right** position on the dock's current 
 ## EXE installer
 
 1. Download the matching `Setup.exe` from the release's Assets section.
-2. Run the wizard. Administrator rights are not needed. The default location is `%LOCALAPPDATA%\Programs\Yarnelo`.
+2. Run the wizard. A new installation defaults to Program Files and requests administrator rights. You can choose installation for your account only instead. Updates reuse the existing installation scope and folder.
 3. The installer adds a Start menu shortcut. A desktop shortcut is optional.
 4. Launch Yarnelo from Start and drop shortcuts on its dock. Startup at sign-in is a separate option in the dock's settings.
 
@@ -41,7 +41,7 @@ The hash must match the same filename in `SHA256SUMS`. Substitute the correct na
 2. Extract **all files** to a permanent writable folder, such as `Documents\Yarnelo`. Do not run the program from inside the archive.
 3. Run `Yarnelo.exe`.
 
-In both installer and portable packages, `portable.mode` keeps settings and shortcuts in `Data` beside the program. Keep this marker. Do not move an existing populated installation: imported shortcut paths in the profile are absolute.
+The portable ZIP includes `portable.mode`, which keeps settings and shortcuts in `Data` beside the program. Keep this marker. A fresh Setup installation does not install it and uses `%LOCALAPPDATA%\PolkaDock` instead. Updating an older installation that already has the marker retains its portable mode and `Data`; an unrelated leftover `Data` folder does not change a standard installation's profile. Do not move a populated portable installation: imported shortcut paths in the profile are absolute.
 
 ## Interface and language
 
@@ -63,15 +63,19 @@ Turning startup off removes only this installation's task and matching legacy re
 
 ## Shortcuts and storage
 
-With desktop shortcut transfer enabled, desktop `.lnk` / `.url` files are stored in `Data/Library` and removed from the desktop. Their contents and launch arguments are retained. Ordinary files and folders stay in place. Right-click an icon → **Remove and restore shortcut to desktop** to restore an imported shortcut. Existing files are never overwritten.
+With desktop shortcut transfer enabled, desktop `.lnk` / `.url` files are stored in the profile's `Library` folder and removed from the desktop. Their contents and launch arguments are retained. Ordinary files and folders stay in place. Right-click an icon → **Remove and restore shortcut to desktop** to restore an imported shortcut. Existing files are never overwritten.
 
 Shared desktop shortcuts may require a Windows administrator prompt to transfer or restore. Canceling the prompt leaves the original shortcut in place. Adding This PC or Recycle Bin does not alter Windows desktop-icon settings.
 
-Settings are in `Data/settings.json`; the backup is `Data/settings.json.bak`.
+With desktop transfer enabled, a new shared-desktop shortcut added automatically or manually is copied into the dock and queued for approval to move only that new copy. The Windows approval request waits until the dock is visible and the desktop or Yarnelo is active, with no fullscreen app, settings window, menu or drag interaction. Canceled or failed requests are not repeated automatically; use **+ → Move shared shortcuts into the dock** to retry. Older pending shared transfers found at startup are not added to the automatic approval queue.
+
+Temporary installer locks on personal desktop shortcuts are retried. If an installer recreates a matching copy, Yarnelo can move it again; changed contents are retained on the desktop with a notice. A full dock still leaves a new shortcut on the desktop without queuing a later import.
+
+For a standard Setup installation, the profile is `%LOCALAPPDATA%\PolkaDock`: `settings.json`, its backup `settings.json.bak`, and `Library`. For a portable installation, the same files are in `Data` beside the executable.
 
 ## Update without losing shortcuts
 
-For the installed version, run the new installer **in the same folder**. It asks only that installation's Yarnelo process to close gracefully. If the process does not respond, setup stops and asks you to close it manually; it does not force-terminate it. Existing `Data` and the startup preference are preserved.
+For the installed version, run the new installer. It reuses the existing installation scope and folder; keep that folder selected. It asks only that installation's Yarnelo process to close gracefully. If the process does not respond, setup stops and asks you to close it manually; it does not force-terminate it. The native profile, any existing portable marker and `Data`, and the startup preference are preserved. Setup does not switch an existing profile between native and portable storage.
 
 For the portable version, exit Yarnelo from its notification-area menu and extract the new archive over the program files **in the original folder**, retaining `Data`. Back up the folder first. Do not simply copy an old `Data` profile to a different installation path: its absolute shortcut paths still refer to the old location.
 
@@ -81,9 +85,11 @@ If Yarnelo is running from another folder, close it before launching the new cop
 
 ## Uninstall
 
-Restore any moved shortcuts through each icon's menu first. For the installed version, use **Settings → Apps → Installed apps → Yarnelo → Uninstall**. Uninstall removes only its own installation's startup task and matching legacy entry, and leaves `Data` in place. For a portable version, disable startup in the app, exit, then remove the program files yourself.
+For the installed version, use **Settings → Apps → Installed apps → Yarnelo → Uninstall**, or run `Uninstall\unins000.exe` inside its program folder. Before removing files, the uninstaller closes this copy of Yarnelo and restores all desktop `.lnk` and `.url` shortcuts that it moved into its library. Existing files are never overwritten: an identical shortcut is reused, and a different same-name file is retained while the restored shortcut receives a free name. If a shortcut cannot be restored, removal stops and leaves the program and profile available for recovery.
 
-Keep `Data` until your required shortcuts have been restored: it contains the imported `.lnk` and `.url` files.
+Successful removal deletes only this installation's startup task and matching legacy entry. It keeps the native profile or portable `Data`, including the saved library. Shared desktop restoration may require administrator rights. Uninstalling one installation does not restore shortcuts from unrelated portable copies or other Windows accounts.
+
+For a portable copy without an uninstaller, restore its moved shortcuts through the icon menus, disable startup in the app and exit before manually removing its program files. Keep its `Data` until the shortcuts have been restored.
 
 ## Building for developers
 

@@ -45,6 +45,10 @@ $fixtures = Join-Path $run 'fixtures'
 & $binary $fixtures
 if($LASTEXITCODE -ne 0) { throw "Storage tests failed. Fixtures are preserved at $fixtures" }
 
+# The shared-desktop helper reads a verified journal but never saves profile
+# data with elevated permissions. All mutation fixtures stay under this run.
+& (Join-Path $PSScriptRoot 'windows\Test-SecureSave.ps1') -Architecture x64 -OutputDirectory (Join-Path $run 'strict-helper')
+
 # Geometry checks use only synthetic monitor bounds and never show a window.
 $layoutBinary = Join-Path $run 'DockLayoutTests.exe'
 $layoutArgs = @('/nologo','/target:exe','/platform:x64','/optimize+','/codepage:65001',('/out:'+$layoutBinary),'/reference:System.dll','/reference:System.Core.dll','/reference:System.Xml.dll',('/reference:'+(Join-Path $framework 'WPF\WindowsBase.dll')))

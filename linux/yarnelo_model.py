@@ -16,7 +16,7 @@ from typing import Any
 from yarnelo_i18n import LANGUAGES, text
 from yarnelo_themes import THEMES, THEME_IDS, default_appearance
 
-VERSION = "1.9.1"
+VERSION = "1.9.2"
 MAX_ITEMS = 30
 PLACEMENTS = ("free", "bottom", "top", "left", "right")
 
@@ -43,7 +43,7 @@ class Item:
 
     @classmethod
     def create(cls, kind: str = "path", path: str = "") -> "Item":
-        if kind not in {"path", "computer", "trash"}:
+        if not isinstance(kind, str) or kind not in {"path", "computer", "trash"}:
             raise ModelError("invalid_kind")
         if kind == "path":
             candidate = Path(path).expanduser().absolute()
@@ -90,7 +90,7 @@ class Settings:
             ("corner_radius", 0.0, 100.0, float),
         ):
             value = data.get(name, getattr(result, name))
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            if not finite_setting_number(value):
                 raise ModelError("invalid_value", name=name)
             setattr(result, name, numeric_type(min(high, max(low, value))))
         # These fields were added after schema 1. A bad optional theme must not
@@ -104,7 +104,7 @@ class Settings:
                 values = {}
                 for key, low, high in (("opacity", .12, 1.0), ("corner_radius", 0.0, 100.0)):
                     value = appearance.get(key)
-                    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                    if not finite_setting_number(value):
                         break
                     values[key] = float(min(high, max(low, value)))
                 if len(values) == 2:
@@ -118,13 +118,14 @@ class Settings:
             raise ModelError("invalid_value", name="placement")
         result.placement = placement
         language = data.get("language", "auto")
-        if language not in LANGUAGES:
+        if not isinstance(language, str) or language not in LANGUAGES:
             raise ModelError("invalid_value", name="language")
         result.language = language
         result.screen = str(data.get("screen", ""))[:256]
         for name in ("x", "y"):
             value = data.get(name)
-            if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int)
+                                      or not -(2 ** 31) <= value <= 2 ** 31 - 1):
                 raise ModelError("invalid_coordinate", name=name)
             setattr(result, name, value)
         raw_items = data.get("items", [])
@@ -138,7 +139,7 @@ class Settings:
             ident, kind, path = raw.get("id"), raw.get("kind"), raw.get("path", "")
             if not isinstance(ident, str) or not ident or ident in ids:
                 raise ModelError("invalid_item_id")
-            if kind not in {"path", "computer", "trash"} or not isinstance(path, str):
+            if not isinstance(kind, str) or kind not in {"path", "computer", "trash"} or not isinstance(path, str):
                 raise ModelError("invalid_item")
             if kind == "path" and (not path or not Path(path).is_absolute()):
                 raise ModelError("absolute_path_required")
@@ -179,6 +180,16 @@ class Settings:
         return True
 
 
+def finite_setting_number(value: Any) -> bool:
+    """Reject malformed JSON numbers without overflowing Python's float cast."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def config_path() -> Path:
     base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
     # XDG directories must be absolute; ignore malformed relative overrides.
@@ -191,10 +202,17 @@ def load_settings(path: Path) -> Settings:
     try:
         if not path.exists():
             return Settings()
-        if path.stat().st_size > 1024 * 1024:
+        # Bound the bytes actually read, including a file growing after stat().
+        with path.open("rb") as stream:
+            payload = stream.read(1024 * 1024 + 1)
+        if len(payload) > 1024 * 1024:
             raise ModelError("settings_too_large")
-        return Settings.from_dict(json.loads(path.read_text(encoding="utf-8")))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        return Settings.from_dict(json.loads(payload.decode("utf-8")))
+    except ModelError:
+        raise
+    except (OSError, UnicodeError, ValueError, TypeError, OverflowError, RecursionError) as error:
+        # Decoder nesting/integer limits and invalid record types must use the
+        # same recovery path as damaged JSON, leaving original bytes untouched.
         raise ModelError("settings_read_failed", error=error) from error
 
 

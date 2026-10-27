@@ -234,6 +234,65 @@ class ModelTests(unittest.TestCase):
                 save_settings(path, bad)
             self.assertEqual(b"{broken", path.read_bytes())
 
+    def test_malformed_types_and_huge_numbers_use_recoverable_model_errors(self):
+        for kind in ([], {}, 1, None):
+            with self.subTest(kind=kind), self.assertRaises(ModelError):
+                Settings.from_dict({"items": [{"id": "fixture", "kind": kind}]})
+            with self.subTest(create_kind=kind), self.assertRaises(ModelError):
+                Item.create(kind)
+        huge = 10 ** 400
+        for name in ("rows", "opacity", "icon_size", "zoom", "corner_radius"):
+            for value in (huge, -huge):
+                with self.subTest(name=name, sign=value > 0), self.assertRaises(ModelError):
+                    Settings.from_dict({name: value})
+        for name in ("x", "y"):
+            for value in (huge, -huge, 2 ** 31, -(2 ** 31) - 1):
+                with self.subTest(coordinate=name, value=value), self.assertRaises(ModelError):
+                    Settings.from_dict({name: value})
+        valid = Settings.from_dict({"x": -(2 ** 31), "y": 2 ** 31 - 1})
+        self.assertEqual((-(2 ** 31), 2 ** 31 - 1), (valid.x, valid.y))
+
+    def test_malformed_files_stay_intact_and_can_be_preserved_before_recovery(self):
+        contents = (
+            '{"items":[{"id":"fixture","kind":[],"path":""}]}',
+            '{"items":[{"id":"fixture","kind":{},"path":""}]}',
+            '{"rows":' + '9' * 400 + '}',
+            '{"rows":' + '9' * 5000 + '}',
+            # Python 3.12's C decoder permits deeper input than Python 3.11.
+            # Exceed both limits so this checks recovery, not a version's cutoff.
+            '{"unused":' + '[' * 10000 + '0' + ']' * 10000 + '}',
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            for content in contents:
+                original = content.encode("utf-8")
+                path.write_bytes(original)
+                with self.subTest(size=len(original)), self.assertRaises(ModelError):
+                    load_settings(path)
+                self.assertEqual(original, path.read_bytes())
+                backup = preserve_invalid_settings(path)
+                self.assertEqual(original, backup.read_bytes())
+                save_settings(path, Settings(items=[Item("valid", "trash")]))
+                self.assertEqual("valid", load_settings(path).items[0].id)
+                self.assertEqual(original, backup.read_bytes())
+
+    def test_huge_optional_theme_numbers_do_not_discard_existing_shortcuts(self):
+        raw = {"items": [{"id": "keep", "kind": "trash"}],
+               "theme_appearances": {"frost": {"opacity": 10 ** 400, "corner_radius": 10}}}
+        settings = Settings.from_dict(raw)
+        self.assertEqual(["keep"], [item.id for item in settings.items])
+        self.assertNotIn("frost", settings.theme_appearances)
+
+    def test_settings_limit_is_applied_to_actual_read_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            original = b" " * (1024 * 1024 + 1)
+            path.write_bytes(original)
+            with self.assertRaises(ModelError) as raised:
+                load_settings(path)
+            self.assertEqual("settings_too_large", raised.exception.key)
+            self.assertEqual(original, path.read_bytes())
+
     def test_failed_atomic_replace_keeps_original_and_removes_temporary_file(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "settings.json"

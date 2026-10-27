@@ -355,7 +355,7 @@ internal static class StorageTests
         Check(item.ManagedShortcut && item.PendingPublicMove && File.Exists(original) &&
             File.ReadAllBytes(item.Path).SequenceEqual(originalBytes) && store.IsPublicShortcut(item),
             "public shortcut imported as owned exact copy without deleting original");
-        Check(!store.NeedsPublicRestore(item) && store.LastNotice.Contains("администратора"),
+        Check(!store.NeedsPublicRestore(item) && store.LastNotice.Contains(L10n.T("SharedCopyNotice")),
             "public copy explains required action but does not request restoration yet");
         store = new Store(data, desktop, publicDesktop);
         item = store.Settings.Items[0];
@@ -551,8 +551,78 @@ internal static class StorageTests
         }
         else Console.WriteLine("SKIP: native hardlink configuration fixture unavailable (Win32 " + Marshal.GetLastWin32Error() + ").");
 
+        ProfileCapacityAndIdentity();
         LocalizationStorage();
         Console.WriteLine("PASS: " + assertions.ToString() + " storage and localization assertions. Test data: " + root);
+    }
+    private static byte[] ProfileBytes(DockSettings settings)
+    {
+        using (var stream = new MemoryStream())
+        {
+            new System.Runtime.Serialization.Json.DataContractJsonSerializer(typeof(DockSettings)).WriteObject(stream, settings);
+            return stream.ToArray();
+        }
+    }
+    private static void ProfileCapacityAndIdentity()
+    {
+        string desktop, data;
+        Store store = NewStore("oversized-profile", out desktop, out data);
+        for (int index = 0; index < Store.MaximumItems; index++)
+            store.Add(Shortcut(desktop, "Game " + index + ".lnk"));
+        store.Save(); // Keep a valid, complete 30-item fallback.
+        string profile = Path.Combine(data, "settings.json"), backup = profile + ".bak";
+        byte[] safe = File.ReadAllBytes(profile), safeBackup = File.ReadAllBytes(backup);
+        string id = Guid.NewGuid().ToString("N"), library = Path.Combine(data, "Library", id + ".lnk");
+        byte[] overflowBytes = { 11, 22, 33, 44 };
+        File.WriteAllBytes(library, overflowBytes);
+        store.Settings.Items.Add(new DockItem { Id = id, Name = "Overflow", Path = library,
+            OriginalPath = Path.Combine(desktop, "Overflow.lnk"), ManagedShortcut = true, DesktopSourceMoved = true });
+        bool refused = false;
+        try { store.Save(); } catch (System.Runtime.Serialization.SerializationException) { refused = true; }
+        Check(refused && safe.SequenceEqual(File.ReadAllBytes(profile)) && safeBackup.SequenceEqual(File.ReadAllBytes(backup)),
+            "saving 31 entries fails before changing the active or backup profile");
+        byte[] oversized = ProfileBytes(store.Settings);
+        File.WriteAllBytes(profile, oversized); // Simulate an edited/damaged input, never a UI import.
+        var recovered = new Store(data, desktop);
+        Check(recovered.Settings.Items.Count == Store.MaximumItems && recovered.LastNotice.Contains(L10n.T("SettingsRecovered")),
+            "an over-capacity profile recovers a valid full backup before any views can be created");
+        Check(Directory.GetFiles(data, "settings.json.unreadable-*.json").Any(path => oversized.SequenceEqual(File.ReadAllBytes(path))),
+            "all original 31 records are preserved byte-for-byte rather than silently truncated");
+        Check(Directory.GetFiles(Path.Combine(data, "Library")).Length == 31 && overflowBytes.SequenceEqual(File.ReadAllBytes(library)),
+            "recovering an oversized profile preserves every managed shortcut file, including overflow");
+
+        store = NewStore("duplicate-profile", out desktop, out data);
+        store.Add("shell:MyComputerFolder"); store.Save();
+        profile = Path.Combine(data, "settings.json");
+        string duplicate = Guid.NewGuid().ToString("N");
+        store.Settings.Items.Add(new DockItem { Id = duplicate, Name = "First", Path = "shell:RecycleBinFolder" });
+        store.Settings.Items.Add(new DockItem { Id = duplicate.ToUpperInvariant(), Name = "Second", Path = "shell:MyComputerFolder" });
+        byte[] damaged = ProfileBytes(store.Settings);
+        File.WriteAllBytes(profile, damaged);
+        recovered = new Store(data, desktop);
+        Check(recovered.Settings.Items.Count == 1 && recovered.Settings.Items[0].Path == "shell:MyComputerFolder",
+            "duplicate IDs including case variants recover through the valid backup");
+        Check(Directory.GetFiles(data, "settings.json.unreadable-*.json").Any(path => damaged.SequenceEqual(File.ReadAllBytes(path))),
+            "ambiguous item records are retained for recovery with original IDs and paths");
+        File.WriteAllBytes(profile, damaged);
+        bool strictRejected = false;
+        try { new Store(data, desktop, null, true); } catch (IOException) { strictRejected = true; }
+        Check(strictRejected && damaged.SequenceEqual(File.ReadAllBytes(profile)),
+            "strict shared-desktop mode rejects ambiguous profiles without repairing or writing them");
+
+        store = NewStore("duplicate-live-reference", out desktop, out data);
+        string firstPath = Shortcut(desktop, "First.txt"), secondPath = Shortcut(desktop, "Second.txt");
+        var first = new DockItem { Id = "duplicate", Name = "First", Path = firstPath, OriginalPath = firstPath };
+        var second = new DockItem { Id = "duplicate", Name = "Second", Path = secondPath, OriginalPath = secondPath };
+        store.Settings.Items.Add(first); store.Settings.Items.Add(second);
+        bool ambiguousRejected = false;
+        try { store.Remove(new DockItem { Id = "duplicate", Path = secondPath }); }
+        catch (System.Runtime.Serialization.SerializationException) { ambiguousRejected = true; }
+        Check(ambiguousRejected && store.Settings.Items.Count == 2, "a detached ambiguous ID cannot select an arbitrary item");
+        store.Remove(second);
+        Check(store.Settings.Items.Count == 1 && Object.ReferenceEquals(store.Settings.Items[0], first),
+            "removal selects the exact second object before an earlier duplicate ID");
+        Check(File.Exists(firstPath) && File.Exists(secondPath), "duplicate-reference removal preserves both original target files");
     }
     private static void LocalizationStorage()
     {

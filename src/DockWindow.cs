@@ -82,12 +82,24 @@ namespace Polka {
         readonly List<IconView> views = new List<IconView>();
         readonly HashSet<ContextMenu> openMenus = new HashSet<ContextMenu>();
         readonly Dictionary<string,ImageSource> iconCache = new Dictionary<string,ImageSource>(StringComparer.OrdinalIgnoreCase);
+        sealed class IconLoad { internal string Path; }
+        readonly Dictionary<string,IconLoad> pendingIcons = new Dictionary<string,IconLoad>(StringComparer.OrdinalIgnoreCase);
+        IconLoad activeIconLoad;
+        volatile bool iconLoadsDisposed;
+        internal Func<string,ImageSource> IconLoader = Native.GetIcon;
         Forms.NotifyIcon tray;
         DesktopHost host;
         SettingsWindow settingsWindow;
         DesktopShortcutWatcher desktopWatcher;
         DispatcherTimer desktopWatcherTimer;
         bool desktopWatcherInjected, desktopLimitNotice;
+        readonly HashSet<string> queuedPublicMoves = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        readonly HashSet<string> promptedPublicMoves = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        DispatcherTimer publicMoveTimer;
+        bool automaticPublicMoveRunning;
+        Func<bool> publicPromptProbe;
+        Func<string,Task<bool>> publicMoveExecutor;
+        readonly Dictionary<string,string> desktopImportNotices=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
         readonly Dictionary<string,SolidColorBrush> themeBrushes=new Dictionary<string,SolidColorBrush>();
         readonly Dictionary<string,ThemeColorValue> themeColors=new Dictionary<string,ThemeColorValue>();
         readonly ResourceDictionary themeResources=new ResourceDictionary();
@@ -296,7 +308,7 @@ namespace Polka {
                 if(internalDrag) EndInternalDrag(false);
                 if(!exiting) { exiting=true; SaveQuietly(); }
             };
-            Closed += delegate { StopDesktopWatcher(); StopRendering(); if(internalDrag) Mouse.Capture(null); if(host!=null) host.Dispose(); if(recycleTimer!=null) recycleTimer.Stop(); noticeTimer.Stop(); if(tray!=null) tray.Dispose(); Application.Current.Shutdown(); };
+            Closed += delegate { StopAutomaticPublicMoves(); DisposeIconLoads(); StopDesktopWatcher(); StopRendering(); if(internalDrag) Mouse.Capture(null); if(host!=null) host.Dispose(); if(recycleTimer!=null) recycleTimer.Stop(); noticeTimer.Stop(); if(tray!=null) tray.Dispose(); Application.Current.Shutdown(); };
         }
 
         SolidColorBrush NormalStroke() { return displayedGlassStroke; }
@@ -438,6 +450,7 @@ namespace Polka {
             if(desktopWatcherTimer!=null) { desktopWatcherTimer.Stop(); desktopWatcherTimer=null; }
             if(desktopWatcher!=null) { desktopWatcher.Dispose(); desktopWatcher=null; }
             desktopWatcherInjected=false; desktopLimitNotice=false;
+            desktopImportNotices.Clear();
         }
 
         internal void InjectDesktopWatcher(DesktopShortcutWatcher watcher) {
@@ -447,12 +460,13 @@ namespace Polka {
 
         internal void PollDesktopShortcuts() {
             if(desktopWatcher==null || !Store.Settings.AutoAddDesktopShortcuts || helperRunning || exiting || moving || internalDrag || dragLanding || settingsWindow!=null || openMenus.Any(menu=>menu.IsOpen)) return;
+            foreach(string restored in Store.ReconcilePublicRestoreIntents()) AcknowledgeRestoredShortcut(restored);
             if(Store.Settings.Items.Count<Polka.Store.MaximumItems) desktopLimitNotice=false;
             bool changed=false;
             foreach(string path in desktopWatcher.Scan()) {
+                if(Store.IsPendingPublicRestorePath(path)) { desktopWatcher.Acknowledge(path); continue; }
                 bool duplicate=Store.Settings.Items.Any(item=>SameDesktopPath(item.Path,path) || SameDesktopPath(item.OriginalPath,path));
-                if(duplicate) { desktopWatcher.Acknowledge(path); continue; }
-                if(Store.Settings.Items.Count>=Polka.Store.MaximumItems) {
+                if(!duplicate && Store.Settings.Items.Count>=Polka.Store.MaximumItems) {
                     desktopWatcher.Acknowledge(path);
                     if(!desktopLimitNotice) { desktopLimitNotice=true; Toast(L10n.T("DockFull")); }
                     continue;
@@ -460,8 +474,11 @@ namespace Polka {
                 try {
                     if(!Native.IsDesktopShortcutReady(path)) continue;
                     int before=Store.Settings.Items.Count;
-                    Store.Add(path);
-                    desktopWatcher.Acknowledge(path);
+                    DockItem imported=Store.Add(path);
+                    TrackDesktopImport(path);
+                    ShowDesktopImportNotice(path,Store.LastNotice);
+                    if(imported.PendingPublicMove && Store.Settings.MoveDesktopShortcuts)
+                        QueueAutomaticPublicMove(imported);
                     changed|=Store.Settings.Items.Count>before;
                 } catch(Exception ex) {
                     // An installer may still be writing or locking its shortcut.
@@ -470,6 +487,27 @@ namespace Polka {
                 }
             }
             if(changed) { ApplySettings(); SaveQuietly(); }
+        }
+
+        void TrackDesktopImport(string path) {
+            if(desktopWatcher==null) return;
+            if(SameDesktopPath(Store.LastPersonalTransferPath,path)) {
+                if(Store.LastPersonalTransferResult==Polka.Store.PersonalTransferResult.Completed) {
+                    desktopWatcher.ForgetTransferred(path); desktopImportNotices.Remove(path); return;
+                }
+                if(Store.LastPersonalTransferResult==Polka.Store.PersonalTransferResult.Retry) {
+                    desktopWatcher.DeferManagedTransfer(path); return;
+                }
+            }
+            desktopWatcher.Acknowledge(path);
+        }
+
+        void ShowDesktopImportNotice(string path,string text) {
+            if(String.IsNullOrEmpty(text)) return;
+            string previous;
+            if(desktopImportNotices.TryGetValue(path,out previous) && previous==text) return;
+            desktopImportNotices[path]=text;
+            Toast(text);
         }
 
         static bool SameDesktopPath(string first,string second) {
@@ -487,7 +525,9 @@ namespace Polka {
         void RenderIcons() {
             if(internalDrag) EndInternalDrag(false);
             FinishLanding();
+            PruneIconLoads();
             var previousIds=new HashSet<string>(views.Select(x=>x.Item.Id));
+            foreach(var previous in views) previous.Image.Source=null;
             strip.Children.Clear(); views.Clear(); pressed=null;
             var palette=Palette;
             var motion=Motion;
@@ -602,14 +642,63 @@ namespace Polka {
             return nearest;
         }
 
-        async void LoadIcon(IconView view,bool refresh) {
+        void PruneIconLoads() {
+            var current=new HashSet<string>(Store.Settings.Items.Take(Polka.Store.MaximumItems)
+                .Select(item=>item.Path),StringComparer.OrdinalIgnoreCase);
+            foreach(string path in iconCache.Keys.Where(path=>!current.Contains(path)).ToArray()) iconCache.Remove(path);
+            foreach(string path in pendingIcons.Keys.Where(path=>!current.Contains(path)).ToArray()) pendingIcons.Remove(path);
+        }
+
+        internal void DisposeIconLoads() {
+            iconLoadsDisposed=true;
+            activeIconLoad=null; pendingIcons.Clear(); iconCache.Clear();
+            foreach(var view in views) view.Image.Source=null;
+        }
+
+        void LoadIcon(IconView view,bool refresh) {
+            if(iconLoadsDisposed || !views.Contains(view)) return;
             ImageSource icon;
             if(!refresh && iconCache.TryGetValue(view.Item.Path,out icon)) { view.Image.Source=icon; return; }
             string path=view.Item.Path;
-            try {
-                icon=await Task.Run(delegate { return Native.GetIcon(path); });
-                if(icon!=null) { iconCache[path]=icon; view.Image.Source=icon; }
-            } catch { }
+            if(!pendingIcons.ContainsKey(path)) {
+                if(pendingIcons.Count>=Polka.Store.MaximumItems) return;
+                pendingIcons.Add(path,new IconLoad { Path=path });
+            }
+            StartNextIconLoad();
+        }
+
+        void StartNextIconLoad() {
+            if(iconLoadsDisposed || activeIconLoad!=null || pendingIcons.Count==0) return;
+            var request=pendingIcons.Values.First();
+            activeIconLoad=request;
+            var loader=IconLoader;
+            // Keep one native extraction in flight. Rebuilding the panel can
+            // replace its pending paths, but never queues a Task for each old
+            // view or retains those removed controls in an async continuation.
+            Task.Run(delegate { return loader(request.Path); }).ContinueWith(completed=> {
+                ImageSource result=completed.Status==TaskStatus.RanToCompletion ? completed.Result : null;
+                if(completed.IsFaulted) completed.Exception.Handle(error=>true);
+                if(iconLoadsDisposed || Dispatcher.HasShutdownStarted) return;
+                try {
+                    Dispatcher.BeginInvoke(DispatcherPriority.Background,new Action(delegate { CompleteIconLoad(request,result); }));
+                } catch(InvalidOperationException) { }
+            },TaskScheduler.Default);
+        }
+
+        void CompleteIconLoad(IconLoad request,ImageSource icon) {
+            if(!Object.ReferenceEquals(activeIconLoad,request)) return;
+            activeIconLoad=null;
+            if(iconLoadsDisposed) return;
+            IconLoad current;
+            if(pendingIcons.TryGetValue(request.Path,out current) && Object.ReferenceEquals(request,current)) {
+                pendingIcons.Remove(request.Path);
+                var targets=views.Where(view=>String.Equals(view.Item.Path,request.Path,StringComparison.OrdinalIgnoreCase)).ToArray();
+                if(icon!=null && targets.Length!=0 && (iconCache.ContainsKey(request.Path) || iconCache.Count<Polka.Store.MaximumItems)) {
+                    iconCache[request.Path]=icon;
+                    foreach(var view in targets) view.Image.Source=icon;
+                }
+            }
+            StartNextIconLoad();
         }
 
         void OnHoverMove(object sender,MouseEventArgs e) {
@@ -833,16 +922,18 @@ namespace Polka {
         }
         internal void AddPaths(IEnumerable<string> paths) {
             if(helperRunning) return;
-            int pendingBefore=Store.Settings.Items.Count(x=>x.PendingPublicMove);
             int added=0, before=Store.Settings.Items.Count;
             var errors=new List<string>();
             foreach(var path in paths) {
-                try { Store.Add(path); if(!String.IsNullOrEmpty(Store.LastNotice)) errors.Add(Store.LastNotice); }
+                try {
+                    DockItem imported=Store.Add(path); TrackDesktopImport(path);
+                    if(!String.IsNullOrEmpty(Store.LastNotice)) errors.Add(Store.LastNotice);
+                    if(imported.PendingPublicMove && Store.Settings.MoveDesktopShortcuts) QueueAutomaticPublicMove(imported);
+                }
                 catch(Exception ex) { errors.Add(ex.Message); }
             }
             added=Store.Settings.Items.Count-before; ApplySettings(); SaveQuietly();
             Toast(errors.Count>0 ? String.Join(" · ",errors.Distinct().Take(2)) : added>0 ? L10n.T("AddedCount",added,Store.Settings.Items.Count) : L10n.T("AlreadyAdded"));
-            if(Store.Settings.MoveDesktopShortcuts && Store.Settings.Items.Count(x=>x.PendingPublicMove)>pendingBefore) MovePublicShortcuts();
         }
 
         MenuItem Menu(string text,Action action) { var m=new MenuItem { Header=text, Foreground=ThemeBrush("Foreground"), Background=Brushes.Transparent }; m.Click+=delegate { action(); }; return m; }
@@ -891,32 +982,92 @@ namespace Polka {
                     if(item==null) return;
                     AcknowledgeRestoredShortcut(item.LastRestoredPath);
                 }
-                Store.Remove(item); ApplySettings(); Toast(String.IsNullOrEmpty(Store.LastNotice)?L10n.T("Removed"):Store.LastNotice);
+                Store.Remove(item); AcknowledgeRestoredShortcut(item.OriginalPath); ApplySettings(); Toast(String.IsNullOrEmpty(Store.LastNotice)?L10n.T("Removed"):Store.LastNotice);
             } catch(Exception ex) { Toast(ex.Message); }
             finally { AcknowledgeRestoredShortcut(Store.LastRestoredPath); }
         }
         async void MovePublicShortcuts() {
             if(await RunPublicHelper("--public-move",null)) Toast(L10n.T("SharedMoved"));
         }
+
+        internal void InjectAutomaticPublicMove(Func<bool> canPrompt,Func<string,Task<bool>> execute) {
+            if(!Program.TestMode) throw new InvalidOperationException("Public move injection is available only in test mode.");
+            publicPromptProbe=canPrompt; publicMoveExecutor=execute;
+        }
+        internal void QueueAutomaticPublicMove(DockItem item) {
+            if(exiting || item==null || !Store.Settings.MoveDesktopShortcuts || !item.ManagedShortcut ||
+                !item.PendingPublicMove || !Store.IsPublicShortcut(item)) return;
+            Guid parsed;
+            if(!Guid.TryParseExact(item.Id,"N",out parsed)) return;
+            var current=new HashSet<string>(Store.Settings.Items.Select(value=>value.Id),StringComparer.OrdinalIgnoreCase);
+            promptedPublicMoves.RemoveWhere(id=>!current.Contains(id));
+            queuedPublicMoves.RemoveWhere(id=>!current.Contains(id));
+            if(promptedPublicMoves.Contains(item.Id) || !queuedPublicMoves.Add(item.Id)) return;
+            if(!Program.TestMode && publicMoveTimer==null) {
+                publicMoveTimer=new DispatcherTimer(DispatcherPriority.Background,Dispatcher) { Interval=TimeSpan.FromSeconds(1) };
+                publicMoveTimer.Tick+=async delegate { await RunAutomaticPublicMoves(); };
+            }
+            if(publicMoveTimer!=null) publicMoveTimer.Start();
+        }
+        internal async Task RunAutomaticPublicMoves() {
+            if(exiting || automaticPublicMoveRunning || helperRunning || moving || internalDrag || dragLanding ||
+                settingsWindow!=null || openMenus.Any(menu=>menu.IsOpen)) return;
+            if(!Store.Settings.MoveDesktopShortcuts) { StopAutomaticPublicMoves(); return; }
+            queuedPublicMoves.RemoveWhere(id=>!Store.Settings.Items.Any(item=>item.Id==id && item.PendingPublicMove && item.ManagedShortcut && Store.IsPublicShortcut(item)));
+            if(queuedPublicMoves.Count==0) { if(publicMoveTimer!=null) publicMoveTimer.Stop(); return; }
+            bool canPrompt=publicPromptProbe!=null ? publicPromptProbe() : host!=null && host.CanPromptDesktopOperation();
+            if(!canPrompt) return;
+            string[] ids=Store.Settings.Items.Where(item=>queuedPublicMoves.Contains(item.Id)).Select(item=>item.Id).ToArray();
+            string[] originalPaths=Store.Settings.Items.Where(item=>queuedPublicMoves.Contains(item.Id)).Select(item=>item.OriginalPath).ToArray();
+            foreach(string id in ids) { promptedPublicMoves.Add(id); queuedPublicMoves.Remove(id); }
+            if(publicMoveTimer!=null) publicMoveTimer.Stop();
+            automaticPublicMoveRunning=true;
+            try {
+                string batch=String.Join(",",ids);
+                bool success=publicMoveExecutor!=null ? await publicMoveExecutor(batch) : await RunPublicHelper("--public-move",batch);
+                if(success) {
+                    foreach(string id in ids) promptedPublicMoves.Remove(id);
+                    if(desktopWatcher!=null) foreach(string path in originalPaths) desktopWatcher.ForgetTransferred(path);
+                    if(!exiting) Toast(L10n.T("SharedMoved"));
+                }
+            } catch(Exception ex) {
+                if(!exiting) Toast(L10n.T("Incomplete")+" "+ex.Message);
+            } finally {
+                automaticPublicMoveRunning=false;
+                if(!exiting && queuedPublicMoves.Count>0 && publicMoveTimer!=null) publicMoveTimer.Start();
+            }
+        }
+        internal void StopAutomaticPublicMoves() {
+            if(publicMoveTimer!=null) { publicMoveTimer.Stop(); publicMoveTimer=null; }
+            queuedPublicMoves.Clear(); promptedPublicMoves.Clear();
+        }
         async Task<bool> RunPublicHelper(string operation,string itemId) {
             if(helperRunning) return false;
-            try { Store.Settings.Left=Left; Store.Settings.Top=Top; Store.Save(); }
+            try { Store.Settings.Left=Left; Store.Settings.Top=Top; Store.PreparePublicOperation(operation,itemId); }
             catch(Exception ex) { Toast(L10n.T("SaveDockFailed")+ex.Message); return false; }
             helperRunning=true; IsEnabled=false;
             if(settingsWindow!=null) settingsWindow.IsEnabled=false;
             string data=Store.DataDirectory;
+            bool helperStarted=false;
             try {
                 int code=await Task.Run(delegate {
                     var info=new System.Diagnostics.ProcessStartInfo(Native.ExePath,operation+(itemId==null?"":" "+itemId)+" --data-dir \""+data+"\"") {
                         UseShellExecute=true, Verb="runas", WindowStyle=System.Diagnostics.ProcessWindowStyle.Hidden
                     };
-                    using(var process=System.Diagnostics.Process.Start(info)) { process.WaitForExit(); return process.ExitCode; }
+                    using(var process=System.Diagnostics.Process.Start(info)) { helperStarted=true; process.WaitForExit(); return process.ExitCode; }
                 });
-                Store=new Store(data); ApplySettings();
+                Store=new Store(data);
+                if(operation=="--public-restore") Store.CancelPublicRestoreIntent(itemId); // child is definitely finished
+                ApplySettings();
                 if(code!=0) { Toast(L10n.T("Incomplete")); return false; }
                 return true;
             } catch(System.ComponentModel.Win32Exception ex) {
+                if(!helperStarted) { Store=new Store(data); if(operation=="--public-restore") Store.CancelPublicRestoreIntent(itemId); ApplySettings(); }
                 Toast(ex.NativeErrorCode==1223 ? L10n.T("Cancelled") : ex.Message); return false;
+            } catch(IOException ex) {
+                Toast(ex.Message); return false;
+            } catch(UnauthorizedAccessException ex) {
+                Toast(ex.Message); return false;
             } finally {
                 helperRunning=false;
                 IsEnabled=true; if(settingsWindow!=null) settingsWindow.IsEnabled=true;

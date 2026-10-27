@@ -9,8 +9,8 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyDescription("Yarnelo — shortcut dock for Windows")]
 [assembly: AssemblyCompany("Yarnelo")]
 [assembly: AssemblyProduct("Yarnelo")]
-[assembly: AssemblyVersion("1.9.1.0")]
-[assembly: AssemblyFileVersion("1.9.1.0")]
+[assembly: AssemblyVersion("1.9.2.0")]
+[assembly: AssemblyFileVersion("1.9.2.0")]
 
 namespace Polka {
     internal static class Program {
@@ -36,7 +36,10 @@ namespace Polka {
             bool startupLaunch=false;
             for (int i=0;i<args.Length;i++) {
                 if(args[i]=="--data-dir" && i+1<args.Length) { DataDir=Path.GetFullPath(args[++i]); TestMode=true; }
-                else if(args[i]=="--public-move") helper=args[i];
+                else if(args[i]=="--public-move") {
+                    helper=args[i];
+                    if(i+1<args.Length && !args[i+1].StartsWith("--",StringComparison.Ordinal)) helperId=args[++i];
+                }
                 else if(args[i]=="--public-restore" && i+1<args.Length) { helper=args[i]; helperId=args[++i]; }
                 else if(args[i]=="--startup") startupLaunch=true;
             }
@@ -50,7 +53,7 @@ namespace Polka {
                     }
                     var saved=new Store(DataDir,null,null,true);
                     if(helper=="--public-move") {
-                        foreach(var item in saved.Settings.Items.ToArray()) if(item.PendingPublicMove && !saved.CompletePublicMove(item)) return 2;
+                        foreach(var item in saved.GetPreparedPublicMoveItems(helperId)) if(!saved.CompletePublicMove(item)) return 2;
                     } else {
                         var item=saved.Settings.Items.Find(x=>x.Id==helperId);
                         if(item==null) return 2;

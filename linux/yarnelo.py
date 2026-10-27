@@ -1093,6 +1093,25 @@ def main() -> int:
             process.setProgram(program)
             process.setArguments(arguments)
             process.setProcessChannelMode(QProcess.ProcessChannelMode.SeparateChannels)
+            # Launchers can stay alive while their target runs. Unused stdout
+            # goes directly to the null device instead of a growing Qt buffer.
+            process.setStandardOutputFile(QProcess.nullDevice())
+            process.setReadChannel(QProcess.ProcessChannel.StandardError)
+            stderr_tail = bytearray()
+            stderr_limit = 8192
+
+            def drain_stderr():
+                # Drain on every arrival, retaining only a bounded diagnostic
+                # tail and copying at most one small chunk at a time.
+                while process.bytesAvailable():
+                    chunk = bytes(process.read(4096))
+                    if not chunk:
+                        break
+                    stderr_tail.extend(chunk)
+                    if len(stderr_tail) > stderr_limit:
+                        del stderr_tail[:-stderr_limit]
+
+            process.readyReadStandardError.connect(drain_stderr)
             if getattr(sys, "frozen", False):
                 environment = QProcessEnvironment()
                 for name, value in external_environment(dict(os.environ), Path(sys._MEIPASS)).items():
@@ -1100,8 +1119,9 @@ def main() -> int:
                 process.setProcessEnvironment(environment)
 
             def finished(code, status):
+                drain_stderr()
                 if code != 0:
-                    detail = bytes(process.readAllStandardError()).decode("utf-8", errors="replace").strip()[:1200]
+                    detail = stderr_tail.decode("utf-8", errors="replace").strip()[-1200:]
                     QMessageBox.warning(self, "Yarnelo", self.t("open_failed", error=detail or self.t("command_failed")))
                 self.processes.discard(process)
                 process.deleteLater()

@@ -147,6 +147,14 @@ namespace Polka
                 ShellObstructions();
                 Visibility();
                 Geometry();
+                foreach (DesktopHost.ForegroundState state in Enum.GetValues(typeof(DesktopHost.ForegroundState)))
+                {
+                    Check(!DesktopHost.ShouldPromptDesktopOperation(false, state, false), "A hidden dock never requests an automatic desktop operation");
+                    Check(!DesktopHost.ShouldPromptDesktopOperation(true, state, true), "Fullscreen always defers an automatic permission request");
+                    Check(DesktopHost.ShouldPromptDesktopOperation(true, state, false) ==
+                        (state == DesktopHost.ForegroundState.Desktop || state == DesktopHost.ForegroundState.OwnWindow),
+                        "Automatic permission requests require an actual desktop/dock interaction: " + state);
+                }
                 Console.WriteLine("PASS: " + assertions + " desktop visibility assertions; no HWNDs or desktop state were accessed.");
                 return 0;
             }

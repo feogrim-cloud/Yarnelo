@@ -8,6 +8,7 @@ using Microsoft.Win32;
 
 // Used only by Setup/Uninstall. It never starts a dock, changes a profile,
 // terminates a process, or touches another application's startup entry.
+// Uninstall restores managed desktop shortcuts by copying their preserved bytes.
 internal static class SetupMaintenance
 {
     private delegate bool EnumWindowProc(IntPtr window, IntPtr argument);
@@ -84,10 +85,15 @@ internal static class SetupMaintenance
     {
         try
         {
-            if (args.Length != 2 || (args[0] != "close" && args[0] != "uninstall")) return 80;
+            if (args.Length != 2 || (args[0] != "close" && args[0] != "prepare-uninstall" && args[0] != "uninstall")) return 80;
             string executable = Path.GetFullPath(args[1]);
             if (!Path.IsPathRooted(args[1]) || !string.Equals(Path.GetFileName(executable), "Yarnelo.exe", StringComparison.OrdinalIgnoreCase)) return 80;
             int result = CloseOwnApplication(executable);
+            if (result == 0 && args[0] != "close")
+            {
+                try { UninstallProfile.RestoreForExecutable(executable); }
+                catch { return 60; }
+            }
             if (result == 0 && args[0] == "uninstall") RemoveOwnStartup(executable);
             return result;
         }

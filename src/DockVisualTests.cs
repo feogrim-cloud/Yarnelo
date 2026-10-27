@@ -4,10 +4,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Diagnostics;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace Polka {
     // Exercise the real production controls without creating an HWND, desktop
@@ -35,6 +39,218 @@ namespace Polka {
         static void WithinWindow(FrameworkElement element,FrameworkElement content,DockWindow dock,string message) {
             Rect bounds=Bounds(element,content); bounds.Offset(content.Margin.Left,content.Margin.Top);
             Check(bounds.Left>=-1 && bounds.Top>=-1 && bounds.Right<=dock.Width+1 && bounds.Bottom<=dock.Height+1,message+": "+bounds);
+        }
+        static void PumpUntil(Func<bool> condition,string message) {
+            var watch=Stopwatch.StartNew();
+            while(!condition() && watch.Elapsed.TotalSeconds<15) {
+                var frame=new DispatcherFrame();
+                var timer=new DispatcherTimer(DispatcherPriority.Background) {Interval=TimeSpan.FromMilliseconds(5)};
+                timer.Tick+=delegate {timer.Stop();frame.Continue=false;};
+                timer.Start(); Dispatcher.PushFrame(frame);
+            }
+            Check(condition(),message);
+        }
+        static bool IconsIdle(DockWindow dock) {
+            return Field<object>(dock,"activeIconLoad")==null && Field<IDictionary>(dock,"pendingIcons").Count==0;
+        }
+        static ImageSource IconDrawing(Color color) {
+            var image=new DrawingImage(new GeometryDrawing(new SolidColorBrush(color),null,new RectangleGeometry(new Rect(0,0,48,48))));
+            image.Freeze(); return image;
+        }
+        static void FixtureItems(Store store,string prefix,int count) {
+            store.Settings.Items.Clear();
+            for(int index=0;index<count;index++) store.Settings.Items.Add(new DockItem {Id=prefix+index,Name="Fixture",Path=prefix+index});
+        }
+        static void CheckIconCacheLifetime(string directory) {
+            string desktop=Path.Combine(directory,"CacheDesktop"); Directory.CreateDirectory(desktop);
+            var store=new Store(Path.Combine(directory,"CacheData"),desktop,desktop);
+            store.Settings.Items.Clear();
+            var dock=new DockWindow(store);
+            var cache=Field<Dictionary<string,ImageSource>>(dock,"iconCache");
+            int extractions=0;
+            dock.IconLoader=path=> {Interlocked.Increment(ref extractions);return Native.GetIcon(path);};
+            // The audit's actual native loader scenario: 180 unique local
+            // fixtures across six panels, never more than 30 live shortcuts.
+            for(int batch=0;batch<6;batch++) {
+                store.Settings.Items.Clear();
+                for(int index=0;index<30;index++) {
+                    string path=Path.Combine(desktop,"cache-"+(batch*30+index)+".txt");
+                    File.WriteAllText(path,"Isolated icon fixture; never launched.");
+                    store.Settings.Items.Add(new DockItem {Id="cache-"+(batch*30+index),Name="Fixture",Path=path});
+                }
+                dock.ApplySettings(new Rect(0,0,1920,1040));
+                PumpUntil(()=>IconsIdle(dock),"native cache batch "+batch+" completes without a visible window");
+                Check(cache.Count==30 && cache.Keys.All(path=>store.Settings.Items.Any(item=>String.Equals(item.Path,path,StringComparison.OrdinalIgnoreCase))),"cache contains only the 30 current paths after batch "+batch);
+            }
+            Check(extractions==180,"each unique current native fixture is extracted once");
+            var replacement=IconDrawing(Colors.LimeGreen);
+            dock.IconLoader=path=>replacement;
+            var first=Field<List<DockWindow.IconView>>(dock,"views")[0];
+            typeof(DockWindow).GetMethod("LoadIcon",Private).Invoke(dock,new object[]{first,true});
+            PumpUntil(()=>IconsIdle(dock),"refresh completes with a full icon cache");
+            Check(cache.Count==30 && Object.ReferenceEquals(first.Image.Source,replacement),"refresh replaces an existing cache entry even when all 30 slots are used");
+            var retired=Field<List<DockWindow.IconView>>(dock,"views").ToArray();
+            store.Settings.Items.Clear(); dock.ApplySettings(new Rect(0,0,1920,1040));
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
+            Check(cache.Count==0 && IconsIdle(dock) && retired.All(view=>view.Image.Source==null),"clearing all items releases cached images and retired view sources after the 180-icon audit scenario");
+
+            var blue=IconDrawing(Colors.CornflowerBlue);
+            using(var entered=new ManualResetEventSlim()) using(var release=new ManualResetEventSlim()) {
+                extractions=0;
+                dock.IconLoader=path=> {Interlocked.Increment(ref extractions);entered.Set();if(!release.Wait(15000)) throw new TimeoutException("Fixture icon gate");return blue;};
+                try {
+                    FixtureItems(store,"fixture:shared",1);
+                    store.Settings.Items.Add(new DockItem {Id="shared-second",Name="Fixture",Path="FIXTURE:SHARED0"});
+                    dock.ApplySettings(new Rect(0,0,1920,1040));
+                    PumpUntil(()=>entered.IsSet,"controlled icon extraction starts");
+                    var oldViews=Field<List<DockWindow.IconView>>(dock,"views").ToArray();
+                    for(int repeat=0;repeat<8;repeat++) dock.ApplySettings(new Rect(0,0,1920,1040));
+                    Check(extractions==1 && Field<IDictionary>(dock,"pendingIcons").Count==1,"same-path rebuilds and case-insensitive duplicate views share one pending extraction");
+                    release.Set(); PumpUntil(()=>IconsIdle(dock),"shared extraction reaches current rebuilt views");
+                    Check(cache.Count==1 && Field<List<DockWindow.IconView>>(dock,"views").All(view=>Object.ReferenceEquals(view.Image.Source,blue)),"one shared result is applied to both current views");
+                    Check(oldViews.All(view=>view.Image.Source==null),"the shared completion never mutates retired views");
+                } finally {release.Set();}
+            }
+            store.Settings.Items.Clear(); dock.ApplySettings(new Rect(0,0,1920,1040));
+            using(var entered=new ManualResetEventSlim()) using(var release=new ManualResetEventSlim())
+            using(var secondEntered=new ManualResetEventSlim()) using(var secondRelease=new ManualResetEventSlim()) {
+                extractions=0;
+                dock.IconLoader=path=> {
+                    if(Interlocked.Increment(ref extractions)==1) {entered.Set();if(!release.Wait(15000)) throw new TimeoutException("Retired fixture gate");return blue;}
+                    secondEntered.Set();if(!secondRelease.Wait(15000)) throw new TimeoutException("Current fixture gate");return replacement;
+                };
+                try {
+                    FixtureItems(store,"fixture:retired",1); dock.ApplySettings(new Rect(0,0,1920,1040));
+                    PumpUntil(()=>entered.IsSet,"removable extraction starts");
+                    var oldView=Field<List<DockWindow.IconView>>(dock,"views")[0];
+                    for(int batch=0;batch<8;batch++) {
+                        FixtureItems(store,"fixture:discarded-"+batch+"-",30); dock.ApplySettings(new Rect(0,0,1920,1040));
+                        Check(Field<IDictionary>(dock,"pendingIcons").Count<=30 && extractions==1,"rapid rebuild keeps only current pending paths and one native extraction: "+batch);
+                    }
+                    FixtureItems(store,"fixture:retired",1); dock.ApplySettings(new Rect(0,0,1920,1040));
+                    var currentView=Field<List<DockWindow.IconView>>(dock,"views")[0];
+                    release.Set(); PumpUntil(()=>secondEntered.IsSet,"the re-added path gets its own fresh extraction");
+                    Check(cache.Count==0 && oldView.Image.Source==null && currentView.Image.Source==null,"retired result cannot reinsert cache or paint a removed/re-added view");
+                    secondRelease.Set(); PumpUntil(()=>IconsIdle(dock),"fresh result finishes after retired result is discarded");
+                    Check(extractions==2 && cache.Count==1 && Object.ReferenceEquals(currentView.Image.Source,replacement),"only the fresh generation populates a removed and re-added path");
+                } finally {release.Set();secondRelease.Set();}
+            }
+            store.Settings.Items.Clear(); dock.ApplySettings(new Rect(0,0,1920,1040));
+            FixtureItems(store,"fixture:error",1);
+            dock.IconLoader=path=> {throw new IOException("Synthetic icon extraction failure");};
+            dock.ApplySettings(new Rect(0,0,1920,1040)); PumpUntil(()=>IconsIdle(dock),"failed extraction leaves no pending request");
+            dock.IconLoader=path=>replacement;
+            first=Field<List<DockWindow.IconView>>(dock,"views")[0];
+            typeof(DockWindow).GetMethod("LoadIcon",Private).Invoke(dock,new object[]{first,true});
+            PumpUntil(()=>IconsIdle(dock),"a failed icon can be refreshed successfully");
+            Check(Object.ReferenceEquals(first.Image.Source,replacement),"icon pump recovers after extraction failure");
+
+            store.Settings.Items.Clear(); dock.ApplySettings(new Rect(0,0,1920,1040));
+            using(var entered=new ManualResetEventSlim()) using(var release=new ManualResetEventSlim()) using(var returned=new ManualResetEventSlim()) {
+                dock.IconLoader=path=> {entered.Set();if(!release.Wait(15000)) throw new TimeoutException("Closed fixture gate");returned.Set();return blue;};
+                try {
+                    FixtureItems(store,"fixture:closed",1); dock.ApplySettings(new Rect(0,0,1920,1040));
+                    PumpUntil(()=>entered.IsSet,"close fixture starts a native extraction");
+                    first=Field<List<DockWindow.IconView>>(dock,"views")[0];
+                    dock.DisposeIconLoads(); release.Set();
+                    PumpUntil(()=>returned.IsSet,"already-started close fixture returns without blocking the UI");
+                    Check(IconsIdle(dock) && cache.Count==0 && first.Image.Source==null,"closing clears pending/cache/current images and ignores late completion");
+                    typeof(DockWindow).GetMethod("LoadIcon",Private).Invoke(dock,new object[]{first,false});
+                    Check(IconsIdle(dock),"disposed icon loader rejects later requests");
+                } finally {release.Set();}
+            }
+            Check(new WindowInteropHelper(dock).Handle==IntPtr.Zero && !dock.IsVisible && Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null,"icon lifecycle regression never creates a native dock, tray or visible window");
+        }
+        static void CheckPersonalDesktopTransferRetries(string directory) {
+            string desktop=Path.Combine(directory,"RetryDesktop"),shared=Path.Combine(directory,"RetryPublic");
+            Directory.CreateDirectory(desktop); Directory.CreateDirectory(shared);
+            var store=new Store(Path.Combine(directory,"RetryData"),desktop,shared);
+            store.Settings.Items.Clear(); store.Settings.AutoAddDesktopShortcuts=true; store.Settings.MoveDesktopShortcuts=true;
+            var dock=new DockWindow(store);
+            DateTime now=new DateTime(2026,10,27,0,0,0,DateTimeKind.Utc);
+            dock.InjectDesktopWatcher(new DesktopShortcutWatcher(new[]{desktop,shared},null,()=>now));
+            const string bytes="[InternetShortcut]\nURL=https://example.invalid/installer\n";
+            string path=Path.Combine(desktop,"Installer.url"); File.WriteAllText(path,bytes);
+            DockItem copied;
+            using(var reader=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read)) {
+                dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+                copied=store.Settings.Items.Single();
+                Check(copied.ManagedShortcut && File.Exists(copied.Path) && File.Exists(path) &&
+                    !copied.DesktopSourceMoved && copied.PendingSourceDelete,"installer read lock keeps a durable managed copy and a retryable original");
+                Check(Field<TextBlock>(dock,"notice").Text.Contains(L10n.T("ImportRemoveFailed")),"a deferred private transfer has a visible explanation");
+                now=now.AddSeconds(45); dock.PollDesktopShortcuts();
+                Check(store.LastPersonalTransferResult==Store.PersonalTransferResult.Retry &&
+                    Field<Dictionary<string,string>>(dock,"desktopImportNotices").Count==1,"managed-copy retry survives paused polling without repeating an identical notice");
+            }
+            string id=copied.Id;
+            dock.PollDesktopShortcuts();
+            Check(!File.Exists(path) && store.Settings.Items.Count==1 && copied.Id==id &&
+                copied.DesktopSourceMoved && !copied.PendingSourceDelete,"releasing the installer lock transfers the same shortcut without a second panel entry");
+            var disk=new Store(store.DataDirectory,desktop,shared);
+            Check(disk.Settings.Items.Single().Id==id && disk.Settings.Items[0].DesktopSourceMoved,"successful retry is persisted before later removal/restoration");
+            File.WriteAllText(path,bytes); // no scan of a missing source name
+            dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(!File.Exists(path) && store.Settings.Items.Count==1 && store.Settings.Items[0].Id==id,"an installer recreation before a missing-path scan transfers the existing managed item");
+
+            File.WriteAllText(path,bytes);
+            using(var profileLock=new FileStream(Path.Combine(store.DataDirectory,"settings.json"),FileMode.Open,FileAccess.Read,FileShare.Read)) {
+                dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+                Check(File.Exists(path) && store.LastPersonalTransferResult==Store.PersonalTransferResult.Retry,
+                    "a failed durable transfer journal never deletes the desktop source");
+            }
+            dock.PollDesktopShortcuts();
+            Check(!File.Exists(path),"the source moves after its durable journal can be saved again");
+
+            for(int index=1;index<Store.MaximumItems;index++) store.Settings.Items.Add(new DockItem {Id="capacity-"+index,Name="Fixture",Path="fixture:capacity-"+index});
+            File.WriteAllText(path,bytes); dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(store.Settings.Items.Count==Store.MaximumItems && !File.Exists(path),"a full panel can finish an existing item's transfer without admitting another item");
+            store.Settings.Items.RemoveAll(item=>item!=copied);
+            const string different="[InternetShortcut]\nURL=https://example.invalid/different\n";
+            File.WriteAllText(path,different); dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(File.ReadAllText(path)==different && File.ReadAllText(copied.Path)==bytes && store.Settings.Items.Count==1,
+                "changed installer bytes preserve both original and managed copy");
+            Check(Field<TextBlock>(dock,"notice").Text.Contains(L10n.T("ImportChanged")),"a changed-source conflict produces a visible notice");
+            dock.PollDesktopShortcuts();
+            Check(Field<Dictionary<string,string>>(dock,"desktopImportNotices").Count==1,"a preserved changed source is acknowledged after its one-time explanation");
+
+            File.Delete(path); dock.PollDesktopShortcuts(); store.Settings.MoveDesktopShortcuts=false;
+            File.WriteAllText(path,bytes); dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(File.Exists(path) && store.Settings.Items.Count==1,"disabled transfer preference preserves a recreated personal original");
+            store.Settings.MoveDesktopShortcuts=true;
+            string cancelled=Path.Combine(desktop,"Removed copy.url"); File.WriteAllText(cancelled,bytes);
+            using(var reader=new FileStream(cancelled,FileMode.Open,FileAccess.Read,FileShare.Read)) {
+                dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+                var item=store.Settings.Items.Single(value=>value.OriginalPath==cancelled);
+                Check(item.PendingSourceDelete && !item.DesktopSourceMoved,"copy-only fixture remains deferred while the installer holds it");
+                typeof(DockWindow).GetMethod("RemoveItem",Private).Invoke(dock,new object[]{item});
+            }
+            dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(File.Exists(cancelled) && !store.Settings.Items.Any(item=>item.OriginalPath==cancelled),"explicit removal of a deferred copy preserves and suppresses its desktop original");
+
+            string vanished=Path.Combine(desktop,"Installer removed original.url"); File.WriteAllText(vanished,bytes);
+            DockItem pending;
+            using(var reader=new FileStream(vanished,FileMode.Open,FileAccess.Read,FileShare.Read)) {
+                dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+                pending=store.Settings.Items.Single(item=>item.OriginalPath==vanished);
+            }
+            File.Delete(vanished); // installer cleanup after its copy was imported
+            typeof(DockWindow).GetMethod("RemoveItem",Private).Invoke(dock,new object[]{pending});
+            dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(File.ReadAllText(vanished)==bytes && !store.Settings.Items.Any(item=>item.OriginalPath==vanished),
+                "removing a deferred item restores its sole copy if the installer removed the source meanwhile");
+
+            string manual=Path.Combine(desktop,"Manual.url"); File.WriteAllText(manual,bytes);
+            dock.InjectDesktopWatcher(new DesktopShortcutWatcher(new[]{desktop,shared})); // baseline contains Manual.url
+            dock.AddPaths(new[]{manual});
+            Check(!File.Exists(manual),"manual import transfers an existing baselined personal shortcut");
+            File.WriteAllText(manual,bytes); dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(!File.Exists(manual) && store.Settings.Items.Count(item=>item.OriginalPath==manual)==1,"manual import forgets its deleted source so an immediate installer recreation is handled");
+
+            string ordinary=Path.Combine(desktop,"Untouched.txt"); File.WriteAllText(ordinary,"not a shortcut");
+            dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(File.Exists(ordinary) && !store.Settings.Items.Any(item=>item.OriginalPath==ordinary),"ordinary desktop files remain outside automatic transfer");
+            Check(new WindowInteropHelper(dock).Handle==IntPtr.Zero && !dock.IsVisible && Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null,
+                "personal transfer retries use only synthetic directories and no native dock or permission prompt");
         }
         static void CheckAutomaticDesktopAdding(string directory) {
             string desktop=Path.Combine(directory,"watch-desktop"), shared=Path.Combine(directory,"watch-shared");
@@ -81,6 +297,118 @@ namespace Polka {
             store.Settings.AutoAddDesktopShortcuts=false; dock.ApplySettings(new Rect(0,0,1920,1040));
             Check(Field<DesktopShortcutWatcher>(dock,"desktopWatcher")==null && Field<object>(dock,"desktopWatcherTimer")==null,"manual mode disposes observation and has no timer");
             Check(Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null && !dock.IsVisible,"auto-add integration uses only isolated directories and an unshown dock");
+        }
+        static void CheckAutomaticPublicMoveQueue(string directory) {
+            string desktop=Path.Combine(directory,"public-prompt-desktop"), shared=Path.Combine(directory,"public-prompt-shared");
+            Directory.CreateDirectory(desktop); Directory.CreateDirectory(shared);
+            string data=Path.Combine(directory,"PublicPromptData");
+            var store=new Store(data,desktop,shared);
+            store.Settings.MoveDesktopShortcuts=true; store.Settings.AutoAddDesktopShortcuts=true;
+            string oldPath=Path.Combine(shared,"Previously declined.url");
+            File.WriteAllText(oldPath,"[InternetShortcut]\nURL=https://example.invalid/old\n");
+            var old=store.Add(oldPath);
+            var dock=new DockWindow(store);
+            var drawing=new DrawingImage(new GeometryDrawing(Brushes.Blue,null,new EllipseGeometry(new Point(5,5),5,5))); drawing.Freeze();
+            dock.IconLoader=path=>drawing;
+            bool desktopAvailable=false;
+            var batches=new List<string>();
+            dock.InjectAutomaticPublicMove(()=>desktopAvailable,ids=> { batches.Add(ids); return System.Threading.Tasks.Task.FromResult(false); });
+            dock.InjectDesktopWatcher(new DesktopShortcutWatcher(new[]{desktop,shared}));
+            string firstPath=Path.Combine(shared,"New installer.url");
+            File.WriteAllText(firstPath,"[InternetShortcut]\nURL=https://example.invalid/new\n");
+            dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            var first=store.Settings.Items.Single(item=>item.OriginalPath==firstPath);
+            Check(first.PendingPublicMove && File.Exists(firstPath),"a new shared shortcut remains safe until Windows consent is available");
+            Check(Field<HashSet<string>>(dock,"queuedPublicMoves").SetEquals(new[]{first.Id}),"only the newly imported shared shortcut is queued, not an older declined item");
+            dock.RunAutomaticPublicMoves().GetAwaiter().GetResult();
+            Check(batches.Count==0,"a foreign application or fullscreen state defers the automatic permission request");
+            desktopAvailable=true;
+            dock.RunAutomaticPublicMoves().GetAwaiter().GetResult();
+            Check(batches.SequenceEqual(new[]{first.Id}) && File.Exists(firstPath) && File.Exists(oldPath),"cancelling affects only the scoped request and deletes no original");
+            dock.QueueAutomaticPublicMove(first); dock.RunAutomaticPublicMoves().GetAwaiter().GetResult();
+            Check(batches.Count==1,"a cancelled ID is not repeatedly prompted by later watcher ticks");
+
+            string secondPath=Path.Combine(shared,"Next installer.url");
+            File.WriteAllText(secondPath,"[InternetShortcut]\nURL=https://example.invalid/next\n");
+            dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            var second=store.Settings.Items.Single(item=>item.OriginalPath==secondPath);
+            dock.InjectAutomaticPublicMove(()=>true,ids=> {
+                batches.Add(ids);
+                dock.Store.PreparePublicOperation("--public-move",ids);
+                byte[] planned=File.ReadAllBytes(Path.Combine(data,"settings.json"));
+                var helper=new Store(data,desktop,shared,true);
+                foreach(var item in helper.GetPreparedPublicMoveItems(ids)) Check(helper.CompletePublicMove(item),"the scoped prepared shared source is transferred in the synthetic helper");
+                Check(planned.SequenceEqual(File.ReadAllBytes(Path.Combine(data,"settings.json"))),"the shared helper never writes the user's journal");
+                dock.Store=new Store(data,desktop,shared);
+                return System.Threading.Tasks.Task.FromResult(true);
+            });
+            dock.RunAutomaticPublicMoves().GetAwaiter().GetResult();
+            Check(batches.Count==2 && batches[1]==second.Id && !File.Exists(secondPath),"the next installation transfers only its requested new shortcut");
+            Check(File.Exists(firstPath) && File.Exists(oldPath),"previously cancelled and legacy pending sources remain untouched");
+            Check(!Field<HashSet<string>>(dock,"promptedPublicMoves").Contains(second.Id),"completed requests release their session marker for a later genuine recreation");
+            File.WriteAllText(secondPath,"[InternetShortcut]\nURL=https://example.invalid/next\n");
+            dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(Field<HashSet<string>>(dock,"queuedPublicMoves").Contains(second.Id),"a shared installer recreation is detected even before a missing-file scan");
+            dock.Store.Settings.MoveDesktopShortcuts=false;
+            dock.RunAutomaticPublicMoves().GetAwaiter().GetResult();
+            Check(Field<HashSet<string>>(dock,"queuedPublicMoves").Count==0 && File.Exists(secondPath),"turning transfer off clears deferred work without touching its original");
+            dock.StopAutomaticPublicMoves(); dock.InjectDesktopWatcher(null);
+            typeof(DockWindow).GetMethod("DisposeIconLoads",Private).Invoke(dock,new object[0]);
+            Check(Field<DispatcherTimer>(dock,"publicMoveTimer")==null && new WindowInteropHelper(dock).Handle==IntPtr.Zero && !dock.IsVisible,
+                "queue tests finish without timers, real prompts or a native dock window");
+        }
+
+        static void CheckRecreatedPublicShortcutQueue(string directory) {
+            string desktop=Path.Combine(directory,"RecreatedDesktop"),shared=Path.Combine(directory,"RecreatedPublic"),data=Path.Combine(directory,"RecreatedPublicData");
+            Directory.CreateDirectory(desktop); Directory.CreateDirectory(shared);
+            var store=new Store(data,desktop,shared);
+            store.Settings.Items.Clear(); store.Settings.AutoAddDesktopShortcuts=true; store.Settings.MoveDesktopShortcuts=true;
+            const string bytes="[InternetShortcut]\nURL=https://example.invalid/shared-installer\n";
+            string oldPath=Path.Combine(shared,"Previously declined.url"); File.WriteAllText(oldPath,bytes);
+            DockItem old=store.Add(oldPath);
+            var dock=new DockWindow(store);
+            dock.InjectDesktopWatcher(new DesktopShortcutWatcher(new[]{desktop,shared}));
+            int permissions=0;
+            string selectedPath=Path.Combine(shared,"New installer.url");
+            dock.InjectAutomaticPublicMove(()=>true,ids=> {
+                permissions++;
+                Check(ids!=old.Id && !ids.Split(',').Contains(old.Id),"recreated public transfer excludes an older pending item");
+                dock.Store.PreparePublicOperation("--public-move",ids);
+                byte[] planned=File.ReadAllBytes(Path.Combine(data,"settings.json"));
+                var helper=new Store(data,desktop,shared,true);
+                foreach(var item in helper.GetPreparedPublicMoveItems(ids)) Check(helper.CompletePublicMove(item),"a scoped recreated public source can be transferred by the synthetic read-only helper");
+                Check(planned.SequenceEqual(File.ReadAllBytes(Path.Combine(data,"settings.json"))),"recreated public helper leaves its profile journal unchanged");
+                dock.Store=new Store(data,desktop,shared);
+                return System.Threading.Tasks.Task.FromResult(true);
+            });
+            File.WriteAllText(selectedPath,bytes); dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            string id=dock.Store.Settings.Items.Single(item=>item.OriginalPath==selectedPath).Id;
+            Check(File.Exists(selectedPath) && Field<TextBlock>(dock,"notice").Text.Contains(L10n.T("SharedCopyNotice")),"a new shared copy visibly explains its pending permission action");
+            dock.RunAutomaticPublicMoves().GetAwaiter().GetResult();
+            Check(permissions==1 && !File.Exists(selectedPath) && File.Exists(oldPath),"first shared request moves only its selected original");
+            File.WriteAllText(selectedPath,bytes); dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            Check(File.Exists(selectedPath) && dock.Store.Settings.Items.Count==2 &&
+                dock.Store.Settings.Items.Single(item=>item.Id==id).PendingPublicMove,"identical public recreation reuses its item and waits for a fresh scoped permission request");
+            dock.RunAutomaticPublicMoves().GetAwaiter().GetResult();
+            Check(permissions==2 && !File.Exists(selectedPath),"a successful prior transfer does not suppress a later genuine recreation");
+            for(int index=2;index<Store.MaximumItems;index++) dock.Store.Settings.Items.Add(new DockItem {Id="public-capacity-"+index,Name="Fixture",Path="fixture:public-capacity-"+index});
+            File.WriteAllText(selectedPath,bytes); dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            dock.RunAutomaticPublicMoves().GetAwaiter().GetResult();
+            Check(permissions==3 && !File.Exists(selectedPath) && dock.Store.Settings.Items.Count==Store.MaximumItems,"a full panel can scope a recreated public source without adding another item");
+            const string changed="[InternetShortcut]\nURL=https://example.invalid/changed-shared\n";
+            File.WriteAllText(selectedPath,changed); dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            dock.RunAutomaticPublicMoves().GetAwaiter().GetResult();
+            Check(permissions==3 && File.ReadAllText(selectedPath)==changed &&
+                !dock.Store.Settings.Items.Single(item=>item.Id==id).PendingPublicMove,"different recreated shared bytes are preserved without a permission prompt");
+            Check(Field<TextBlock>(dock,"notice").Text.Contains(L10n.T("ImportChanged")),"different shared bytes have a visible conflict explanation");
+            File.Delete(selectedPath); dock.PollDesktopShortcuts();
+            dock.Store.Settings.MoveDesktopShortcuts=false;
+            File.WriteAllText(selectedPath,bytes); dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+            dock.RunAutomaticPublicMoves().GetAwaiter().GetResult();
+            Check(permissions==3 && File.Exists(selectedPath),"disabled transfer preference preserves shared recreation without requesting permission");
+            Check(new WindowInteropHelper(dock).Handle==IntPtr.Zero && !dock.IsVisible && Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null,
+                "shared recreation tests use no actual permission prompt, shell desktop or native dock");
+            dock.StopAutomaticPublicMoves(); dock.DisposeIconLoads();
         }
         static void CheckThemeRendering(string directory) {
             string desktop=Path.Combine(directory,"theme-desktop"); Directory.CreateDirectory(desktop);
@@ -305,8 +633,12 @@ namespace Polka {
                 Check(!Field<bool>(dock,"verticalDock") && store.Settings.Placement=="free","free placement returns the dock to horizontal orientation");
                 Check(Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null && !dock.IsVisible,"visual tests never create a desktop host, tray or visible window");
                 CheckAutomaticDesktopAdding(directory);
+                CheckPersonalDesktopTransferRetries(directory);
+                CheckAutomaticPublicMoveQueue(directory);
+                CheckRecreatedPublicShortcutQueue(directory);
                 CheckThemeRendering(directory);
                 CheckThemeTransitions(directory);
+                CheckIconCacheLifetime(directory);
                 Console.WriteLine("PASS: "+assertions+" dock visual assertions; own-control renders: "+directory);
                 return 0;
             } catch(Exception ex) { Console.WriteLine(ex); return 1; }

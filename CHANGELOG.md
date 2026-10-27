@@ -1,5 +1,25 @@
 # Changelog / Изменения
 
+## 1.9.2 — 2026-10-27
+
+### English
+
+- Fixed six audit findings: Windows icon-cache retention, strict profile-save directory substitution, over-capacity and duplicate-ID Windows profiles, Linux malformed-settings exceptions, and unbounded launcher output buffering.
+- Fixed installer-created and recreated Windows shortcuts remaining on the desktop: personal transfers retry temporary locks, matching recreated copies are moved again, and changed copies are retained with a notice. New shared imports queue a scoped approval request until safe desktop/dock interaction; canceled or failed requests require manual retry, and older pending shared items are not automatically enrolled.
+- Windows keeps only current icon paths and one extraction in flight; late results cannot repopulate removed items. Elevated shared-shortcut helpers no longer save user-profile settings; the ordinary dock journals and reconciles changes with normal permissions.
+- Invalid Windows profiles with more than 30 items or duplicate IDs are preserved for recovery. A valid backup is used when available; otherwise defaults and a notice are shown. Managed shortcut files are retained. Linux invalid field types, huge numbers and malformed JSON follow its settings-error path; launcher diagnostics are bounded.
+- Included the 1.9.1 Windows taskbar-tooltip fix and the independent automation launcher. Normal shortcut profiles, settings, themes and startup choices are preserved.
+- Windows Setup now defaults to Program Files with administrator approval, offers current-user installation, and reuses the previous scope/folder. Existing native or portable profiles are preserved. Uninstall restores owned moved shortcuts without overwriting desktop files and stops if restoration fails.
+
+### Русский
+
+- Исправлены шесть замечаний аудита: удержание иконок в кэше Windows, подмена папки при строгом сохранении профиля, профили Windows с лишними элементами и повторяющимися ID, необработанные ошибки настроек Linux и неограниченное накопление вывода запускателей.
+- Исправлено сохранение созданных и заново созданных установщиком ярлыков на рабочем столе: личные ярлыки повторно проверяются после временной блокировки, совпадающие копии переносятся снова, изменённые остаются с уведомлением. Для новых общих ярлыков ставится ограниченный ими запрос прав до подходящего взаимодействия с рабочим столом или панелью; отменённые и неудачные запросы повторяются только вручную, прежние ожидающие общие ярлыки автоматически не включаются.
+- Windows хранит только иконки текущих путей и выполняет одну загрузку за раз; запоздалые результаты не возвращают удалённые элементы. Повышенные помощники для общих ярлыков больше не сохраняют настройки пользовательского профиля; обычная панель ведёт журнал и согласует изменения без повышения прав.
+- Некорректные профили Windows с более чем 30 элементами или повторяющимися ID сохраняются для восстановления. При наличии используется корректная резервная копия; иначе показываются настройки по умолчанию и уведомление. Файлы управляемых ярлыков сохраняются. Ошибочные типы, чрезмерные числа и повреждённый JSON Linux обрабатываются через механизм ошибок настроек; объём диагностики запускателей ограничен.
+- Включены исправление подсказок панели задач Windows из 1.9.1 и независимый запуск из автоматизации. Обычные профили ярлыков, настройки, темы и выбор автозапуска сохраняются.
+- Установщик Windows по умолчанию использует Program Files с запросом прав администратора, позволяет установку для текущего пользователя и повторно использует прежний вариант и папку. Обычные и переносные профили сохраняются. Удаление возвращает принадлежащие установке перемещённые ярлыки без перезаписи файлов рабочего стола и останавливается при ошибке восстановления.
+
 ## 1.9.1 — 2026-10-26
 
 ### English

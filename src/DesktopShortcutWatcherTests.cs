@@ -72,6 +72,19 @@ namespace Polka {
                     Check(watcher.Scan().Count==0 && Has(watcher.Scan(),gone),"recreating after deletion is a new shortcut");
                     watcher.Acknowledge(gone);
 
+                    string transferred=Write(user,"Transferred.url","one copy");
+                    Check(watcher.Scan().Count==0 && Has(watcher.Scan(),transferred),"transferred fixture becomes ready");
+                    File.Delete(transferred);
+                    watcher.ForgetTransferred(transferred);
+                    Write(user,"Transferred.url","installer recreated before missing scan");
+                    Check(watcher.Scan().Count==0 && Has(watcher.Scan(),transferred),"forgetting a transferred name observes immediate recreation without a missing-path scan");
+                    watcher.DeferManagedTransfer(transferred);
+                    now=now.AddSeconds(45);
+                    Check(Has(watcher.Scan(),transferred),"a durable managed-copy retry survives a long installer lock or paused polling");
+                    watcher.Acknowledge(transferred);
+                    now=now.AddSeconds(45);
+                    Check(!Has(watcher.Scan(),transferred),"acknowledging a deliberate restore overrides managed retry suppression");
+
                     string pending=Write(user,"Other new shortcut.lnk","pending");
                     Check(watcher.Scan().Count==0,"another new shortcut begins stabilization");
                     string restored=Write(user,"Restored by dock.lnk","restored");

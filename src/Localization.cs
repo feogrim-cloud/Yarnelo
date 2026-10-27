@@ -139,7 +139,7 @@ namespace Polka {
             Add("RecoveredSaveFailed","Настройки восстановлены в памяти, но пока не удалось сохранить их: ","Settings were recovered in memory but could not be saved yet: ");
             Add("DockFull","На панели уже 30 значков. Удалите один из них, чтобы добавить новый.","The dock already contains 30 icons. Remove one to add a new shortcut.");
             Add("TargetMissing","Не удалось найти файл или папку для этого ярлыка.","The file or folder for this shortcut could not be found.");
-            Add("SharedCopyNotice","Это общий ярлык для всех пользователей. Его копия добавлена на панель; чтобы убрать оригинал с общего рабочего стола, выполните отдельное действие с правами администратора.","This shortcut is shared by all users. A copy was added to the dock; removing the original from the shared desktop requires a separate action with administrator rights.");
+            Add("SharedCopyNotice","Общий ярлык добавлен в панель. При включённом переносе Yarnelo запросит разрешение Windows, когда вы вернётесь к рабочему столу. Отменённый перенос можно повторить через меню панели.","The shared shortcut was added to the dock. With desktop transfer enabled, Yarnelo will request Windows permission when you return to the desktop. A cancelled transfer can be retried from the dock menu.");
             Add("ImportCopyFailed","Ярлык добавлен, но остался на рабочем столе: не удалось сохранить его копию. ","The shortcut was added but remains on the desktop because its copy could not be saved. ");
             Add("ImportChanged","Ярлык изменился во время добавления; его новый вариант сохранён на рабочем столе.","The shortcut changed during import; its new version has been kept on the desktop.");
             Add("SourceStillExists","Исходный ярлык всё ещё существует.","The original shortcut still exists.");
@@ -178,6 +178,9 @@ namespace Polka {
             Add("SettingsReset","Файл настроек не удалось прочитать. Созданы начальные настройки; прежние файлы сохранены для проверки.","The settings file could not be read. Default settings were created; the previous files were kept for inspection.");
             Add("SettingsTooLarge","Слишком большой файл настроек.","The settings file is too large.");
             Add("SettingsEmpty","Пустые настройки.","The settings are empty.");
+            Add("SettingsItemLimit","В настройках больше {0} ярлыков. Исходный профиль необходимо восстановить.","Settings contain more than {0} shortcuts. The original profile needs recovery.");
+            Add("SettingsDuplicateIds","В настройках повторяются идентификаторы ярлыков. Исходный профиль необходимо восстановить.","Settings contain duplicate shortcut IDs. The original profile needs recovery.");
+            Add("SharedHelperReadOnly","Помощник общих ярлыков не может изменять пользовательский профиль.","The shared-shortcut helper cannot modify the user profile.");
             Add("SecureLoadFailed","Безопасная загрузка существующих настроек прервана; файл не изменён. ","Secure loading of existing settings stopped; the file was not changed. ");
             Add("PreserveSettingsFailed","Не удалось создать отдельную копию прежних настроек: ","Could not create a separate copy of the previous settings: ");
             Add("PendingSharedUnsafe","Незавершённый общий ярлык не изменён: его пути не прошли безопасную проверку. ","An unfinished shared shortcut was not changed because its paths failed safety checks. ");
