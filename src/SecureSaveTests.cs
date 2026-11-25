@@ -59,6 +59,7 @@ namespace Polka {
             Refused(delegate{helper.Add(Path.Combine(shared,"Game.url"));},"Strict store cannot import into the profile library");
             Refused(delegate{helper.PreparePublicCopies();},"Strict store cannot prepare profile-library copies");
             Refused(delegate{helper.Remove(helper.Settings.Items[0]);},"Strict store cannot remove profile-library items");
+            Refused(delegate{helper.DeleteShortcut(helper.Settings.Items[0]);},"Strict store cannot discard shortcut records or library files");
             Unchanged(before,data,"Every profile mutation entry point refuses strict context before touching files");
             Check(!helper.CompletePublicMove(helper.Settings.Items[0]),"Move without a prior normal-user journal is refused");
             Refused(delegate{helper.RestorePublic(helper.Settings.Items[0]);},"Restore without prepared intent is refused");

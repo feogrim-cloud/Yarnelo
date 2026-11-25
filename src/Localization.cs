@@ -54,9 +54,13 @@ namespace Polka {
             Add("Open","Открыть","Open");
             Add("Reveal","Показать в папке","Show in folder");
             Add("Rename","Переименовать…","Rename…");
-            Add("RemoveRestore","Убрать и вернуть ярлык на рабочий стол","Remove and restore shortcut to desktop");
+            Add("RemoveRestore","Вернуть на рабочий стол","Restore to desktop");
             Add("Remove","Убрать из панели","Remove from dock");
             Add("Removed","Ярлык убран из панели","Shortcut removed from dock");
+            Add("DeleteShortcut","Удалить ярлык","Delete shortcut");
+            Add("DeleteShortcutHint","Удаляет ярлык из панели без возврата на рабочий стол. Программа и исходные файлы остаются на месте.","Deletes the shortcut from the dock without restoring it to the desktop. The application and original files stay in place.");
+            Add("ShortcutDeleted","Ярлык удалён из панели","Shortcut deleted from dock");
+            Add("DeleteShortcutBusy","Этот ярлык ожидает завершения возврата на рабочий стол. Повторите удаление после завершения операции.","This shortcut is awaiting desktop restoration. Retry deleting it after the operation finishes.");
             Add("SharedMoved","Общие ярлыки перенесены с рабочего стола в панель","Shared shortcuts moved from desktop to dock");
             Add("SaveDockFailed","Не удалось сохранить панель: ","Could not save the dock: ");
             Add("Incomplete","Действие завершено не полностью. Сохранённые копии остались в панели.","The action was not completed. Saved copies remain in the dock.");

@@ -63,7 +63,9 @@ Turning startup off removes only this installation's task and matching legacy re
 
 ## Shortcuts and storage
 
-With desktop shortcut transfer enabled, desktop `.lnk` / `.url` files are stored in the profile's `Library` folder and removed from the desktop. Their contents and launch arguments are retained. Ordinary files and folders stay in place. Right-click an icon → **Remove and restore shortcut to desktop** to restore an imported shortcut. Existing files are never overwritten.
+With desktop shortcut transfer enabled, desktop `.lnk` / `.url` files are stored in the profile's `Library` folder and removed from the desktop. Their contents and launch arguments are retained. Ordinary files and folders stay in place. Right-click an icon → **Restore to desktop** to return an imported shortcut and remove it from the dock. Existing files are never overwritten.
+
+Choose **Delete shortcut** instead to remove the dock entry and Yarnelo's owned imported `.lnk` / `.url` copy without restoring anything to the desktop. Programs, ordinary files, folders and existing desktop originals are left in place; for external and system links, only the dock entry is removed. Use this command to clear shortcuts after uninstalling games or apps. Automatic desktop adding detects new shortcut files, not application uninstallations.
 
 Shared desktop shortcuts may require a Windows administrator prompt to transfer or restore. Canceling the prompt leaves the original shortcut in place. Adding This PC or Recycle Bin does not alter Windows desktop-icon settings.
 

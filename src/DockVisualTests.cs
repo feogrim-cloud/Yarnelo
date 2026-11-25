@@ -252,6 +252,75 @@ namespace Polka {
             Check(new WindowInteropHelper(dock).Handle==IntPtr.Zero && !dock.IsVisible && Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null,
                 "personal transfer retries use only synthetic directories and no native dock or permission prompt");
         }
+        static MenuItem ItemAction(DockWindow dock,DockItem item,string header) {
+            var menu=(ContextMenu)typeof(DockWindow).GetMethod("BuildItemMenu",Private).Invoke(dock,new object[]{item});
+            return menu.Items.OfType<MenuItem>().Single(action=>Object.Equals(action.Header,header));
+        }
+        static void ClickItemAction(DockWindow dock,DockItem item,string key) {
+            ItemAction(dock,item,L10n.T(key)).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        }
+        static void CheckDeleteShortcutMenu(string directory) {
+            string previousLanguage=L10n.Language;
+            try {
+                foreach(string language in new[]{"ru","en"}) {
+                    string root=Path.Combine(directory,"DeleteMenu-"+language);
+                    string desktop=Path.Combine(root,"Desktop"),shared=Path.Combine(root,"Shared");
+                    Directory.CreateDirectory(desktop); Directory.CreateDirectory(shared);
+                    var store=new Store(Path.Combine(root,"Data"),desktop,shared);
+                    store.Settings.Items.Clear(); store.Settings.Language=language;
+                    store.Settings.MoveDesktopShortcuts=true; store.Settings.AutoAddDesktopShortcuts=true; store.Save();
+                    L10n.SetLanguage(language);
+                    var dock=new DockWindow(store);
+                    dock.IconLoader=path=>IconDrawing(Colors.CornflowerBlue);
+                    dock.InjectDesktopWatcher(new DesktopShortcutWatcher(new[]{desktop,shared}));
+                    const string bytes="[InternetShortcut]\nURL=https://example.invalid/uninstalled-game\n";
+                    string source=Path.Combine(desktop,"Uninstalled game.url"); File.WriteAllText(source,bytes);
+                    var item=store.Add(source); dock.ApplySettings(new Rect(0,0,1920,1040));
+                    string managed=item.Path;
+                    var delete=ItemAction(dock,item,language=="ru"?"Удалить ярлык":"Delete shortcut");
+                    Check(delete.IsEnabled && Object.Equals(delete.ToolTip,L10n.T("DeleteShortcutHint")),"localized Delete shortcut explains that it does not restore to desktop: "+language);
+                    Check(ItemAction(dock,item,language=="ru"?"Вернуть на рабочий стол":"Restore to desktop")!=null,"restore action has the requested short name: "+language);
+                    delete.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+                    Check(store.Settings.Items.Count==0 && !File.Exists(managed) && Directory.GetFiles(desktop).Length==0,"the actual menu action deletes its managed copy without restoring a desktop shortcut: "+language);
+                    Check(new Store(store.DataDirectory,desktop,shared).Settings.Items.Count==0 && Field<TextBlock>(dock,"notice").Text==L10n.T("ShortcutDeleted"),"menu deletion is persisted and reports success: "+language);
+
+                    source=Path.Combine(desktop,"Restore me.url"); File.WriteAllText(source,bytes);
+                    item=store.Add(source);
+                    ClickItemAction(dock,item,"RemoveRestore");
+                    Check(store.Settings.Items.Count==0 && File.ReadAllText(source)==bytes,"the renamed restore command still returns exact shortcut bytes: "+language);
+
+                    string program=Path.Combine(root,"Keep application.exe"); File.WriteAllText(program,"synthetic application bytes");
+                    item=store.Add(program);
+                    ClickItemAction(dock,item,"DeleteShortcut");
+                    Check(File.ReadAllText(program)=="synthetic application bytes" && store.Settings.Items.Count==0,"Delete shortcut never deletes a referenced application: "+language);
+
+                    source=Path.Combine(shared,"Pending common.url"); File.WriteAllText(source,bytes);
+                    item=store.Add(source); dock.QueueAutomaticPublicMove(item);
+                    Check(Field<HashSet<string>>(dock,"queuedPublicMoves").Contains(item.Id),"a pending shared import starts in the scoped approval queue");
+                    ClickItemAction(dock,item,"DeleteShortcut");
+                    dock.PollDesktopShortcuts(); dock.PollDesktopShortcuts();
+                    Check(store.Settings.Items.Count==0 && File.ReadAllText(source)==bytes && !File.Exists(item.Path),"deleting a pending common copy keeps its desktop original and suppresses immediate re-import: "+language);
+                    Check(!Field<HashSet<string>>(dock,"queuedPublicMoves").Contains(item.Id),"deleting a pending common copy cancels its queued permission request");
+
+                    source=Path.Combine(desktop,"Save must succeed.url"); File.WriteAllText(source,bytes);
+                    item=store.Add(source);
+                    using(var locked=new FileStream(Path.Combine(store.DataDirectory,"settings.json"),FileMode.Open,FileAccess.Read,FileShare.Read)) {
+                        ClickItemAction(dock,item,"DeleteShortcut");
+                    }
+                    Check(store.Settings.Items.Contains(item) && File.Exists(item.Path) && !File.Exists(source),"failed persistence leaves the item and managed bytes intact without a restore: "+language);
+                    Check(Field<TextBlock>(dock,"notice").Text!=L10n.T("ShortcutDeleted"),"failed deletion is not reported as success");
+                    typeof(DockWindow).GetField("helperRunning",Private).SetValue(dock,true);
+                    Check(!ItemAction(dock,item,L10n.T("DeleteShortcut")).IsEnabled,"delete is disabled while a privileged shortcut operation is active");
+                    typeof(DockWindow).GetMethod("DeleteItem",Private).Invoke(dock,new object[]{item});
+                    Check(store.Settings.Items.Contains(item) && File.Exists(item.Path),"direct deletion also refuses to race a privileged operation");
+                    typeof(DockWindow).GetField("helperRunning",Private).SetValue(dock,false);
+                    ClickItemAction(dock,item,"DeleteShortcut");
+                    Check(store.Settings.Items.Count==0 && !File.Exists(item.Path) && !File.Exists(source),"deletion can be retried after a transient save failure");
+                    Check(new WindowInteropHelper(dock).Handle==IntPtr.Zero && !dock.IsVisible && Field<object>(dock,"host")==null && Field<object>(dock,"tray")==null,"delete menu checks never create native windows, launch applications or request elevation");
+                    dock.StopAutomaticPublicMoves(); dock.DisposeIconLoads();
+                }
+            } finally {L10n.SetLanguage(previousLanguage);}
+        }
         static void CheckAutomaticDesktopAdding(string directory) {
             string desktop=Path.Combine(directory,"watch-desktop"), shared=Path.Combine(directory,"watch-shared");
             Directory.CreateDirectory(desktop); Directory.CreateDirectory(shared);
@@ -636,6 +705,7 @@ namespace Polka {
                 CheckPersonalDesktopTransferRetries(directory);
                 CheckAutomaticPublicMoveQueue(directory);
                 CheckRecreatedPublicShortcutQueue(directory);
+                CheckDeleteShortcutMenu(directory);
                 CheckThemeRendering(directory);
                 CheckThemeTransitions(directory);
                 CheckIconCacheLifetime(directory);

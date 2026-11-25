@@ -551,10 +551,167 @@ internal static class StorageTests
         }
         else Console.WriteLine("SKIP: native hardlink configuration fixture unavailable (Win32 " + Marshal.GetLastWin32Error() + ").");
 
+        DeleteShortcutStorage();
         ProfileCapacityAndIdentity();
         LocalizationStorage();
         Console.WriteLine("PASS: " + assertions.ToString() + " storage and localization assertions. Test data: " + root);
     }
+    private static void DeleteShortcutStorage()
+    {
+        string desktop, data;
+        Store store = NewStore("delete-moved", out desktop, out data);
+        string original = Shortcut(desktop, "Removed game.lnk");
+        var item = store.Add(original);
+        string managed = item.Path;
+        store.Settings.Rows = 3; store.Settings.Opacity = .47; store.Save();
+        store.DeleteShortcut(item);
+        Check(store.Settings.Items.Count == 0 && !File.Exists(managed) && !File.Exists(original),
+            "explicit deletion discards the moved copy without restoring the desktop source");
+        Check(store.LastRestoredPath == null && store.Settings.Rows == 3 && store.Settings.Opacity == .47,
+            "explicit deletion keeps appearance settings and reports no restored path");
+        store = new Store(data, desktop);
+        Check(store.Settings.Items.Count == 0, "explicit deletion survives reload");
+        File.WriteAllText(Path.Combine(data, "settings.json"), "{broken primary after explicit deletion");
+        store = new Store(data, desktop);
+        Check(store.Settings.Items.Count == 0 && store.LastNotice.Contains(L10n.T("SettingsRecovered")),
+            "backup fallback never resurrects an explicitly deleted shortcut");
+
+        store = NewStore("delete-copied", out desktop, out data);
+        store.Settings.MoveDesktopShortcuts = false;
+        original = Shortcut(desktop, "Kept original.url");
+        byte[] bytes = File.ReadAllBytes(original);
+        item = store.Add(original); managed = item.Path;
+        store.DeleteShortcut(item);
+        Check(store.Settings.Items.Count == 0 && !File.Exists(managed) && bytes.SequenceEqual(File.ReadAllBytes(original)),
+            "copy-only deletion deletes only the managed copy and preserves the original bytes");
+
+        store = NewStore("delete-private-pending", out desktop, out data);
+        store.Settings.MoveDesktopShortcuts = false;
+        original = Shortcut(desktop, "Pending personal.lnk"); bytes = File.ReadAllBytes(original);
+        item = store.Add(original); managed = item.Path;
+        item.DesktopSourceMoved = true; item.PendingSourceDelete = true; store.Save();
+        store.DeleteShortcut(item);
+        Check(!File.Exists(managed) && bytes.SequenceEqual(File.ReadAllBytes(original)) && store.LastRestoredPath == null,
+            "discarding a pending personal transfer never completes its source deletion or restores another copy");
+        Check(new Store(data, desktop).Settings.Items.Count == 0,
+            "pending personal import cannot be reconciled back into the saved dock after explicit deletion");
+
+        foreach (bool moved in new[] { false, true })
+        {
+            store = NewStore("delete-shared-" + moved, out desktop, out data);
+            string shared = Path.Combine(root, "delete-shared-" + moved, "PublicDesktop");
+            Directory.CreateDirectory(shared);
+            store = new Store(data, desktop, shared);
+            original = Shortcut(shared, "Shared game.lnk"); bytes = File.ReadAllBytes(original);
+            item = store.Add(original); managed = item.Path;
+            item.PendingPublicMove = !moved; item.PendingSourceDelete = !moved; item.DesktopSourceMoved = moved;
+            if (moved) File.Delete(original);
+            store.Save(); store.DeleteShortcut(item);
+            Check(store.Settings.Items.Count == 0 && !File.Exists(managed) && File.Exists(original) != moved,
+                "explicit shared shortcut deletion never needs restoration or changes the shared source: " + moved);
+            if (!moved) Check(bytes.SequenceEqual(File.ReadAllBytes(original)), "pending shared original bytes remain untouched");
+            Check(new Store(data, desktop, shared).Settings.Items.Count == 0 && store.LastRestoredPath == null,
+                "discarded shared shortcut has no remaining restore intent: " + moved);
+        }
+
+        store = NewStore("delete-missing-copy", out desktop, out data);
+        original = Shortcut(desktop, "Missing copy.lnk"); item = store.Add(original);
+        File.Delete(item.Path); store.DeleteShortcut(item);
+        Check(!File.Exists(original) && new Store(data, desktop).Settings.Items.Count == 0,
+            "missing managed bytes do not prevent dropping an obsolete record or restore a desktop file");
+
+        store = NewStore("delete-unmanaged", out desktop, out data);
+        string target = Path.Combine(desktop, "game.exe"); File.WriteAllText(target, "application stays");
+        item = store.Add(target); store.DeleteShortcut(item);
+        Check(File.ReadAllText(target) == "application stays", "deleting an executable reference never deletes the executable");
+        string folder = Path.Combine(desktop, "game files"); Directory.CreateDirectory(folder);
+        item = store.Add(folder); store.DeleteShortcut(item);
+        Check(Directory.Exists(folder), "deleting a folder reference never deletes the directory");
+        string nested = Path.Combine(folder, "Nested.lnk"); File.WriteAllText(nested, "external shortcut");
+        item = store.Add(nested); store.DeleteShortcut(item);
+        Check(File.ReadAllText(nested) == "external shortcut", "a non-owned external shortcut is only unpinned");
+        item = store.Add("shell:MyComputerFolder"); store.DeleteShortcut(item);
+        item = store.Add("shell:RecycleBinFolder"); store.DeleteShortcut(item);
+        Check(new Store(data, desktop).Settings.Items.Count == 0, "virtual computer and recycle bin references can be dropped safely");
+        item = new DockItem { Id = Guid.NewGuid().ToString("N"), Name = "Forged managed flag", Path = target,
+            OriginalPath = target, ManagedShortcut = true, DesktopSourceMoved = true };
+        store.Settings.Items.Add(item); store.Save(); store.DeleteShortcut(item);
+        Check(File.ReadAllText(target) == "application stays" && store.Settings.Items.Count == 0,
+            "a managed flag cannot authorize deleting a path outside the owned Library");
+
+        store = NewStore("delete-save-failure", out desktop, out data);
+        original = Shortcut(desktop, "Keep on save error.lnk"); item = store.Add(original);
+        bytes = File.ReadAllBytes(item.Path);
+        string settings = Path.Combine(data, "settings.json"); byte[] saved = File.ReadAllBytes(settings);
+        bool failed = false;
+        using (var locked = new FileStream(settings, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            try { store.DeleteShortcut(item); } catch (IOException) { failed = true; }
+        }
+        Check(failed && store.Settings.Items.Count == 1 && Object.ReferenceEquals(store.Settings.Items[0], item),
+            "save failure retains the same item in memory");
+        Check(saved.SequenceEqual(File.ReadAllBytes(settings)) && bytes.SequenceEqual(File.ReadAllBytes(item.Path)) && !File.Exists(original),
+            "save failure preserves the original persisted record and copy bytes without restoration");
+
+        store = NewStore("delete-second-save-failure", out desktop, out data);
+        original = Shortcut(desktop, "Keep on backup error.lnk"); item = store.Add(original); store.Save();
+        settings = Path.Combine(data, "settings.json"); saved = File.ReadAllBytes(settings); bytes = File.ReadAllBytes(item.Path);
+        // A recovered profile initially preserves its existing .bak. Locking that
+        // file then makes only the second persistence fail, after main changed.
+        typeof(Store).GetField("keepExistingBackup", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(store, true);
+        failed = false;
+        using (var locked = new FileStream(settings + ".bak", FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            try { store.DeleteShortcut(item); } catch (IOException) { failed = true; }
+        }
+        Check(failed && store.Settings.Items.Contains(item) && saved.SequenceEqual(File.ReadAllBytes(settings)) &&
+            bytes.SequenceEqual(File.ReadAllBytes(item.Path)) && !File.Exists(original),
+            "second-save failure restores the main record even while its backup is locked, retaining the exact copy");
+        Check(new Store(data, desktop).Settings.Items.Count == 1, "failed backup refresh leaves a reloadable active shortcut record");
+
+        store = NewStore("delete-readonly-copy", out desktop, out data);
+        original = Shortcut(desktop, "Read only copy.lnk"); item = store.Add(original);
+        settings = Path.Combine(data, "settings.json"); saved = File.ReadAllBytes(settings); bytes = File.ReadAllBytes(item.Path);
+        File.SetAttributes(item.Path, File.GetAttributes(item.Path) | FileAttributes.ReadOnly); failed = false;
+        try { store.DeleteShortcut(item); } catch (IOException) { failed = true; }
+        Check(failed && store.Settings.Items.Contains(item) && saved.SequenceEqual(File.ReadAllBytes(settings)) &&
+            bytes.SequenceEqual(File.ReadAllBytes(item.Path)) && !File.Exists(original),
+            "failed file disposition restores both records and never silently leaves an orphan after successful saves");
+        File.SetAttributes(item.Path, File.GetAttributes(item.Path) & ~FileAttributes.ReadOnly);
+        store.DeleteShortcut(item);
+        Check(store.Settings.Items.Count == 0 && !File.Exists(item.Path), "a retained read-only copy can be deleted after its attribute is cleared");
+
+        store = NewStore("delete-locked-copy", out desktop, out data);
+        original = Shortcut(desktop, "Locked copy.lnk"); item = store.Add(original);
+        saved = File.ReadAllBytes(Path.Combine(data, "settings.json")); failed = false;
+        using (var locked = new FileStream(item.Path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            try { store.DeleteShortcut(item); } catch (IOException) { failed = true; }
+        }
+        Check(failed && store.Settings.Items.Contains(item) && File.Exists(item.Path) && !File.Exists(original) &&
+            saved.SequenceEqual(File.ReadAllBytes(Path.Combine(data, "settings.json"))),
+            "a locked managed copy fails before any saved removal or desktop restoration");
+        store.DeleteShortcut(item);
+        Check(!File.Exists(item.Path) && store.Settings.Items.Count == 0, "retry deletes the managed copy after its lock is released");
+
+        store = NewStore("delete-strict-refusal", out desktop, out data);
+        original = Shortcut(desktop, "Strict.lnk"); item = store.Add(original);
+        saved = File.ReadAllBytes(Path.Combine(data, "settings.json")); bytes = File.ReadAllBytes(item.Path);
+        Store strict = new Store(data, desktop, null, true); failed = false;
+        try { strict.DeleteShortcut(strict.Settings.Items[0]); } catch (IOException) { failed = true; }
+        Check(failed && strict.Settings.Items.Count == 1 && bytes.SequenceEqual(File.ReadAllBytes(item.Path)) &&
+            saved.SequenceEqual(File.ReadAllBytes(Path.Combine(data, "settings.json"))),
+            "elevated read-only stores cannot discard a shortcut or write the user profile");
+
+        store = NewStore("delete-active-restore", out desktop, out data);
+        original = Shortcut(desktop, "Outstanding restore.lnk"); item = store.Add(original);
+        item.PendingPublicRestore = true; store.Save(); saved = File.ReadAllBytes(Path.Combine(data, "settings.json")); failed = false;
+        try { store.DeleteShortcut(item); } catch (IOException ex) { failed = ex.Message == L10n.T("DeleteShortcutBusy"); }
+        Check(failed && store.Settings.Items.Contains(item) && File.Exists(item.Path) &&
+            saved.SequenceEqual(File.ReadAllBytes(Path.Combine(data, "settings.json"))),
+            "an outstanding public restore intent refuses to race a possibly running restoration helper");
+    }
+
     private static byte[] ProfileBytes(DockSettings settings)
     {
         using (var stream = new MemoryStream())

@@ -1,5 +1,19 @@
 # Changelog / Изменения
 
+## 1.9.3 — 2026-11-25
+
+### English
+
+- Added **Delete shortcut** to Windows icon menus: remove the dock entry and Yarnelo's owned imported shortcut copy without restoring anything to the desktop. Programs, ordinary files, folders and existing desktop originals stay in place.
+- Renamed the separate restoration command to **Restore to desktop**. Use it when you want a moved shortcut back; use **Delete shortcut** to clean up a shortcut after uninstalling a game or app.
+- Updated the English and Russian instructions. Automatic desktop adding still detects new shortcut files rather than application uninstallations. Existing settings, shortcut profiles and startup preferences are preserved; Linux removal behavior is unchanged.
+
+### Русский
+
+- В меню значка Windows добавлен пункт **«Удалить ярлык»**: запись панели и собственная импортированная копия Yarnelo удаляются без возврата на рабочий стол. Программы, обычные файлы, папки и оставшиеся на рабочем столе оригиналы не затрагиваются.
+- Отдельная команда возврата теперь называется **«Вернуть на рабочий стол»**. Используйте её для возврата перемещённого ярлыка; **«Удалить ярлык»** подходит для очистки панели после удаления игры или программы.
+- Обновлены инструкции на русском и английском. Автоматическое добавление по-прежнему отслеживает новые файлы ярлыков, а не удаление приложений. Настройки, профили ярлыков и выбор автозапуска сохраняются; поведение удаления Linux не изменено.
+
 ## 1.9.2 — 2026-10-27
 
 ### English

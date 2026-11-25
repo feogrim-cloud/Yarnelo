@@ -972,7 +972,25 @@ namespace Polka {
                 string name=AskName(L10n.DisplayName(item)); if(!String.IsNullOrWhiteSpace(name)) { item.Name=name.Trim(); item.UserNamed=true; SaveQuietly(); ApplySettings(); }
             }));
             menu.Items.Add(MenuDivider());
-            menu.Items.Add(Menu(item.ManagedShortcut ? L10n.T("RemoveRestore") : L10n.T("Remove"),delegate { RemoveItem(item); })); return menu;
+            if(item.ManagedShortcut) menu.Items.Add(Menu(L10n.T("RemoveRestore"),delegate { RemoveItem(item); }));
+            var delete=Menu(L10n.T("DeleteShortcut"),delegate { DeleteItem(item); });
+            delete.ToolTip=L10n.T("DeleteShortcutHint");
+            delete.IsEnabled=!helperRunning && !automaticPublicMoveRunning && !exiting;
+            menu.Items.Add(delete); return menu;
+        }
+        void DeleteItem(DockItem item) {
+            if(item==null || helperRunning || automaticPublicMoveRunning || exiting) return;
+            try {
+                Store.DeleteShortcut(item);
+                // A pending installer transfer or an existing desktop copy is
+                // deliberately dismissed, rather than treated as a new import.
+                AcknowledgeRestoredShortcut(item.Path);
+                AcknowledgeRestoredShortcut(item.OriginalPath);
+                AcknowledgeRestoredShortcut(item.LastRestoredPath);
+                queuedPublicMoves.Remove(item.Id); promptedPublicMoves.Remove(item.Id);
+                if(queuedPublicMoves.Count==0 && publicMoveTimer!=null) publicMoveTimer.Stop();
+                ApplySettings(); Toast(L10n.T("ShortcutDeleted"));
+            } catch(Exception ex) { Toast(ex.Message); }
         }
         async void RemoveItem(DockItem item) {
             try {

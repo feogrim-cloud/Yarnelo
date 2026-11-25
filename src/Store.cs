@@ -1020,6 +1020,78 @@ namespace Polka
                 AddNotice(L10n.T("RestoredPrefix") + System.IO.Path.GetFileName(restoredPath));
         }
 
+        // Explicitly discard a dock reference and its owned Library copy. Unlike
+        // Remove, this operation never restores or removes a desktop original.
+        public void DeleteShortcut(DockItem item)
+        {
+            if (secureReads) throw new IOException(L10n.T("SharedHelperReadOnly"));
+            LastNotice = String.Empty;
+            LastRestoredPath = null;
+            DockItem stored = FindStoredItem(item);
+            if (stored == null) return;
+            if (stored.PendingPublicRestore) throw new IOException(L10n.T("DeleteShortcutBusy"));
+            int index = Settings.Items.IndexOf(stored);
+            bool owned = stored.ManagedShortcut && IsOwnedLibraryFile(stored);
+            FileStream ownedCopy = null;
+            try
+            {
+                // Acquire deletion rights to the exact regular owned file before
+                // changing settings. Locked, linked or substituted files cannot
+                // turn a successful removal into an undeletable orphan.
+                if (owned)
+                {
+                    bool missing = false;
+                    try { File.GetAttributes(stored.Path); }
+                    catch (FileNotFoundException) { missing = true; }
+                    catch (DirectoryNotFoundException) { missing = true; }
+                    if (!missing) ownedCopy = OpenVerifiedShortcut(stored.Path, true);
+                }
+                Settings.Items.RemoveAt(index);
+                bool saved = false;
+                try
+                {
+                    Save();
+                    saved = true;
+                    // Successful deletion must survive fallback to settings.bak;
+                    // it must not resurrect a removed game's shortcut record.
+                    Save();
+                    if (ownedCopy != null)
+                    {
+                        FileDispositionInformation disposition = new FileDispositionInformation { DeleteFile = 1 };
+                        if (!SetFileInformationByHandle(ownedCopy.SafeFileHandle, 4, ref disposition,
+                            (uint)Marshal.SizeOf(typeof(FileDispositionInformation))))
+                            throw NativeFileError(L10n.T("VerifiedDeleteFailed"));
+                    }
+                }
+                catch (Exception error)
+                {
+                    Settings.Items.Insert(index, stored);
+                    // A failed second save or file disposition leaves all bytes
+                    // intact. Put the reference back on disk as well as in memory.
+                    if (saved)
+                    {
+                        try
+                        {
+                            // A locked backup may be the reason the second save
+                            // failed. Restore the main record without replacing
+                            // that backup, then refresh it if it is writable.
+                            keepExistingBackup = true;
+                            Save();
+                            Save();
+                        }
+                        catch (Exception rollback)
+                        {
+                            if (!IsFileError(rollback)) throw;
+                            throw new IOException(L10n.T("DockChangeSaveFailed"),
+                                new AggregateException(error, rollback));
+                        }
+                    }
+                    throw new IOException(L10n.T("DockChangeSaveFailed") + error.Message, error);
+                }
+            }
+            finally { if (ownedCopy != null) ownedCopy.Dispose(); }
+        }
+
         private bool Load()
         {
             Settings = new DockSettings();

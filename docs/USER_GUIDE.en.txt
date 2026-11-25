@@ -1,4 +1,4 @@
-YARNELO 1.9.2 — shortcut dock for Windows 10/11 x64,
+YARNELO 1.9.3 — shortcut dock for Windows 10/11 x64,
 Windows 10 x86 and Windows 11 ARM64
 
 Choose the package matching Settings → System → About → System type:
@@ -116,11 +116,18 @@ repeated automatically. To retry, choose
 found when Yarnelo starts are left for this explicit menu command.
 Linux continues to keep original desktop launchers in place.
 
-Right-click an icon → Remove and restore shortcut to desktop restores
-a moved shortcut. Existing files are never overwritten.
+Right-click an icon → Restore to desktop returns a moved shortcut
+and removes it from the dock. Existing files are never overwritten.
 Restoring shared desktop shortcuts may require administrator rights.
 This PC and Recycle Bin are added as special links; Windows desktop-icon
 settings are not changed.
+
+Right-click an icon → Delete shortcut removes it from the dock without
+restoring it to the desktop. Only Yarnelo's own imported .lnk/.url copy
+is deleted. Programs, files, folders and existing desktop originals
+are left in place. Use this to clear a shortcut after uninstalling a game.
+Automatic desktop adding detects new shortcuts; it does not track
+application uninstallations.
 
 The Windows notification-area icon also provides Show dock, Settings
 and Exit. Exiting saves the dock's contents.

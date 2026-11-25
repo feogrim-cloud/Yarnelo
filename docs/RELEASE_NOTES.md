@@ -1,26 +1,15 @@
-# Yarnelo 1.9.2 — Reliability and security fixes / Исправления устойчивости и безопасности
+# Yarnelo 1.9.3 — Delete shortcuts / Удаление ярлыков
 
 ## English
 
-This release fixes **all six audit findings**, improves transfer of installer-created Windows desktop shortcuts, and includes the Windows taskbar-tooltip fix from 1.9.1. Valid existing profiles keep their shortcuts, settings, five themes, smooth transitions and startup choice.
+Windows icon menus now offer two separate actions:
 
-### Fixed
+- **Delete shortcut** removes the dock entry and Yarnelo's owned imported `.lnk` / `.url` copy without returning anything to the desktop. Programs, ordinary files, folders and existing desktop originals stay in place.
+- **Restore to desktop** returns a moved shortcut and removes it from the dock. This is the shorter name of the existing restoration command; existing files are never overwritten.
 
-1. **Windows icon memory:** removed shortcuts no longer remain in an ever-growing cache. Pending paths are bounded, one extraction runs at a time, and stale results cannot repopulate removed items.
-2. **Windows shared-shortcut safety:** the elevated helper no longer saves user-profile settings. The ordinary dock journals and reconciles changes with normal permissions, removing the elevated profile-write path exposed by directory substitution. The audit did not establish remote code execution or a UAC bypass.
-3. **Windows over-capacity profiles:** damaged or edited profiles containing more than 30 items no longer create controls outside the supported layout.
-4. **Windows duplicate item IDs:** invalid duplicate-ID profiles are detected instead of allowing removal of a different item; item lookup prefers the exact selected object.
-5. **Linux invalid settings:** wrong field types, excessively large numbers and malformed JSON follow the settings-error path instead of escaping as uncaught startup exceptions.
-6. **Linux launcher output:** unused stdout goes to the null device and stderr is drained into a bounded diagnostic tail, preventing long-lived launchers from retaining unlimited output.
-7. **Installer-created Windows shortcuts:** personal transfers retry temporary locks and matching recreated copies; changed copies stay on the desktop with a notice. With transfer enabled, new shared imports added automatically or manually queue approval only for those newly added shortcuts. The request waits for a visible dock and active desktop/Yarnelo, outside fullscreen apps, settings, menus and dragging. Canceled or failed requests require **+ → Move shared shortcuts into the dock** to retry; older pending shared transfers are not automatically enrolled.
+Use **Delete shortcut** to clear a stale dock icon after uninstalling a game or app. The automatic desktop-shortcut option monitors new shortcut files. Application uninstallations are not tracked automatically. Deleting a dock shortcut does not uninstall its target.
 
-Invalid Windows profiles are preserved for recovery, including managed shortcut files. Yarnelo tries a valid settings backup; if none is usable, it opens defaults with a notice. It does not silently truncate excess entries or renumber ownership IDs. Normal profiles retain their IDs, paths, order, background and other preferences.
-
-### Preserved behavior
-
-Windows 11 taskbar hover labels no longer hide the dock. Normal overlap, fullscreen hiding and multi-monitor behavior remain intact. All five themes, smooth transitions, compact labels, rows, placement and automatic desktop-shortcut preferences remain available.
-
-Startup stays a separate setting: Windows uses `Yarnelo.Logon.<SID>` with a 10-second sign-in delay and ordinary permissions; Linux uses its owned XDG `yarnelo.desktop` entry. Keep AppImage/TAR.GZ/portable files in their permanent location before enabling startup. Installed copies should be opened through their normal shortcuts or sign-in task; automation can use the independent launcher.
+Existing shortcut profiles, order, settings, themes and startup choices are preserved. Linux already removes dock references without moving original launchers; its removal behavior is unchanged. All 14 package variants use version 1.9.3.
 
 ### Downloads
 
@@ -40,7 +29,7 @@ Startup stays a separate setting: Windows uses `Yarnelo.Logon.<SID>` with a 10-s
 
 ### Quick installation
 
-On Windows 11 ARM64, run `Yarnelo-Windows-arm64-Setup.exe`, or extract the entire ARM64 ZIP into a permanent writable folder and run `Yarnelo.exe`.
+On Windows, run the matching `Setup.exe`, or extract the entire matching ZIP into a permanent writable folder and run `Yarnelo.exe`. Use x64 for 64-bit Intel/AMD, x86 for 32-bit Windows 10, and ARM64 for Windows 11 on ARM.
 
 On a compatible Linux ARM64 desktop, choose **one** of the following:
 
@@ -64,25 +53,14 @@ Uninstall restores this installation's owned moved `.lnk` / `.url` shortcuts wit
 
 ## Русский
 
-Выпуск исправляет **все шесть замечаний аудита**, улучшает перенос созданных установщиками ярлыков Windows и включает исправление подсказок панели задач Windows из 1.9.1. В корректных существующих профилях сохраняются ярлыки, настройки, пять тем, плавные переходы и выбор автозапуска.
+В меню значка Windows теперь две отдельные команды:
 
-### Исправлено
+- **«Удалить ярлык»** убирает запись панели и собственную импортированную копию `.lnk` / `.url` Yarnelo без возврата на рабочий стол. Программы, обычные файлы, папки и оставшиеся на рабочем столе оригиналы не затрагиваются.
+- **«Вернуть на рабочий стол»** возвращает перемещённый ярлык и убирает его из панели. Это короткое название прежней команды возврата; существующие файлы не перезаписываются.
 
-1. **Память иконок Windows:** удалённые ярлыки больше не остаются в растущем кэше. Ожидающие пути ограничены, загрузка выполняется по одной, а запоздалые результаты не возвращают удалённые элементы.
-2. **Безопасность общих ярлыков Windows:** повышенный помощник больше не сохраняет настройки пользовательского профиля. Обычная панель ведёт журнал и согласует изменения без повышения прав, исключая выявленный путь записи в подменённую папку с повышенными правами. Аудит не доказал удалённое выполнение кода или обход UAC.
-3. **Переполненные профили Windows:** повреждённый или отредактированный профиль с более чем 30 элементами больше не создаёт значки за пределами поддерживаемой раскладки.
-4. **Повторяющиеся ID Windows:** некорректные профили с одинаковыми ID распознаются, чтобы удаление одного элемента не затрагивало другой; поиск сначала учитывает точный выбранный объект.
-5. **Некорректные настройки Linux:** ошибочные типы полей, чрезмерные числа и повреждённый JSON обрабатываются механизмом ошибок настроек вместо необработанного исключения при запуске.
-6. **Вывод запускателей Linux:** ненужный stdout направляется в нулевое устройство, stderr читается по мере поступления с сохранением ограниченного хвоста диагностики. Длительно работающий запускатель больше не накапливает неограниченный вывод в памяти Yarnelo.
-7. **Ярлыки установщиков Windows:** перенос личных ярлыков повторяется после временной блокировки и для заново созданных совпадающих копий; изменённые файлы остаются на рабочем столе с уведомлением. При включённом переносе запрос прав ставится в очередь только для новых общих ярлыков, добавленных автоматически или вручную. Он ждёт видимой панели и активного рабочего стола/Yarnelo, вне полноэкранных приложений, настроек, меню и перетаскивания. Отменённые или неудачные запросы повторяются через **+ → Перенести общие ярлыки в панель**; прежние ожидающие общие ярлыки автоматически не включаются.
+Используйте **«Удалить ярлык»** для очистки панели после удаления игры или программы. Автоматическое добавление отслеживает новые файлы ярлыков, а не удаление приложений; в этом выпуске добавлена ручная очистка. Удаление ярлыка из панели не удаляет программу, на которую он ссылается.
 
-Некорректные профили Windows сохраняются для восстановления вместе с файлами управляемых ярлыков. Yarnelo пробует корректную резервную копию настроек; если её нет, открывает настройки по умолчанию с уведомлением. Лишние записи не обрезаются безвозвратно, ID принадлежности не перенумеровываются. В обычном профиле сохраняются ID, пути, порядок, фон и остальные предпочтения.
-
-### Сохранённое поведение
-
-Подписи при наведении на значки панели задач Windows 11 больше не скрывают панель. Обработка обычных перекрывающих окон, полноэкранных приложений и нескольких мониторов сохранена. По-прежнему доступны пять тем, плавные переходы, компактные подписи, ряды, положения панели и автоматическое добавление новых ярлыков.
-
-Автозапуск включается отдельно: Windows использует `Yarnelo.Logon.<SID>` с задержкой входа 10 секунд и обычными правами; Linux — принадлежащую Yarnelo запись XDG `yarnelo.desktop`. AppImage/TAR.GZ/переносные файлы нужно заранее поместить в постоянную папку. Установленную копию открывайте её обычным ярлыком или задачей входа; для автоматизации доступен независимый запускатель.
+Существующие профили ярлыков, порядок, настройки, темы и выбор автозапуска сохраняются. Linux уже убирает ссылки из панели без перемещения исходных ярлыков; его поведение удаления не изменено. Все 14 вариантов пакетов имеют версию 1.9.3.
 
 ### Что скачать
 
@@ -102,7 +80,7 @@ Uninstall restores this installation's owned moved `.lnk` / `.url` shortcuts wit
 
 ### Краткая установка
 
-В Windows 11 ARM64 запустите `Yarnelo-Windows-arm64-Setup.exe` либо распакуйте весь ARM64 ZIP в постоянную доступную для записи папку и откройте `Yarnelo.exe`.
+В Windows запустите подходящий `Setup.exe` либо распакуйте весь ZIP нужной архитектуры в постоянную доступную для записи папку и откройте `Yarnelo.exe`. Выбирайте x64 для 64-битных Intel/AMD, x86 для 32-битной Windows 10 и ARM64 для Windows 11 на ARM.
 
 На совместимом графическом Linux ARM64 выберите **один** способ:
 
