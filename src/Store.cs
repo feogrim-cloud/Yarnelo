@@ -118,6 +118,7 @@ namespace Polka
         [DataMember(Order = 16)] public bool AutoAddDesktopShortcuts { get; set; }
         [DataMember(Order = 17)] public string Theme { get; set; }
         [DataMember(Order = 18, EmitDefaultValue = false)] public List<ThemeAppearance> ThemeAppearances { get; set; }
+        [DataMember(Order = 19, EmitDefaultValue = false)] public bool AutoRemoveMissingShortcuts { get; set; }
 
         public DockSettings() { SetDefaults(); }
 
@@ -137,6 +138,7 @@ namespace Polka
             ShowLabels = false;
             LaunchAtLogin = false;
             AutoAddDesktopShortcuts = false;
+            AutoRemoveMissingShortcuts = false;
             Rows = 1;
             Language = L10n.Normalize(null);
             CornerRadius = 23;

@@ -163,6 +163,25 @@ namespace Polka {
                 Check(beforeAutoFailure.SequenceEqual(File.ReadAllBytes(namesPath)),"failed auto-add save preserves exact profile bytes");
                 autoAdd.IsChecked=false;
                 Check(!store.Settings.AutoAddDesktopShortcuts,"manual desktop adding remains available");
+                var autoRemove=Tagged<CheckBox>(settings,"setting-AutoRemoveMissing");
+                Check(((TextBlock)autoRemove.Content).Text=="Automatically remove shortcuts for uninstalled games and apps" &&
+                    Object.Equals(autoRemove.ToolTip,L10n.T("AutoRemoveMissingHelp")),"automatic cleanup label and explanation display in English");
+                Check(!File.ReadAllText(namesPath).Contains("\"AutoRemoveMissingShortcuts\"") &&
+                    autoRemove.IsChecked==false && !new Store(store.DataDirectory,desktop,desktop).Settings.AutoRemoveMissingShortcuts,
+                    "a profile with no cleanup preference starts with automatic deletion disabled");
+                autoRemove.IsChecked=true;
+                Check(store.Settings.AutoRemoveMissingShortcuts && new Store(store.DataDirectory,desktop,desktop).Settings.AutoRemoveMissingShortcuts,
+                    "turning on automatic cleanup persists to the profile");
+                byte[] beforeCleanupFailure=File.ReadAllBytes(namesPath);
+                using(var locked=new FileStream(namesPath,FileMode.Open,FileAccess.Read,FileShare.Read)) {
+                    autoRemove.IsChecked=false;
+                    Check(autoRemove.IsChecked==true && store.Settings.AutoRemoveMissingShortcuts,
+                        "failed cleanup preference save restores model and checkmark");
+                }
+                Check(beforeCleanupFailure.SequenceEqual(File.ReadAllBytes(namesPath)),"failed cleanup preference save preserves exact profile bytes");
+                autoRemove.IsChecked=false;
+                Check(!store.Settings.AutoRemoveMissingShortcuts && !new Store(store.DataDirectory,desktop,desktop).Settings.AutoRemoveMissingShortcuts,
+                    "turning off automatic cleanup persists to the profile");
                 string settingsPath=Path.Combine(store.DataDirectory,"settings.json");
                 byte[] beforeFailure=File.ReadAllBytes(settingsPath);
                 using(var locked=new FileStream(settingsPath,FileMode.Open,FileAccess.Read,FileShare.Read)) {
@@ -192,6 +211,10 @@ namespace Polka {
                 Check(store.Settings.Placement=="free","free placement remains available after choosing an edge anchor");
                 dock.SetLanguage("ru");
                 Check(dock.Title=="Yarnelo — панель ярлыков" && settings.Title=="Настройки — Yarnelo","switching back updates both existing windows");
+                autoRemove=Tagged<CheckBox>(settings,"setting-AutoRemoveMissing");
+                Check(((TextBlock)autoRemove.Content).Text=="Автоматически удалять ярлыки удалённых игр и программ" &&
+                    Object.Equals(autoRemove.ToolTip,L10n.T("AutoRemoveMissingHelp")) && autoRemove.IsChecked==false,
+                    "automatic cleanup label, explanation and setting display correctly after changing to Russian");
                 Render(settings,Path.Combine(directory,"settings-ru.png"),new Size(settings.Width,settings.Height));
                 CheckSettingsSheet(settings,directory,"ru");
                 CheckThemes(dock,settings,store,desktop,directory);

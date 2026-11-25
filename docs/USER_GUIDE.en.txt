@@ -1,4 +1,4 @@
-YARNELO 1.9.3 — shortcut dock for Windows 10/11 x64,
+YARNELO 1.9.4 — shortcut dock for Windows 10/11 x64,
 Windows 10 x86 and Windows 11 ARM64
 
 Choose the package matching Settings → System → About → System type:
@@ -126,8 +126,14 @@ Right-click an icon → Delete shortcut removes it from the dock without
 restoring it to the desktop. Only Yarnelo's own imported .lnk/.url copy
 is deleted. Programs, files, folders and existing desktop originals
 are left in place. Use this to clear a shortcut after uninstalling a game.
-Automatic desktop adding detects new shortcuts; it does not track
-application uninstallations.
+
+In Settings → Behavior, enable Automatically remove shortcuts for
+uninstalled games and apps. It starts off. Yarnelo checks direct .exe
+entries and .lnk shortcuts with known executable paths on available
+fixed drives. For standard Steam shortcuts, it checks that Steam
+marks the game as uninstalled and all its libraries are accessible.
+Removal requires repeated confirmation. Use Delete shortcut for
+other links or targets Yarnelo cannot check reliably.
 
 The Windows notification-area icon also provides Show dock, Settings
 and Exit. Exiting saves the dock's contents.

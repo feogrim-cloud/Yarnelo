@@ -1,15 +1,12 @@
-# Yarnelo 1.9.3 — Delete shortcuts / Удаление ярлыков
+# Yarnelo 1.9.4 — Automatic shortcut removal / Автоматическое удаление ярлыков
 
 ## English
 
-Windows icon menus now offer two separate actions:
+On Windows, turn on **Settings → Behavior → Automatically remove shortcuts for uninstalled games and apps**. The checkbox starts off. Yarnelo checks direct `.exe` entries and `.lnk` shortcuts with known local executable paths on available fixed drives. For standard Steam shortcuts, it verifies that Steam marks the game as uninstalled and that every registered library is accessible and has no record of the installation. Removal requires repeated confirmation.
 
-- **Delete shortcut** removes the dock entry and Yarnelo's owned imported `.lnk` / `.url` copy without returning anything to the desktop. Programs, ordinary files, folders and existing desktop originals stay in place.
-- **Restore to desktop** returns a moved shortcut and removes it from the dock. This is the shorter name of the existing restoration command; existing files are never overwritten.
+Automatic removal clears the dock entry and Yarnelo's owned shortcut copy without returning it to the desktop. **Delete shortcut** in the icon menu is available for web links, unknown launcher links and shortcuts on unavailable drives.
 
-Use **Delete shortcut** to clear a stale dock icon after uninstalling a game or app. The automatic desktop-shortcut option monitors new shortcut files. Application uninstallations are not tracked automatically. Deleting a dock shortcut does not uninstall its target.
-
-Existing shortcut profiles, order, settings, themes and startup choices are preserved. Linux already removes dock references without moving original launchers; its removal behavior is unchanged. All 14 package variants use version 1.9.3.
+All 14 package variants use version 1.9.4. The new checkbox is available in the Windows dock.
 
 ### Downloads
 
@@ -53,14 +50,11 @@ Uninstall restores this installation's owned moved `.lnk` / `.url` shortcuts wit
 
 ## Русский
 
-В меню значка Windows теперь две отдельные команды:
+В Windows откройте **«Настройки → Поведение»** и включите **«Автоматически удалять ярлыки удалённых игр и программ»**. По умолчанию галочка снята. Yarnelo проверяет прямые ссылки на `.exe` и ярлыки `.lnk` с известным файлом запуска на доступном локальном диске. Для стандартных ярлыков Steam Yarnelo проверяет, что игра помечена как удалённая, все зарегистрированные библиотеки доступны и в них нет записи об установке игры. Удаление требует повторного подтверждения.
 
-- **«Удалить ярлык»** убирает запись панели и собственную импортированную копию `.lnk` / `.url` Yarnelo без возврата на рабочий стол. Программы, обычные файлы, папки и оставшиеся на рабочем столе оригиналы не затрагиваются.
-- **«Вернуть на рабочий стол»** возвращает перемещённый ярлык и убирает его из панели. Это короткое название прежней команды возврата; существующие файлы не перезаписываются.
+Запись и сохранённая копия ярлыка удаляются из панели без возврата на рабочий стол. Для веб-ссылок, неизвестных ссылок лаунчеров и ярлыков на недоступных дисках можно использовать команду **«Удалить ярлык»** в меню значка.
 
-Используйте **«Удалить ярлык»** для очистки панели после удаления игры или программы. Автоматическое добавление отслеживает новые файлы ярлыков, а не удаление приложений; в этом выпуске добавлена ручная очистка. Удаление ярлыка из панели не удаляет программу, на которую он ссылается.
-
-Существующие профили ярлыков, порядок, настройки, темы и выбор автозапуска сохраняются. Linux уже убирает ссылки из панели без перемещения исходных ярлыков; его поведение удаления не изменено. Все 14 вариантов пакетов имеют версию 1.9.3.
+Все 14 вариантов пакетов имеют версию 1.9.4. Новая галочка доступна в версии для Windows.
 
 ### Что скачать
 

@@ -118,6 +118,9 @@ namespace Polka {
             Add("AutoAddHelp","Подхватывать новые .lnk и .url во время работы Yarnelo. Прежние ярлыки добавляются вручную. Перенос регулирует следующая настройка.","Pick up new .lnk and .url shortcuts while Yarnelo is running. Existing shortcuts are added manually. The next option controls moving them.");
             Add("AutoAddLimit","Панель заполнена: новый ярлык остался на рабочем столе (максимум 30).","The dock is full: the new shortcut was left on the desktop (maximum 30).");
             Add("AutoAdded","Новые ярлыки добавлены: {0}","New shortcuts added: {0}");
+            Add("AutoRemoveMissing","Автоматически удалять ярлыки удалённых игр и программ","Automatically remove shortcuts for uninstalled games and apps");
+            Add("AutoRemoveMissingHelp","Yarnelo убирает ярлыки после повторной проверки отсутствия игры или программы. При временной недоступности диска ярлыки сохраняются.","Yarnelo removes shortcuts after rechecking that the game or app is missing. Shortcuts are kept when a drive is temporarily unavailable.");
+            Add("AutoRemovedShortcuts","Панель убрала ярлыки удалённых игр и программ: {0}","Shortcuts for uninstalled games and apps removed: {0}");
             Add("AlwaysOnTop","Показывать поверх обычных окон","Show above regular windows");
             Add("VisibilityHelp","Если выключено, панель скрывается, когда другое окно перекрывает её место, и возвращается сама, когда место освобождается. Окно над панелью или на другом мониторе её не скрывает. Полноэкранные приложения на мониторе панели всегда скрывают её.","When disabled, the dock hides while another window covers its position and returns when the space is clear. A window above the dock or on another monitor does not hide it. Fullscreen applications on the dock's monitor always hide it.");
             Add("Startup","Запускать при входе в Windows","Start when signing in to Windows");
@@ -129,7 +132,7 @@ namespace Polka {
             Add("StartupTaskVerifyFailed","Не удалось подтвердить сохранение настроек автозапуска.","Could not verify the saved startup settings.");
             Add("StartupExecutableMissing","Исполняемый файл Yarnelo не найден.","The Yarnelo executable could not be found.");
             Add("MoveDesktop","Переносить ярлыки с рабочего стола в панель","Move desktop shortcuts into the dock");
-            Add("MoveHelp","Ярлыки .lnk и .url возвращаются на рабочий стол при удалении из панели. Для общих ярлыков нажмите + → Перенести общие ярлыки и подтвердите запрос Windows. Программы, файлы и папки остаются на месте.","Removing a .lnk or .url shortcut restores it to the desktop. For shared shortcuts, choose + → Move shared shortcuts and confirm the Windows prompt. Applications, files and folders stay in place.");
+            Add("MoveHelp","Чтобы вернуть ярлык, выберите «Вернуть на рабочий стол» в его меню. Для переноса общих ярлыков используйте + → Перенести общие ярлыки и подтвердите запрос Windows.","Choose Restore to desktop from the shortcut menu to return a moved shortcut. To move shared shortcuts, choose + → Move shared shortcuts and confirm the Windows prompt.");
             Add("CenterBottom","Расположить внизу по центру","Place at bottom center");
             Add("UsageHelp","Перетащите ⠿ для перемещения панели.\nМеняйте порядок значков перетаскиванием.\nПравая кнопка на значке — дополнительные действия.","Drag ⠿ to move the dock.\nDrag icons to change their order.\nRight-click an icon for more actions.");
             Add("AutoSaveHelp","До 30 ярлыков · изменения сохраняются автоматически","Up to 30 shortcuts · changes save automatically");

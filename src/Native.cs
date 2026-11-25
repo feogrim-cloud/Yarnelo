@@ -13,7 +13,7 @@ using System.Windows.Threading;
 
 namespace Polka
 {
-    internal static class Native
+    internal static partial class Native
     {
         private static readonly object iconQueueLock = new object();
         private static readonly Queue<IconRequest> iconQueue = new Queue<IconRequest>();
@@ -131,6 +131,11 @@ namespace Polka
 
         static bool InternetShortcutReady(Stream stream)
         {
+            return ReadInternetShortcutTarget(stream) != null;
+        }
+
+        static string ReadInternetShortcutTarget(Stream stream)
+        {
             bool section = false;
             string target = null;
             using (var reader = new StreamReader(stream, Encoding.Default, true, 4096, true))
@@ -147,14 +152,14 @@ namespace Polka
                     }
                     int equal = line.IndexOf('=');
                     if (!section || equal < 0 || !String.Equals(line.Substring(0, equal).Trim(), "URL", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (target != null) return false;
+                    if (target != null) return null;
                     target = line.Substring(equal + 1).Trim();
                 }
             }
-            if (String.IsNullOrWhiteSpace(target) || target.Length > 65536) return false;
-            foreach (char character in target) if (Char.IsControl(character)) return false;
+            if (String.IsNullOrWhiteSpace(target) || target.Length > 65536) return null;
+            foreach (char character in target) if (Char.IsControl(character)) return null;
             Uri address;
-            return Uri.TryCreate(target, UriKind.Absolute, out address);
+            return Uri.TryCreate(target, UriKind.Absolute, out address) ? target : null;
         }
 
         static bool CompleteShellLink(byte[] data)

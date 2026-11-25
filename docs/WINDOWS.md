@@ -65,7 +65,14 @@ Turning startup off removes only this installation's task and matching legacy re
 
 With desktop shortcut transfer enabled, desktop `.lnk` / `.url` files are stored in the profile's `Library` folder and removed from the desktop. Their contents and launch arguments are retained. Ordinary files and folders stay in place. Right-click an icon → **Restore to desktop** to return an imported shortcut and remove it from the dock. Existing files are never overwritten.
 
-Choose **Delete shortcut** instead to remove the dock entry and Yarnelo's owned imported `.lnk` / `.url` copy without restoring anything to the desktop. Programs, ordinary files, folders and existing desktop originals are left in place; for external and system links, only the dock entry is removed. Use this command to clear shortcuts after uninstalling games or apps. Automatic desktop adding detects new shortcut files, not application uninstallations.
+Choose **Delete shortcut** to remove the dock entry and Yarnelo's owned imported `.lnk` / `.url` copy without restoring anything to the desktop. For external and system links, the command removes only the dock entry.
+
+In **Settings → Behavior**, enable **Automatically remove shortcuts for uninstalled games and apps** to check dock entries while Yarnelo is running. The option starts off.
+
+- For a direct `.exe` entry or a `.lnk` shortcut with a known executable path on an available fixed drive, Yarnelo checks whether the executable is missing.
+- For a standard Steam desktop shortcut (`steam://rungameid/…`), Yarnelo checks that Steam explicitly marks the game as uninstalled and that all registered Steam libraries are accessible and have no record of the installation.
+
+Yarnelo needs three consecutive confirmations over at least one minute. It then removes the shortcut in the same way as **Delete shortcut**. Use the manual command for web links, unknown launcher links and shortcuts Yarnelo cannot verify.
 
 Shared desktop shortcuts may require a Windows administrator prompt to transfer or restore. Canceling the prompt leaves the original shortcut in place. Adding This PC or Recycle Bin does not alter Windows desktop-icon settings.
 

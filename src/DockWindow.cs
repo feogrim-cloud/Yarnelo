@@ -93,6 +93,22 @@ namespace Polka {
         DesktopShortcutWatcher desktopWatcher;
         DispatcherTimer desktopWatcherTimer;
         bool desktopWatcherInjected, desktopLimitNotice;
+        static readonly TimeSpan ShortcutCheckInterval=TimeSpan.FromSeconds(30);
+        static readonly TimeSpan MissingShortcutGrace=TimeSpan.FromMinutes(1);
+        static readonly TimeSpan MaximumShortcutCheckGap=TimeSpan.FromSeconds(75);
+        sealed class ShortcutCheck {
+            internal DockItem Item;
+            internal string Path, MissingIdentity;
+        }
+        sealed class MissingShortcut {
+            internal string Identity;
+            internal TimeSpan FirstSeen, LastSeen;
+            internal int Checks;
+        }
+        readonly Dictionary<DockItem,MissingShortcut> missingShortcuts=new Dictionary<DockItem,MissingShortcut>();
+        DispatcherTimer shortcutCleanupTimer;
+        bool shortcutCheckRunning;
+        int shortcutCheckGeneration;
         readonly HashSet<string> queuedPublicMoves = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         readonly HashSet<string> promptedPublicMoves = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         DispatcherTimer publicMoveTimer;
@@ -305,6 +321,7 @@ namespace Polka {
                 if(helperRunning) { e.Cancel=true; return; }
                 CancelThemeTransition();
                 StopDesktopWatcher();
+                StopShortcutCleanup();
                 if(internalDrag) EndInternalDrag(false);
                 if(!exiting) { exiting=true; SaveQuietly(); }
             };
@@ -431,7 +448,91 @@ namespace Polka {
             if(Store.Settings.Placement!="free") AnchorPosition(area);
             else if(ready) ClampPosition(area);
             UpdateDesktopWatcher();
+            UpdateShortcutCleanup();
             if(host!=null) host.Refresh();
+        }
+
+        void UpdateShortcutCleanup() {
+            if(!Store.Settings.AutoRemoveMissingShortcuts || Store.Settings.Items.Count==0) { StopShortcutCleanup(); return; }
+            if(Program.TestMode || shortcutCleanupTimer!=null) return;
+            shortcutCleanupTimer=new DispatcherTimer(DispatcherPriority.Background,Dispatcher) { Interval=ShortcutCheckInterval };
+            shortcutCleanupTimer.Tick+=delegate { CheckMissingShortcuts(animationClock.Elapsed,Native.FindMissingApplication); };
+            shortcutCleanupTimer.Start();
+        }
+
+        void StopShortcutCleanup() {
+            if(shortcutCleanupTimer!=null) { shortcutCleanupTimer.Stop(); shortcutCleanupTimer=null; }
+            shortcutCheckGeneration++;
+            missingShortcuts.Clear();
+        }
+
+        bool CanCheckMissingShortcuts() {
+            return Store.Settings.AutoRemoveMissingShortcuts && !exiting && !helperRunning &&
+                !automaticPublicMoveRunning && !moving && pressed==null && !internalDrag && !dragLanding &&
+                !externalDragFeedback && settingsWindow==null && !openMenus.Any(menu=>menu.IsOpen);
+        }
+
+        static bool IsShortcutCleanupCandidate(DockItem item) {
+            return !item.PendingSourceDelete && !item.PendingPublicMove && !item.PendingPublicRestore;
+        }
+
+        internal void CheckMissingShortcuts(TimeSpan time,Func<string,string> probe) {
+            if(shortcutCheckRunning || !CanCheckMissingShortcuts()) return;
+            Store source=Store;
+            int generation=shortcutCheckGeneration;
+            var checks=source.Settings.Items.Where(IsShortcutCleanupCandidate)
+                .Select(item=>new ShortcutCheck { Item=item,Path=item.Path }).ToArray();
+            if(checks.Length==0) { missingShortcuts.Clear(); return; }
+            shortcutCheckRunning=true;
+            Task.Run(delegate {
+                foreach(var check in checks) check.MissingIdentity=probe(check.Path);
+            }).ContinueWith(completed=> {
+                if(completed.IsFaulted) completed.Exception.Handle(error=>true);
+                if(Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+                Dispatcher.BeginInvoke(DispatcherPriority.Background,new Action(delegate {
+                    shortcutCheckRunning=false;
+                    if(source!=Store || generation!=shortcutCheckGeneration) return;
+                    if(completed.Status!=TaskStatus.RanToCompletion || !CanCheckMissingShortcuts()) {
+                        missingShortcuts.Clear();
+                        return;
+                    }
+                    CompleteShortcutCheck(checks,time);
+                }));
+            },TaskScheduler.Default);
+        }
+
+        void CompleteShortcutCheck(ShortcutCheck[] checks,TimeSpan time) {
+            var current=new HashSet<DockItem>(Store.Settings.Items.Where(IsShortcutCleanupCandidate));
+            foreach(var item in missingShortcuts.Keys.Where(item=>!current.Contains(item)).ToArray()) missingShortcuts.Remove(item);
+            int removed=0;
+            string saveError=null;
+            foreach(var check in checks) {
+                var item=check.Item;
+                if(!current.Contains(item) || !String.Equals(item.Path,check.Path,StringComparison.Ordinal) || check.MissingIdentity==null) {
+                    missingShortcuts.Remove(item);
+                    continue;
+                }
+                MissingShortcut observation;
+                if(!missingShortcuts.TryGetValue(item,out observation) ||
+                    !String.Equals(observation.Identity,check.MissingIdentity,StringComparison.Ordinal) ||
+                    time-observation.LastSeen>MaximumShortcutCheckGap) {
+                    missingShortcuts[item]=new MissingShortcut { Identity=check.MissingIdentity, FirstSeen=time, LastSeen=time, Checks=1 };
+                    continue;
+                }
+                if(time<=observation.LastSeen) continue;
+                observation.LastSeen=time;
+                if(++observation.Checks<3 || time-observation.FirstSeen<MissingShortcutGrace) continue;
+                missingShortcuts.Remove(item);
+                try { DiscardShortcut(item); removed++; }
+                catch(Exception ex) {
+                    if(!(ex is IOException) && !(ex is UnauthorizedAccessException) && !(ex is System.Security.SecurityException)) throw;
+                    if(saveError==null) saveError=ex.Message;
+                }
+            }
+            if(removed>0) {
+                ApplySettings();
+                Toast(L10n.T("AutoRemovedShortcuts",removed));
+            } else if(saveError!=null) Toast(saveError);
         }
 
         void UpdateDesktopWatcher() {
@@ -981,16 +1082,18 @@ namespace Polka {
         void DeleteItem(DockItem item) {
             if(item==null || helperRunning || automaticPublicMoveRunning || exiting) return;
             try {
-                Store.DeleteShortcut(item);
-                // A pending installer transfer or an existing desktop copy is
-                // deliberately dismissed, rather than treated as a new import.
-                AcknowledgeRestoredShortcut(item.Path);
-                AcknowledgeRestoredShortcut(item.OriginalPath);
-                AcknowledgeRestoredShortcut(item.LastRestoredPath);
-                queuedPublicMoves.Remove(item.Id); promptedPublicMoves.Remove(item.Id);
-                if(queuedPublicMoves.Count==0 && publicMoveTimer!=null) publicMoveTimer.Stop();
+                DiscardShortcut(item);
                 ApplySettings(); Toast(L10n.T("ShortcutDeleted"));
             } catch(Exception ex) { Toast(ex.Message); }
+        }
+        void DiscardShortcut(DockItem item) {
+            Store.DeleteShortcut(item);
+            // Existing desktop copies must not be treated as fresh imports.
+            AcknowledgeRestoredShortcut(item.Path);
+            AcknowledgeRestoredShortcut(item.OriginalPath);
+            AcknowledgeRestoredShortcut(item.LastRestoredPath);
+            queuedPublicMoves.Remove(item.Id); promptedPublicMoves.Remove(item.Id);
+            if(queuedPublicMoves.Count==0 && publicMoveTimer!=null) publicMoveTimer.Stop();
         }
         async void RemoveItem(DockItem item) {
             try {

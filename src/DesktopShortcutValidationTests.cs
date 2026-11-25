@@ -68,9 +68,75 @@ namespace Polka {
                 string oversized=Path.Combine(root,"Oversized.lnk");
                 using(var writer=new FileStream(oversized,FileMode.CreateNew,FileAccess.Write)) writer.SetLength(4*1024*1024+1);
                 Check(!Native.IsDesktopShortcutReady(oversized),"shortcut validation is bounded");
-                Console.WriteLine("PASS: "+checks+" automatic shortcut readiness checks; no targets launched or resolved; fixtures: "+root);
+                CheckApplicationTargets(root);
+                CheckSteamLibraries(root);
+                Console.WriteLine("PASS: "+checks+" automatic shortcut readiness and target checks; no targets launched or resolved; fixtures: "+root);
                 return 0;
             } catch(Exception error) { Console.WriteLine(error); return 1; }
+        }
+        static void CheckApplicationTargets(string root) {
+            string programDirectory=Path.Combine(root,"Installed Game");
+            Directory.CreateDirectory(programDirectory);
+            string program=Write(programDirectory,"Game.exe","fake executable, never launched");
+            string link=Path.Combine(root,"Installed Game.lnk");
+            CreateLink(link,program,IntPtr.Zero);
+            Check(Native.FindMissingApplication(program)==null && Native.FindMissingApplication(link)==null,
+                "existing executable and real Windows shortcut are preserved");
+            byte[] original=File.ReadAllBytes(link);
+            File.Delete(program);
+            Directory.Delete(programDirectory);
+            string direct=Native.FindMissingApplication(program), imported=Native.FindMissingApplication(link);
+            Check(direct!=null && imported!=null && direct!=imported,
+                "a missing executable under its original fixed volume is detectable directly and through a real shortcut");
+            Check(imported==Native.FindMissingApplication(link) && original.SequenceEqual(File.ReadAllBytes(link)),
+                "missing evidence is stable and remains read-only");
+
+            byte[] replacedVolume=(byte[])original.Clone();
+            uint flags=BitConverter.ToUInt32(original,20);
+            int info=76+((flags&1)!=0?2+BitConverter.ToUInt16(original,76):0);
+            int serial=info+(int)BitConverter.ToUInt32(original,info+12)+8;
+            replacedVolume[serial]^=1;
+            File.WriteAllBytes(link,replacedVolume);
+            Check(Native.FindMissingApplication(link)==null,"a replaced drive letter cannot establish absence");
+            File.WriteAllBytes(link,original);
+            Directory.CreateDirectory(programDirectory);
+            Write(programDirectory,"Game.exe","fake program restored before confirmation");
+            Check(Native.FindMissingApplication(link)==null,"a reinstalled executable clears missing evidence");
+            Check(Native.FindMissingApplication(Path.Combine(root,"valid.url"))==null &&
+                Native.FindMissingApplication(Path.Combine(root,"Computer namespace.lnk"))==null &&
+                Native.FindMissingApplication(programDirectory)==null &&
+                Native.FindMissingApplication("shell:RecycleBinFolder")==null &&
+                Native.FindMissingApplication(@"\\unreachable.invalid\share\Game.exe")==null &&
+                Native.FindMissingApplication(@"\\?\C:\NoSuch-Yarnelo.exe")==null &&
+                Native.FindMissingApplication(Path.Combine(programDirectory,"Game.exe:alternate"))==null,
+                "URLs, folders, namespaces, network, extended and alternate stream paths are never inferred as uninstallations");
+            using(var writer=new FileStream(link,FileMode.Open,FileAccess.Write,FileShare.None))
+                Check(Native.FindMissingApplication(link)==null,"a locked shortcut is not considered broken or missing");
+        }
+        static void CheckSteamLibraries(string root) {
+            string steam=Path.Combine(root,"Steam fixture");
+            string other=Path.Combine(root,"Steam secondary");
+            Directory.CreateDirectory(Path.Combine(steam,"steamapps"));
+            Directory.CreateDirectory(Path.Combine(other,"steamapps"));
+            Write(steam,"steam.exe","fake Steam executable, never launched");
+            string config=Path.Combine(steam,"steamapps","libraryfolders.vdf");
+            string escapedSteam=steam.Replace("\\","\\\\"), escapedOther=other.Replace("\\","\\\\");
+            string complete="\"libraryfolders\" { \"0\" { \"path\" \""+escapedSteam+"\" \"apps\" { } } "+
+                "\"1\" { \"path\" \""+escapedOther+"\" \"apps\" { } } }";
+            File.WriteAllText(config,complete);
+            string absent=Native.ConfirmSteamLibraries(steam,"730");
+            Check(absent!=null && absent==Native.ConfirmSteamLibraries(steam,"730"),
+                "two readable Steam libraries corroborate a genuinely absent manifest consistently");
+            string manifest=Write(Path.Combine(other,"steamapps"),"appmanifest_730.acf","fixture");
+            Check(Native.ConfirmSteamLibraries(steam,"730")==null,"a manifest in a secondary Steam library preserves its shortcut");
+            File.Delete(manifest);
+            File.WriteAllText(config,complete.Replace("\"apps\" { }","\"apps\" { \"730\" \"123456\" }"));
+            Check(Native.ConfirmSteamLibraries(steam,"730")==null,"an indexed Steam app stays even while its manifest is temporarily absent");
+            File.WriteAllText(config,complete.Substring(0,complete.Length-1));
+            Check(Native.ConfirmSteamLibraries(steam,"730")==null,"an incomplete library map cannot establish absence");
+            File.WriteAllText(config,complete);
+            Directory.Delete(Path.Combine(other,"steamapps"));
+            Check(Native.ConfirmSteamLibraries(steam,"730")==null,"an unavailable secondary library preserves Steam shortcuts");
         }
         static void CreateLink(string path,string target,IntPtr pidl) {
             object value=Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("00021401-0000-0000-C000-000000000046"),true));

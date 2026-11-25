@@ -1,5 +1,17 @@
 # Changelog / Изменения
 
+## 1.9.4 — 2026-11-25
+
+### English
+
+- Added an opt-in Windows setting to remove shortcuts for uninstalled games and apps. Yarnelo repeatedly checks direct `.exe` entries and `.lnk` shortcuts with a known local executable. For supported Steam shortcuts, it verifies that Steam marks the game as uninstalled and all registered libraries are accessible.
+- Automatic removal clears the dock entry and its owned copy without restoring it to the desktop. Use **Delete shortcut** for targets Yarnelo cannot check safely.
+
+### Русский
+
+- В настройках Windows появилась выключенная по умолчанию галочка **«Автоматически удалять ярлыки удалённых игр и программ»**. Yarnelo проверяет прямые ссылки на `.exe` и ярлыки `.lnk` с известным локальным файлом запуска. Для поддерживаемых ярлыков Steam проверка подтверждает, что игра помечена как удалённая и все зарегистрированные библиотеки доступны.
+- Запись и сохранённая копия ярлыка удаляются из панели без возврата на рабочий стол. Для ярлыков, которые нельзя проверить надёжно, доступна команда **«Удалить ярлык»**.
+
 ## 1.9.3 — 2026-11-25
 
 ### English

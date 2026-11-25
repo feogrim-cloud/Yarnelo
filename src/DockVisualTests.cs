@@ -321,6 +321,69 @@ namespace Polka {
                 }
             } finally {L10n.SetLanguage(previousLanguage);}
         }
+        static void CheckAutomaticShortcutCleanup(string directory) {
+            string root=Path.Combine(directory,"AutomaticCleanup");
+            string desktop=Path.Combine(root,"Desktop"), shared=Path.Combine(root,"Shared");
+            Directory.CreateDirectory(desktop); Directory.CreateDirectory(shared);
+            var store=new Store(Path.Combine(root,"Data"),desktop,shared);
+            store.Settings.Items.Clear();
+            store.Settings.MoveDesktopShortcuts=true;
+            const string bytes="[InternetShortcut]\nURL=https://example.invalid/fixture\n";
+            string stalePath=Path.Combine(desktop,"Uninstalled.url");
+            string transientPath=Path.Combine(desktop,"Updating.url");
+            string pendingPath=Path.Combine(shared,"Pending transfer.url");
+            foreach(string path in new[]{stalePath,transientPath,pendingPath}) File.WriteAllText(path,bytes);
+            DockItem stale=store.Add(stalePath), transient=store.Add(transientPath), pending=store.Add(pendingPath);
+            DockItem computer=store.Add("shell:MyComputerFolder");
+            var dock=new DockWindow(store);
+            bool transientMissing=true;
+            int workerThread=0, testThread=Thread.CurrentThread.ManagedThreadId;
+            var checkedPaths=new List<string>();
+            Func<string,string> probe=path=> {
+                workerThread=Thread.CurrentThread.ManagedThreadId;
+                checkedPaths.Add(path);
+                return path==stale.Path || (path==transient.Path && transientMissing) ? path : null;
+            };
+            Action<int> sample=seconds=> {
+                dock.CheckMissingShortcuts(TimeSpan.FromSeconds(seconds),probe);
+                PumpUntil(()=>!Field<bool>(dock,"shortcutCheckRunning"),"automatic shortcut scan completed");
+            };
+            sample(0);
+            Check(checkedPaths.Count==0 && store.Settings.Items.Count==4,"default-off cleanup never probes or changes the dock");
+            store.Settings.AutoRemoveMissingShortcuts=true; store.Save();
+            sample(0);
+            Check(workerThread!=testThread && !checkedPaths.Contains(pending.Path),"cleanup is checked off the UI thread and skips pending transfers");
+            sample(29); sample(59);
+            Check(store.Settings.Items.Contains(stale) && File.Exists(stale.Path),"three observations less than a minute apart cannot discard a shortcut");
+            transientMissing=false;
+            sample(60);
+            Check(!store.Settings.Items.Contains(stale) && !File.Exists(stale.Path) && !File.Exists(stalePath),"auto cleanup uses the no-restore removal transaction after repeated missing observations");
+            Check(store.Settings.Items.Contains(transient) && File.Exists(transient.Path) && store.Settings.Items.Contains(computer) &&
+                store.Settings.Items.Contains(pending) && File.ReadAllText(pendingPath)==bytes,"a recovered, unknown, or pending target remains intact");
+            Check(new Store(store.DataDirectory,desktop,shared).Settings.Items.All(item=>item.Id!=stale.Id),"automatic removal survives reopening the profile");
+
+            transientMissing=true;
+            sample(90); sample(130);
+            using(var entered=new ManualResetEventSlim(false))
+            using(var release=new ManualResetEventSlim(false)) {
+                dock.CheckMissingShortcuts(TimeSpan.FromSeconds(150),path=> {
+                    entered.Set(); release.Wait(5000); return probe(path);
+                });
+                try {
+                    Check(entered.Wait(3000),"the last automatic cleanup sample is in progress");
+                    store.Settings.AutoRemoveMissingShortcuts=false; dock.ApplySettings(new Rect(0,0,1920,1040));
+                    store.Settings.AutoRemoveMissingShortcuts=true; dock.ApplySettings(new Rect(0,0,1920,1040));
+                } finally { release.Set(); }
+                PumpUntil(()=>!Field<bool>(dock,"shortcutCheckRunning"),"the invalidated scan has returned");
+            }
+            sample(151);
+            Check(store.Settings.Items.Contains(transient) && File.Exists(transient.Path),"turning cleanup off and on invalidates old observations and in-flight results");
+            sample(270); sample(300);
+            Check(store.Settings.Items.Contains(transient),"a long gap starts a fresh observation period");
+            sample(330);
+            Check(!store.Settings.Items.Contains(transient) && !File.Exists(transientPath),"re-enabled cleanup acts on fresh confirmed observations");
+            dock.DisposeIconLoads();
+        }
         static void CheckAutomaticDesktopAdding(string directory) {
             string desktop=Path.Combine(directory,"watch-desktop"), shared=Path.Combine(directory,"watch-shared");
             Directory.CreateDirectory(desktop); Directory.CreateDirectory(shared);
@@ -706,6 +769,7 @@ namespace Polka {
                 CheckAutomaticPublicMoveQueue(directory);
                 CheckRecreatedPublicShortcutQueue(directory);
                 CheckDeleteShortcutMenu(directory);
+                CheckAutomaticShortcutCleanup(directory);
                 CheckThemeRendering(directory);
                 CheckThemeTransitions(directory);
                 CheckIconCacheLifetime(directory);

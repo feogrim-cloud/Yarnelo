@@ -93,6 +93,13 @@ namespace Polka {
             });
             startupCheck.IsEnabled=startupAvailable;
             startupCheck.ToolTip=L10n.T("StartupHelp");
+            var cleanup=AddCheck(behavior,"AutoRemoveMissing",dock.Store.Settings.AutoRemoveMissingShortcuts,delegate(bool v) {
+                bool previous=dock.Store.Settings.AutoRemoveMissingShortcuts;
+                dock.Store.Settings.AutoRemoveMissingShortcuts=v;
+                try { dock.Store.Save(); }
+                catch { dock.Store.Settings.AutoRemoveMissingShortcuts=previous; throw; }
+            });
+            cleanup.ToolTip=L10n.T("AutoRemoveMissingHelp");
             var automatic=AddCheck(behavior,"AutoAddDesktop",dock.Store.Settings.AutoAddDesktopShortcuts,delegate(bool v) {
                 bool previous=dock.Store.Settings.AutoAddDesktopShortcuts;
                 dock.Store.Settings.AutoAddDesktopShortcuts=v;

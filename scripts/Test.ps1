@@ -90,7 +90,7 @@ if($LASTEXITCODE -ne 0) { throw 'Desktop visibility policy tests failed.' }
 
 # Localization renders only its own unshown WPF visual trees. No native dock,
 # desktop integration, tray, installed profile or startup registry is used.
-$localizationSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','StartupRegistration.cs','DesktopHost.cs','DesktopShortcutWatcher.cs','SmoothMotion.cs','Store.cs','Localization.cs','LocalizationUiTests.cs') |
+$localizationSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','ApplicationShortcutProbe.cs','StartupRegistration.cs','DesktopHost.cs','DesktopShortcutWatcher.cs','SmoothMotion.cs','Store.cs','Localization.cs','LocalizationUiTests.cs') |
     ForEach-Object { Join-Path $sources $_ }
 $localizationBinary = Join-Path $run 'LocalizationUiTests.exe'
 $localizationArgs = @(
@@ -130,7 +130,7 @@ if($LASTEXITCODE -ne 0) { throw 'Desktop shortcut validation tests failed.' }
 
 if($CompileUiTests) {
     # Compile only: UI tests show and activate native WPF windows when executed.
-    $uiSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','StartupRegistration.cs','DesktopHost.cs','DesktopShortcutWatcher.cs','SmoothMotion.cs','Store.cs','Localization.cs','UiTests.cs') |
+    $uiSources = @('Program.cs','DockWindow.cs','DockLayout.cs','SettingsWindow.cs','Native.cs','ApplicationShortcutProbe.cs','StartupRegistration.cs','DesktopHost.cs','DesktopShortcutWatcher.cs','SmoothMotion.cs','Store.cs','Localization.cs','UiTests.cs') |
         ForEach-Object { Join-Path $sources $_ }
     $uiArgs = @(
         '/nologo', '/target:exe', '/platform:x64', '/optimize+', '/codepage:65001',
